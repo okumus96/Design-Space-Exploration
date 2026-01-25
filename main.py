@@ -24,7 +24,7 @@ def main(args):
     print("-" * 80)
 
     generator = VehicleDataGenerator(num_ecus=args.num_ecus, num_scs=args.num_scs, seed=args.seed)
-    ecus, scs, comm_matrix, sensors, actuators = generator.generate_data()
+    ecus, scs, comm_matrix, sensors, actuators, cable_types = generator.generate_data()
     
     print(f"\n Generated Data Summary:")
     print(f"   - ECUs: {len(ecus)}")
@@ -32,6 +32,7 @@ def main(args):
     print(f"   - Sensors: {len(sensors)}")
     print(f"   - Actuators: {len(actuators)}")
     print(f"   - Communication Links: {len(comm_matrix)}")
+    print(f"   - Cable Types: {len(cable_types)}")
     #return
 
     # Pre-visualzation of generated data
@@ -44,7 +45,7 @@ def main(args):
     print("\n" + "-" * 80)
     print("STEP 2: Running Gurobi Optimization")
     print("-" * 80)
-    opt = AssignmentOptimizer()
+    opt = AssignmentOptimizer(cable_types=cable_types)
     
     
     # Generate Pareto front: Total Cost (Hardware + Cable) vs Load Balancing

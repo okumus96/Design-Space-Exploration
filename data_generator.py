@@ -1,5 +1,5 @@
 import random
-from models import Point, Sensor, Actuator, SoftwareComponent, CandidateECU
+from models import Point, Sensor, Actuator, SoftwareComponent, CandidateECU, CableType
 
 
 class VehicleDataGenerator:
@@ -10,7 +10,7 @@ class VehicleDataGenerator:
     # ECU placement area (much larger than vehicle)
     ECU_AREA_EXTENT = 50  # Coordinates from -50 to +50
 
-    def __init__(self, num_ecus=10, num_scs=20, seed=42):
+    def __init__(self, num_ecus=10, num_scs=20, seed=42, base_cost_per_meter=10.0):
         random.seed(seed)
         self.num_ecus = num_ecus
         self.num_scs = num_scs
@@ -18,6 +18,15 @@ class VehicleDataGenerator:
         self.actuators = []
         self.ecus = []
         self.scs = []
+
+        # Define detailed Cable Types
+        self.cable_types = {
+            'ETH': CableType(name='ETH', cost_per_meter=base_cost_per_meter * 5.0, latency_per_meter=0.005, weight_per_meter=50),
+            'FLEXRAY': CableType(name='FLEXRAY', cost_per_meter=base_cost_per_meter * 3.0, latency_per_meter=0.005, weight_per_meter=30),
+            'CAN': CableType(name='CAN', cost_per_meter=base_cost_per_meter * 1.0, latency_per_meter=0.005, weight_per_meter=20),
+            'LIN': CableType(name='LIN', cost_per_meter=base_cost_per_meter * 0.5, latency_per_meter=0.005, weight_per_meter=10),
+            'default': CableType(name='default', cost_per_meter=base_cost_per_meter * 1.0, latency_per_meter=0.005, weight_per_meter=20)
+        }
 
     def generate_sensors(self):
         """Generate sensors with fixed locations based on vehicle layout diagram"""
@@ -337,4 +346,4 @@ class VehicleDataGenerator:
         comm_matrix = self.generate_comm_matrix()
 
         self.generate_ecu()
-        return self.ecus, self.scs, comm_matrix, self.sensors, self.actuators
+        return self.ecus, self.scs, comm_matrix, self.sensors, self.actuators, self.cable_types
