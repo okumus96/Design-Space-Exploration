@@ -6,7 +6,6 @@ class VehicleDataGenerator:
     # Vehicle dimensions (2D) - in meters
     VEHICLE_LENGTH = 4.5  # Front to rear
     VEHICLE_WIDTH = 1.8   # Left to right
-    
     # ECU placement area (much larger than vehicle)
     ECU_AREA_EXTENT = 50  # Coordinates from -50 to +50
 
