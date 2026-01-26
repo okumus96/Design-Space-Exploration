@@ -9,11 +9,16 @@ from tabulate import tabulate
 
 class Visualization:
     def __init__(self):
-        #self.df_ecu = pd.DataFrame([vars(e) for e in ecus])
-        #self.df_sc = pd.DataFrame([vars(s) for s in scs])
-        #self.df_sensor = pd.DataFrame([vars(s) for s in sensors])
-        #self.df_actuator = pd.DataFrame([vars(a) for a in actuators])
         pass
+    def display_data_summary(self, ecus, scs, sensors, actuators, cable_types, comm_matrix):
+        print(f"\n Generated Data Summary:")
+        print(f"   - ECUs: {len(ecus)}")
+        print(f"   - Software Components: {len(scs)}")
+        print(f"   - Sensors: {len(sensors)}")
+        print(f"   - Actuators: {len(actuators)}")
+        print(f"   - Communication Links: {len(comm_matrix)}")
+        print(f"   - Cable Types: {len(cable_types)}")
+
     def display_assignments(self,assignments):
             # Summary by ECU
             print(f"\n   SWs assigned per ECU:")

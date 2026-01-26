@@ -4,42 +4,47 @@ from models import Point, CableType
 import math
 
 class AssignmentOptimizer():
-    def __init__(self, cable_types):
+    def __init__(self):
         """
         Initialize Optimizer.
-        cable_types: Dictionary of CableType objects.
         """
-        self.cable_types = cable_types
-    
-    def get_cable_type(self, interface_type):
-        return self.cable_types.get(interface_type, self.cable_types['default'])
+        pass
 
-    def calculate_cable_metrics_for_assignment(self, assignment, ecus, sensors, actuators, scs, 
-                                            comm_matrix=None, distance_metric="euclidean"):
-        """Calculate total cable cost, latency, and weight including breakdown."""
-        missing_locs = [ecu.id for ecu in ecus if ecu.location is None]
-        if missing_locs:
-            return {
-                'total_cable_cost': 0, 'total_latency': 0, 'total_weight': 0,
-                'sensor_cable_cost': 0, 'actuator_cable_cost': 0, 'ecu_ecu_cable_cost': 0,
-                'sensor_latency': 0, 'actuator_latency': 0, 'ecu_ecu_latency': 0,
-                'sensor_weight': 0, 'actuator_weight': 0, 'ecu_ecu_weight': 0
-            }
-        
-        # Initialize metrics
+    def calculate_assignment_metrics(self, assignment, ecus, sensors, actuators, scs, cable_types,
+                                     comm_matrix=None, distance_metric="euclidean"):
+        """
+        Calculate key metrics for a given assignment.
+        Returns detailed breakdown of: Cable Length, Cost, Latency, Weight.
+        """
         metrics = {
-            'sensor': {'cost': 0.0, 'latency': 0.0, 'weight': 0.0},
-            'actuator': {'cost': 0.0, 'latency': 0.0, 'weight': 0.0},
-            'ecu_ecu': {'cost': 0.0, 'latency': 0.0, 'weight': 0.0}
+            'total_length': 0.0,
+            'total_cost': 0.0,
+            'total_latency': 0.0,
+            'total_weight': 0.0,
+            'breakdown': {
+                'sensor': {'length': 0.0, 'cost': 0.0},
+                'actuator': {'length': 0.0, 'cost': 0.0},
+                'ecu_ecu': {'length': 0.0, 'cost': 0.0}
+            }
         }
         
-        def add_metrics(category, p1, p2, interface):
+        def add_metric(category, p1, p2, interface):
             if p1 and p2:
                  _, dist = p1.dist(p2)
-                 cable = self.get_cable_type(interface)
-                 metrics[category]['cost'] += dist * cable.cost_per_meter
-                 metrics[category]['latency'] += dist * cable.latency_per_meter
-                 metrics[category]['weight'] += dist * cable.weight_per_meter
+                 cable = cable_types.get(interface)
+                 if not cable:
+                     print(f"Warning: Unknown cable interface '{interface}', skipping metric calculation")
+                     return
+                 
+                 metrics['total_length'] += dist
+                 metrics['breakdown'][category]['length'] += dist
+                 
+                 cost = dist * cable.cost_per_meter
+                 metrics['total_cost'] += cost
+                 metrics['breakdown'][category]['cost'] += cost
+                 
+                 metrics['total_latency'] += dist * cable.latency_per_meter
+                 metrics['total_weight'] += dist * cable.weight_per_meter
 
         # SENSOR → ECU
         for sc_id, ecu_id in assignment.items():
@@ -49,7 +54,7 @@ class AssignmentOptimizer():
             for sensor_id in sc.sensors:
                 sensor = next((s for s in sensors if s.id == sensor_id), None)
                 if sensor and sensor.location:
-                     add_metrics('sensor', ecu.location, sensor.location, sensor.interface)
+                     add_metric('sensor', ecu.location, sensor.location, sensor.interface)
         
         # ACTUATOR → ECU
         for sc_id, ecu_id in assignment.items():
@@ -59,75 +64,49 @@ class AssignmentOptimizer():
             for actuator_id in sc.actuators:
                 actuator = next((a for a in actuators if a.id == actuator_id), None)
                 if actuator and actuator.location:
-                    add_metrics('actuator', ecu.location, actuator.location, actuator.interface)
+                    add_metric('actuator', ecu.location, actuator.location, actuator.interface)
         
         # ECU ↔ ECU (Backbone)
         if comm_matrix:
             connected_pairs = set()
-            # comm_matrix is list of dicts: {'src': sc_id, 'dst': sc_id, ...}
             for link in comm_matrix:
                 sc_src_id = link['src']
                 sc_dst_id = link['dst']
                 ecu_src_id = assignment.get(sc_src_id)
                 ecu_dst_id = assignment.get(sc_dst_id)
-                
                 if ecu_src_id and ecu_dst_id and ecu_src_id != ecu_dst_id:
-                     # Use set to avoid double counting same link if undirected, 
-                     # but comm_matrix is usually directed. Visualizer treats as undirected for drawing.
-                     # Here physically it's one cable? Or separate? 
-                     # Assume full duplex backbone or just one cable run.
-                     # Let's count unique ECU pairs
                      connected_pairs.add(tuple(sorted((ecu_src_id, ecu_dst_id))))
             
             for ecu_id_a, ecu_id_b in connected_pairs:
                 ecu_a = next((e for e in ecus if e.id == ecu_id_a), None)
                 ecu_b = next((e for e in ecus if e.id == ecu_id_b), None)
                 if ecu_a and ecu_b:
-                     add_metrics('ecu_ecu', ecu_a.location, ecu_b.location, "ETH")
+                     add_metric('ecu_ecu', ecu_a.location, ecu_b.location, "ETH")
 
-        total_cost = sum(m['cost'] for m in metrics.values())
-        total_latency = sum(m['latency'] for m in metrics.values())
-        total_weight = sum(m['weight'] for m in metrics.values())
+        return metrics
 
-        return {
-            'total_cable_cost': total_cost,
-            'total_latency': total_latency,
-            'total_weight': total_weight,
-            'sensor_cable_cost': metrics['sensor']['cost'],
-            'actuator_cable_cost': metrics['actuator']['cost'],
-            'ecu_ecu_cable_cost': metrics['ecu_ecu']['cost'],
-            'sensor_latency': metrics['sensor']['latency'],
-            'actuator_latency': metrics['actuator']['latency'],
-            'ecu_ecu_latency': metrics['ecu_ecu']['latency'],
-            'sensor_weight': metrics['sensor']['weight'],
-            'actuator_weight': metrics['actuator']['weight'],
-            'ecu_ecu_weight': metrics['ecu_ecu']['weight']
-        }
-
-    def _calculate_sc_cable_cost(self, sc_idx, ecu_idx, scs, ecus, sensors, actuators):
-        """Helper to calculate cable cost potential if SC i is assigned to ECU j"""
+    def _calculate_sc_cable_length(self, sc_idx, ecu_idx, scs, ecus, sensors, actuators):
+        """Helper to calculate total cable length required if SC i is assigned to ECU j"""
         sc = scs[sc_idx]
         ecu = ecus[ecu_idx]
         if not ecu.location: return 0.0
         
-        cost = 0.0
+        length = 0.0
         # Sensors
         for s_id in sc.sensors:
             sensor = next((s for s in sensors if s.id == s_id), None)
             if sensor and sensor.location:
                 _, dist = ecu.location.dist(sensor.location)
-                cable = self.get_cable_type(sensor.interface)
-                cost += dist * cable.cost_per_meter
+                length += dist
         
         # Actuators
         for a_id in sc.actuators:
             actuator = next((a for a in actuators if a.id == a_id), None)
             if actuator and actuator.location:
                 _, dist = ecu.location.dist(actuator.location)
-                cable = self.get_cable_type(actuator.interface)
-                cost += dist * cable.cost_per_meter
+                length += dist
                 
-        return cost
+        return length
 
     def pre_optimization_analysis(self, scs, ecus):
         """
@@ -192,7 +171,7 @@ class AssignmentOptimizer():
         
         print("Pre-optimization checks passed!")
 
-    def optimize_pareto_cost_vs_loadbalance(self, scs, ecus, sensors, actuators, comm_matrix=None, num_points=5):
+    def optimize_pareto_cost_vs_loadbalance(self, scs, ecus, sensors, actuators, cable_types, comm_matrix=None, num_points=5):
         """
         Generate Pareto front: Cost vs Load Balancing using Epsilon-Constraint.
         
@@ -358,29 +337,33 @@ class AssignmentOptimizer():
                 
                 model.addConstr(total_demand <= util_limit * total_capacity)
             
-            # Objective: Minimize HW Cost + Weighted Cable Cost
+            # Objective: Minimize HW Cost + Total Cable Length (weighted by scalar 1.0)
             hw_cost = gp.quicksum(x[i, j] * ecus[j].cost for i, j in x)
             
-            # Add cable costs (pre-calculated with weights)
-            cable_cost_expr = 0
+            # Add cable length
+            cable_len_expr = 0
             for i, j in x:
-                c_cost = self._calculate_sc_cable_cost(i, j, scs, ecus, sensors, actuators)
-                cable_cost_expr += x[i, j] * c_cost
+                c_len = self._calculate_sc_cable_length(i, j, scs, ecus, sensors, actuators)
+                cable_len_expr += x[i, j] * c_len
             
-            model.setObjective(hw_cost + cable_cost_expr, GRB.MINIMIZE)
+            # Scalar weight to balance cost ($) vs length (m)
+            # e.g., 1 meter cable roughly equals $5 cost impact
+            LENGTH_WEIGHT = 5.0 
+            
+            model.setObjective(hw_cost + (cable_len_expr * LENGTH_WEIGHT), GRB.MINIMIZE)
             
             model.optimize()
             
             if model.status == GRB.OPTIMAL:
                 assignments = {}
                 ecus_used = set()
-                total_cost = 0
+                total_hw_cost = 0
                 
                 for i, j in x:
                     if x[i, j].X > 0.5:
                         assignments[scs[i].id] = ecus[j].id
                         ecus_used.add(j)
-                        total_cost += ecus[j].cost
+                        total_hw_cost += ecus[j].cost
                 
                 # Calculate actual max utilization
                 actual_max_util = 0
@@ -397,17 +380,19 @@ class AssignmentOptimizer():
                         util = total_used / total_capacity if total_capacity > 0 else 0
                         actual_max_util = max(actual_max_util, util)
                 
-                # Calculate cable cost
-                cable_info = self.calculate_cable_metrics_for_assignment(
-                    assignments, ecus, sensors, actuators, scs, comm_matrix, "euclidean"
+                # Calculate full metrics
+                metrics = self.calculate_assignment_metrics(
+                    assignments, ecus, sensors, actuators, scs, cable_types, comm_matrix, "euclidean"
                 )
-                total_cost_with_cable = total_cost + cable_info['total_cable_cost']
+                
+                # Since we minimized length, the "total_cost" reported is strictly real hardware cost + real cable cost
+                total_real_cost = total_hw_cost + metrics['total_cost']
                 
                 solution_data = {
                     'assignment': assignments,
-                    'hardware_cost': total_cost,
-                    'cable_cost': cable_info,
-                    'total_cost': total_cost_with_cable,
+                    'hardware_cost': total_hw_cost,
+                    'kpis': metrics,
+                    'total_cost': total_real_cost,
                     'num_ecus_used': len(ecus_used),
                     'max_utilization': actual_max_util,
                     'load_balance_limit': util_limit,
@@ -415,7 +400,7 @@ class AssignmentOptimizer():
                 }
                 pareto_solutions.append(solution_data)
                 
-                print(f"    ✓ HW: ${total_cost:.2f} | Cable: ${cable_info['total_cable_cost']:.2f} | Latency: {cable_info['total_latency']*1000:.2f}us | Util: {actual_max_util:.1%}")
+                print(f"    ✓ HW: ${total_hw_cost:.2f} | Length: {metrics['total_length']:.2f}m | RealCable: ${metrics['total_cost']:.2f} | Util: {actual_max_util:.1%}")
             else:
                 print(f"    ✗ Infeasible with load balance limit {util_limit:.1%}")
         

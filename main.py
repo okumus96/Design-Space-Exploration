@@ -8,6 +8,7 @@ Main script that orchestrates the entire workflow:
 3. Visualize the optimization results
 """
 import argparse
+from config_reader import ConfigReader
 from data_generator import VehicleDataGenerator
 from optimizer import AssignmentOptimizer
 from visualizer import Visualization
@@ -23,34 +24,31 @@ def main(args):
     print("STEP 1: Generating Vehicle Architecture Data")
     print("-" * 80)
 
-    generator = VehicleDataGenerator(num_ecus=args.num_ecus, num_scs=args.num_scs, seed=args.seed)
+    config_reader = ConfigReader(args.config)
+    generator = VehicleDataGenerator(num_ecus=args.num_ecus, num_scs=args.num_scs, seed=args.seed, config_reader=config_reader)
     ecus, scs, comm_matrix, sensors, actuators, cable_types = generator.generate_data()
     
-    print(f"\n Generated Data Summary:")
-    print(f"   - ECUs: {len(ecus)}")
-    print(f"   - Software Components: {len(scs)}")
-    print(f"   - Sensors: {len(sensors)}")
-    print(f"   - Actuators: {len(actuators)}")
-    print(f"   - Communication Links: {len(comm_matrix)}")
-    print(f"   - Cable Types: {len(cable_types)}")
-    #return
 
-    # Pre-visualzation of generated data
+
+    # Summary and visualzation of generated data
     visualizer = Visualization()
+    visualizer.display_data_summary(ecus, scs, sensors, actuators, cable_types,comm_matrix)
     visualizer.display_data(sensors, actuators, scs, ecus)
     visualizer.plot_charts(scs, ecus, sensors, actuators)
     visualizer.plot_sw_sensor_actuator_graph_final(scs, sensors, actuators, comm_matrix)
     
+    return
+
     # Step 2: Run optimization
     print("\n" + "-" * 80)
     print("STEP 2: Running Gurobi Optimization")
     print("-" * 80)
-    opt = AssignmentOptimizer(cable_types=cable_types)
+    opt = AssignmentOptimizer()
     
     
     # Generate Pareto front: Total Cost (Hardware + Cable) vs Load Balancing
     pareto_solutions = opt.optimize_pareto_cost_vs_loadbalance(
-        scs, ecus, sensors, actuators, comm_matrix, num_points=5
+        scs, ecus, sensors, actuators, cable_types, comm_matrix, num_points=5
     )
     
     # Visualize Pareto front
@@ -67,13 +65,14 @@ def main(args):
         print("\n" + "-" * 80)
         print(f"SOLUTION {solution_idx}")
         print(f"  Hardware Cost: ${solution['hardware_cost']:.2f}")
-        print(f"  Cable Cost: ${solution['cable_cost']['total_cable_cost']:.2f}")
-        print(f"    - Sensor→ECU: ${solution['cable_cost']['sensor_cable_cost']:.2f}")
-        print(f"    - Actuator→ECU: ${solution['cable_cost']['actuator_cable_cost']:.2f}")
-        print(f"    - ECU↔ECU: ${solution['cable_cost']['ecu_ecu_cable_cost']:.2f}")
-        print(f"  Total Latency: {solution['cable_cost']['total_latency']*1000:.2f}us")
-        print(f"  Total Weight: {solution['cable_cost']['total_weight']:.2f}kg")
-        print(f"  Total Cost: ${solution['total_cost']:.2f}")
+        print(f"  Cable Length: {solution['kpis']['total_length']:.2f}m")
+        print(f"  Cable Cost: ${solution['kpis']['total_cost']:.2f} (Real)")
+        print(f"    - Sensor→ECU: ${solution['kpis']['breakdown']['sensor']['cost']:.2f}")
+        print(f"    - Actuator→ECU: ${solution['kpis']['breakdown']['actuator']['cost']:.2f}")
+        print(f"    - ECU↔ECU: ${solution['kpis']['breakdown']['ecu_ecu']['cost']:.2f}")
+        print(f"  Total Latency: {solution['kpis']['total_latency']*1000:.2f}us")
+        print(f"  Total Weight: {solution['kpis']['total_weight']:.2f}kg")
+        print(f"  Total Project Cost: ${solution['total_cost']:.2f}")
         print(f"  Max Utilization: {solution['max_utilization']:.1%}")
         print("-" * 80)
         
@@ -101,6 +100,7 @@ if __name__ == "__main__":
     argparser.add_argument("--num_ecus", type=int, default=30, help="Number of candidate ECUs to generate")
     argparser.add_argument("--num_scs", type=int, default=20, help="Number of software components to generate")
     argparser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
+    argparser.add_argument("--config", type=str, default="configs/vehicle_config.json", help="Path to vehicle configuration JSON file")
     argparser.add_argument("--sc_domain_weights", type=list, nargs=5, default=[0.15, 0.15, 0.20, 0.35, 0.15], help="Weights for SC domain distribution")
     args = argparser.parse_args()
     main(args)

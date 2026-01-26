@@ -3,101 +3,67 @@ from models import Point, Sensor, Actuator, SoftwareComponent, CandidateECU, Cab
 
 
 class VehicleDataGenerator:
-    # Vehicle dimensions (2D) - in meters
-    VEHICLE_LENGTH = 4.5  # Front to rear
-    VEHICLE_WIDTH = 1.8   # Left to right
-    # ECU placement area (much larger than vehicle)
-    ECU_AREA_EXTENT = 50  # Coordinates from -50 to +50
-
-    def __init__(self, num_ecus=10, num_scs=20, seed=42, base_cost_per_meter=10.0):
+    def __init__(self, num_ecus=10, num_scs=20, seed=42, base_cost_per_meter=10.0, config_reader=None):
         random.seed(seed)
         self.num_ecus = num_ecus
         self.num_scs = num_scs
+        self.base_cost_per_meter = base_cost_per_meter
         self.sensors = []
         self.actuators = []
         self.ecus = []
         self.scs = []
-
-        # Define detailed Cable Types
-        self.cable_types = {
-            'ETH': CableType(name='ETH', cost_per_meter=base_cost_per_meter * 5.0, latency_per_meter=0.005, weight_per_meter=50),
-            'FLEXRAY': CableType(name='FLEXRAY', cost_per_meter=base_cost_per_meter * 3.0, latency_per_meter=0.005, weight_per_meter=30),
-            'CAN': CableType(name='CAN', cost_per_meter=base_cost_per_meter * 1.0, latency_per_meter=0.005, weight_per_meter=20),
-            'LIN': CableType(name='LIN', cost_per_meter=base_cost_per_meter * 0.5, latency_per_meter=0.005, weight_per_meter=10),
-            'default': CableType(name='default', cost_per_meter=base_cost_per_meter * 1.0, latency_per_meter=0.005, weight_per_meter=20)
-        }
+        
+        # Use provided ConfigReader
+        if config_reader is None:
+            raise ValueError("config_reader is required")
+        
+        self.config_reader = config_reader
+        
+        # Vehicle dimensions from config
+        dimensions = self.config_reader.get_vehicle_dimensions()
+        self.VEHICLE_LENGTH = dimensions['length']
+        self.VEHICLE_WIDTH = dimensions['width']
+        self.ECU_AREA_EXTENT = 50
+        
+        # Build cable types from config
+        self.cable_types = self.config_reader.get_cable_types(base_cost_per_meter)
 
     def generate_sensors(self):
-        """Generate sensors with fixed locations based on vehicle layout diagram"""
-        # Normalized to vehicle dimensions
-        # X: -VEHICLE_WIDTH/2 to +VEHICLE_WIDTH/2 (left to right)
-        # Y: -VEHICLE_LENGTH/2 to +VEHICLE_LENGTH/2 (rear to front)
+        """Generate sensors from configuration file"""
         hw = self.VEHICLE_WIDTH / 2
         hl = self.VEHICLE_LENGTH / 2
         
-        sensors_config = [
-            # Front sensors
-            ('CAMERA', 'CAM_Rear_Left_Corner', 'ETH', 80.0, Point(-0.9 * hw, -0.80 * hl)),
-            ('CAMERA', 'CAM_Front_Center', 'ETH', 80.0, Point(0.0, 0.5 * hl)),
-            ('CAMERA', 'CAM_Rear_Right_Corner', 'ETH', 80.0, Point(0.9 * hw, -0.80 * hl)),
-            ('CAMERA', 'CAM_Front_Left', 'ETH', 80.0, Point(-0.90 * hw, 0.45 * hl)),
-            ('CAMERA', 'CAM_Front_Right', 'ETH', 80.0, Point(0.90 * hw, 0.45 * hl)),
-            
-            # Side sensors
-            ('CAMERA', 'CAM_Left_Side', 'ETH', 80.0, Point(-0.90 * hw, 0.0)),
-            ('CAMERA', 'CAM_Right_Side', 'ETH', 80.0, Point(0.90 * hw, 0.0)),
-            ('CAMERA', 'CAM_Rear_Center', 'ETH', 80.0, Point(0.0, -0.85 * hl)),
-            
-            # LIDAR sensors (5 total)
-            ('LIDAR', 'LIDAR_Front', 'ETH', 15.0, Point(-0.0 * hw, 0.95 * hl)),
-            ('LIDAR', 'LIDAR_Left_Pillar', 'ETH', 15.0, Point(-0.90 * hw, 0.60 * hl)),
-            ('LIDAR', 'LIDAR_Right_Pillar', 'ETH', 15.0, Point(0.90 * hw, 0.60 * hl)),
-            ('LIDAR', 'LIDAR_Rear', 'ETH', 15.0, Point(0.0 * hw, -0.95 * hl)),
-            ('LIDAR', 'LIDAR_Top', 'ETH', 15.0, Point(0.0, 0.25 * hl)),
-            
-            # Center sensors (IMU + GPS)
-            ('IMU', 'IMU_Top_Center', 'CAN', 1.0, Point(0.0, -0.30 * hl)),
-            ('GPS', 'GPS_Center', 'ETH', 2.0, Point(0.0, -0.4 * hl)),
-        ]
-        
-        for idx, (s_type, name, interface, volume, location) in enumerate(sensors_config):
+        sensors_config = self.config_reader.get_sensors_config()
+        for sensor_config in sensors_config:
+            location = Point(
+                sensor_config['location']['x_ratio'] * hw,
+                sensor_config['location']['y_ratio'] * hl
+            )
             sensor = Sensor(
-                id=name,
-                type=s_type,
-                interface=interface,
-                volume=volume,
+                id=sensor_config['id'],
+                type=sensor_config['type'],
+                interface=sensor_config['interface'],
+                volume=sensor_config['volume'],
                 location=location
             )
             self.sensors.append(sensor)
 
     def generate_actuators(self):
-        """Generate actuators with fixed locations on the vehicle"""
+        """Generate actuators from configuration file"""
         hw = self.VEHICLE_WIDTH / 2
         hl = self.VEHICLE_LENGTH / 2
         
-        actuators_config = [
-            # Drivetrain and motion control actuators (front)
-            ('STEERING', 'ACT_Steering', 'FLEXRAY', 1.0, Point(0.5*hw, 0.80 * hl)),
-            ('MOTOR', 'ACT_Motor_Front', 'CAN', 3.0, Point(0.0, 0.80 * hl)),
-            
-            # Brake system (distributed)
-            ('BRAKE', 'ACT_Brake_Front', 'CAN', 2.0, Point(0.4*hw, 0.85 * hl)),
-            ('BRAKE', 'ACT_Brake_Rear', 'CAN', 2.0, Point(0.4*hw, -0.85 * hl)),
-            
-            # Comfort and HVAC (center cabin)
-            ('HVAC', 'ACT_HVAC_Cabin', 'LIN', 0.5, Point(0.0, 0.70 * hl)),
-            
-            # Lighting actuators (2 total)
-            ('LIGHT', 'ACT_Light_Front', 'LIN', 0.2, Point(0.6*hw, 0.85 * hl)),
-            ('LIGHT', 'ACT_Light_Rear', 'LIN', 0.2, Point(0.6*hw, -0.85 * hl)),
-        ]
-        
-        for idx, (a_type, name, interface, volume, location) in enumerate(actuators_config):
+        actuators_config = self.config_reader.get_actuators_config()
+        for actuator_config in actuators_config:
+            location = Point(
+                actuator_config['location']['x_ratio'] * hw,
+                actuator_config['location']['y_ratio'] * hl
+            )
             actuator = Actuator(
-                id=name,
-                type=a_type,
-                interface=interface,
-                volume=volume,
+                id=actuator_config['id'],
+                type=actuator_config['type'],
+                interface=actuator_config['interface'],
+                volume=actuator_config['volume'],
                 location=location
             )
             self.actuators.append(actuator)

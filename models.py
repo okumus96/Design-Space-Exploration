@@ -19,14 +19,12 @@ class Point:
         euclidean = math.sqrt((self.x - other.x)**2 + (self.y - other.y)**2)
         return manhattan, euclidean
 
-
 @dataclass
 class CableType:
     name: str  # e.g., 'CAN', 'ETH'
     cost_per_meter: float
     latency_per_meter: float  # microseconds per meter
     weight_per_meter: float   # grams per meter
-
 
 @dataclass
 class Sensor:
@@ -36,7 +34,6 @@ class Sensor:
     volume: float
     location: 'Point' = None
 
-
 @dataclass
 class Actuator:
     id: str
@@ -44,7 +41,6 @@ class Actuator:
     interface: str
     volume: float
     location: 'Point' = None
-
 
 @dataclass
 class SoftwareComponent:
@@ -63,7 +59,6 @@ class SoftwareComponent:
             self.sensors = []
         if self.actuators is None:
             self.actuators = []
-
 
 @dataclass
 class CandidateECU:
