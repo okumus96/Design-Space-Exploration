@@ -1,0 +1,37 @@
+{
+  "ecu_types": [
+    {
+      "type": "HPC",
+      "probability": 0.10,
+      "cpu_cap": 200000,
+      "ram_cap": 64000,
+      "rom_cap": 256000,
+      "max_containers": 16,
+      "cost": 1000,
+      "asil_level": 4,
+      "hw_offered": ["HW_ACC", "HW_ETH", "HW_HSM"]
+    },
+    {
+      "type": "ZONE",
+      "probability": 0.30,
+      "cpu_cap": 30000,
+      "ram_cap": 4000,
+      "rom_cap": 8000,
+      "max_containers": 4,
+      "cost": 300,
+      "asil_level": 4,
+      "hw_offered": ["HW_CANFD", "HW_FLEX", "HW_ETH", "HW_LIN", "HW_BT"]
+    },
+    {
+      "type": "MCU",
+      "probability": 0.60,
+      "cpu_cap": 5000,
+      "ram_cap": 512,
+      "rom_cap": 2048,
+      "max_containers": 1,
+      "cost": 50,
+      "asil_level": 3,
+      "hw_offered": ["HW_CANFD", "HW_LIN"]
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "actuators": [
+    {
+      "type": "STEERING",
+      "id": "ACT_Steering",
+      "interface": "FLEXRAY",
+      "volume": 1.0,
+      "location": {"x_ratio": 0.5, "y_ratio": 0.8}
+    },
+    {
+      "type": "MOTOR",
+      "id": "ACT_Motor_Front",
+      "interface": "CAN",
+      "volume": 3.0,
+      "location": {"x_ratio": 0.0, "y_ratio": 0.8}
+    },
+    {
+      "type": "BRAKE",
+      "id": "ACT_Brake_Front",
+      "interface": "CAN",
+      "volume": 2.0,
+      "location": {"x_ratio": 0.4, "y_ratio": 0.85}
+    },
+    {
+      "type": "BRAKE",
+      "id": "ACT_Brake_Rear",
+      "interface": "CAN",
+      "volume": 2.0,
+      "location": {"x_ratio": 0.4, "y_ratio": -0.85}
+    },
+    {
+      "type": "HVAC",
+      "id": "ACT_HVAC_Cabin",
+      "interface": "LIN",
+      "volume": 0.5,
+      "location": {"x_ratio": 0.0, "y_ratio": 0.7}
+    },
+    {
+      "type": "LIGHT",
+      "id": "ACT_Light_Front",
+      "interface": "LIN",
+      "volume": 0.2,
+      "location": {"x_ratio": 0.6, "y_ratio": 0.85}
+    },
+    {
+      "type": "LIGHT",
+      "id": "ACT_Light_Rear",
+      "interface": "LIN",
+      "volume": 0.2,
+      "location": {"x_ratio": 0.6, "y_ratio": -0.85}
+    }
+  ]
+}

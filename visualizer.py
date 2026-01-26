@@ -67,6 +67,27 @@ class Visualization:
 
         # Display summary of generated ECUs
         self.display_ECUs(df_ecu)
+    
+    def display_assignments(self,solution_idx, solution,scs, ecus):
+        assignments = solution['assignment']
+        print("\n" + "-" * 80)
+        print(f"SOLUTION {solution_idx}")
+        print(f"  Hardware Cost: ${solution['hardware_cost']:.2f}")
+        print(f"  Cable Length: {solution['kpis']['total_length']:.2f}m")
+        print(f"  Cable Cost: ${solution['kpis']['total_cost']:.2f} (Real)")
+        print(f"    - Sensor→ECU: ${solution['kpis']['breakdown']['sensor']['cost']:.2f}")
+        print(f"    - Actuator→ECU: ${solution['kpis']['breakdown']['actuator']['cost']:.2f}")
+        print(f"    - ECU↔ECU: ${solution['kpis']['breakdown']['ecu_ecu']['cost']:.2f}")
+        print(f"  Total Latency: {solution['kpis']['total_latency']*1000:.2f}us")
+        print(f"  Total Weight: {solution['kpis']['total_weight']:.2f}kg")
+        print(f"  Total Project Cost: ${solution['total_cost']:.2f}")
+        print(f"  Max Utilization: {solution['max_utilization']:.1%}")
+        print("-" * 80)
+        
+        print(f"\nAssignment Summary:")
+        print(f"   - Total SWs Assigned: {len(assignments)} / {len(scs)}")
+        print(f"   - ECUs Used: {solution['num_ecus_used']}")
+        print(f"   - Max Utilization: {solution['max_utilization']:.1%}")
 
     def plot_charts(self, sc_list, ecu_list, sensor_list, actuator_list):
         """Convert lists to DataFrames and plot charts"""

@@ -1,0 +1,87 @@
+{
+  "sc_domain_weights": {
+    "ADAS": 0.15,
+    "Infotainment": 0.15,
+    "VehicleDynamics": 0.20,
+    "BodyComfort": 0.35,
+    "Connectivity": 0.15
+  },
+  "sc_domain_configs": {
+    "ADAS": {
+      "hw_requirements": {
+        "0.60": ["HW_ACC", "HW_ETH"],
+        "0.30": ["HW_ACC"],
+        "0.10": []
+      },
+      "cpu_range": [15000, 40000],
+      "ram_range": [1000, 3000],
+      "rom_range": [50, 200],
+      "asil_levels": [3, 4]
+    },
+    "Infotainment": {
+      "hw_requirements": {
+        "0.40": ["HW_ETH"],
+        "0.20": ["HW_BT"],
+        "0.40": []
+      },
+      "cpu_range": [10000, 30000],
+      "ram_range": [1000, 4000],
+      "rom_range": [20, 100],
+      "asil_levels": [0, 1]
+    },
+    "VehicleDynamics": {
+      "hw_requirements": {
+        "0.60": ["HW_CANFD"],
+        "0.40": []
+      },
+      "cpu_range": [1000, 5000],
+      "ram_range": [256, 512],
+      "rom_range": [10, 50],
+      "asil_levels": [4]
+    },
+    "BodyComfort": {
+      "hw_requirements": {
+        "0.30": ["HW_LIN"],
+        "0.30": ["HW_CANFD"],
+        "0.40": []
+      },
+      "cpu_range": [200, 1000],
+      "ram_range": [64, 256],
+      "rom_range": [5, 20],
+      "asil_levels": [0, 1, 2]
+    },
+    "Connectivity": {
+      "hw_requirements": {
+        "0.20": ["HW_ETH"],
+        "0.80": []
+      },
+      "cpu_range": [3000, 8000],
+      "ram_range": [256, 1024],
+      "rom_range": [50, 200],
+      "asil_levels": [0, 1, 2]
+    }
+  },
+  "sc_sensor_actuator_assignments": {
+    "access_probability": {
+      "ADAS": 0.30,
+      "VehicleDynamics": 0.70,
+      "BodyComfort": 0.70,
+      "Infotainment": 0.10,
+      "Connectivity": 0.05
+    },
+    "sensor_types": {
+      "ADAS": ["CAMERA", "LIDAR", "RADAR"],
+      "VehicleDynamics": ["RADAR"],
+      "BodyComfort": ["LIDAR"],
+      "Infotainment": ["CAMERA"],
+      "Connectivity": []
+    },
+    "actuator_types": {
+      "ADAS": ["BRAKE", "STEERING"],
+      "VehicleDynamics": ["BRAKE", "STEERING", "MOTOR"],
+      "BodyComfort": ["HVAC", "LIGHT"],
+      "Infotainment": ["LIGHT"],
+      "Connectivity": []
+    }
+  }
+}

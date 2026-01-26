@@ -3,30 +3,38 @@ from models import Point, Sensor, Actuator, SoftwareComponent, CandidateECU, Cab
 
 
 class VehicleDataGenerator:
-    def __init__(self, num_ecus=10, num_scs=20, seed=42, base_cost_per_meter=10.0, config_reader=None):
+    def __init__(self, num_ecus=10, num_scs=20, seed=42, config_reader=None):
         random.seed(seed)
         self.num_ecus = num_ecus
         self.num_scs = num_scs
-        self.base_cost_per_meter = base_cost_per_meter
         self.sensors = []
         self.actuators = []
         self.ecus = []
         self.scs = []
-        
-        # Use provided ConfigReader
+        self.comm_matrix = []
+
         if config_reader is None:
             raise ValueError("config_reader is required")
-        
-        self.config_reader = config_reader
+        else: 
+            self.config_reader = config_reader
         
         # Vehicle dimensions from config
         dimensions = self.config_reader.get_vehicle_dimensions()
         self.VEHICLE_LENGTH = dimensions['length']
         self.VEHICLE_WIDTH = dimensions['width']
-        self.ECU_AREA_EXTENT = 50
+        
+        # ECU placement bounds from config
+        ecu_bounds = dimensions.get('ecu_placement_bounds')
+        self.ECU_X_MIN = ecu_bounds['x_min']
+        self.ECU_X_MAX = ecu_bounds['x_max']
+        self.ECU_Y_MIN = ecu_bounds['y_min']
+        self.ECU_Y_MAX = ecu_bounds['y_max']
         
         # Build cable types from config
-        self.cable_types = self.config_reader.get_cable_types(base_cost_per_meter)
+        self.cable_types = self.config_reader.get_cable_types()
+        
+        # Get SC domain weights from config
+        self.sc_domain_weights = self.config_reader.get_sc_domain_weights()
 
     def generate_sensors(self):
         """Generate sensors from configuration file"""
@@ -68,129 +76,62 @@ class VehicleDataGenerator:
             )
             self.actuators.append(actuator)
 
-    def generate_scs(self,weights = [0.15, 0.15, 0.20, 0.35, 0.15]):
+    def generate_scs(self, weights=None):
+        """Generate software components with domain distribution from config"""
+        if weights is None:
+            weights = self.sc_domain_weights
+        
         domains = ["ADAS", "Infotainment", "VehicleDynamics", "BodyComfort", "Connectivity"]
         
-        # Domain-specific HW requirements with probability
-        # Format: {domain: {probability: requirement_list}}
-        domain_hw_config = {
-            "ADAS": {
-                0.60: ['HW_ACC', 'HW_ETH'],      # 60% need specific HW
-                0.30: ['HW_ACC'],                 # 30% need just ACC
-                0.10: []                          # 10% no specific HW
-            },
-            "Infotainment": {
-                0.40: ['HW_ETH'],                 # 40% need ETH
-                0.20: ['HW_BT'],                  # 20% need BT
-                0.40: []                          # 40% no specific HW
-            },
-            "VehicleDynamics": {
-                0.60: ['HW_CANFD'],               # 60% need CANFD (critical)
-                0.40: []                          # 20% no specific HW
-            },
-            "BodyComfort": {
-                0.30: ['HW_LIN'],                 # 50% need LIN
-                0.30: ['HW_CANFD'],               # 30% need CANFD
-                0.40: []                          # 20% no specific HW
-            },
-            "Connectivity": {
-                0.20: ['HW_ETH'],                 # 50% need ETH
-                0.80: []                          # 50% no specific HW
-            }
-        }
+        # Get domain configurations from config
+        domain_configs = self.config_reader.get_sc_domain_configs()
 
         assigned_domains = random.choices(domains, weights=weights, k=self.num_scs)
 
         for i, domain in enumerate(assigned_domains):
+            domain_config = domain_configs.get(domain)
+            if not domain_config:
+                continue
+            
             # Probabilistically assign HW requirements
-            config = domain_hw_config.get(domain, {0.5: []})
+            hw_requirements = domain_config.get('hw_requirements', {})
             rand = random.random()
             cumulative = 0
             hw_req = []
-            for prob, hw_list in sorted(config.items(), reverse=True):
-                cumulative += prob
+            for prob_str, hw_list in sorted(hw_requirements.items(), key=lambda x: float(x[0]), reverse=True):
+                cumulative += float(prob_str)
                 if rand < cumulative:
                     hw_req = hw_list
                     break
             
-            if domain == "ADAS":
-                sc = SoftwareComponent(
-                    id=f"SC_{i}_ADAS", domain=domain,
-                    cpu_req=random.randint(15000, 40000),
-                    ram_req=random.randint(1000, 3000),
-                    rom_req=random.randint(50, 200),
-                    asil_req=random.choice([3, 4]),  # ASIL-C (3) ve ASIL-D (4)
-                    hw_required=hw_req
-                )
-            elif domain == "Infotainment":
-                sc = SoftwareComponent(
-                    id=f"SC_{i}_INF", domain=domain,
-                    cpu_req=random.randint(10000, 30000),
-                    ram_req=random.randint(1000, 4000),
-                    rom_req=random.randint(20, 100),
-                    asil_req=random.choice([0, 1]),  # ASIL-QM, ASIL-A
-                    hw_required=hw_req
-                )
-            elif domain == "VehicleDynamics":
-                sc = SoftwareComponent(
-                    id=f"SC_{i}_DYN", domain=domain,
-                    cpu_req=random.randint(1000, 5000),
-                    ram_req=random.randint(256, 512),
-                    rom_req=random.randint(10, 50),
-                    asil_req=4,  # ASIL-D
-                    hw_required=hw_req
-                )
-            elif domain == "BodyComfort":
-                sc = SoftwareComponent(
-                    id=f"SC_{i}_BODY", domain=domain,
-                    cpu_req=random.randint(200, 1000),
-                    ram_req=random.randint(64, 256),
-                    rom_req=random.randint(5, 20),
-                    asil_req=random.choice([0, 1, 2]),  # ASIL-QM, ASIL-A, ASIL-B
-                    hw_required=hw_req
-                )
-            elif domain == "Connectivity":
-                sc = SoftwareComponent(
-                    id=f"SC_{i}_CONN", domain=domain,
-                    cpu_req=random.randint(3000, 8000),
-                    ram_req=random.randint(256, 1024),
-                    rom_req=random.randint(50, 200),
-                    asil_req=random.choice([0, 1, 2]),  # Bağlantı kritik değil
-                    hw_required=hw_req
-                )
+            # Get resource requirements from config
+            cpu_range = domain_config.get('cpu_range', [1000, 5000])
+            ram_range = domain_config.get('ram_range', [256, 1024])
+            rom_range = domain_config.get('rom_range', [10, 50])
+            asil_levels = domain_config.get('asil_levels', [0])
+            
+            sc = SoftwareComponent(
+                id=f"SC_{i}_{domain[:4].upper()}",
+                domain=domain,
+                cpu_req=random.randint(cpu_range[0], cpu_range[1]),
+                ram_req=random.randint(ram_range[0], ram_range[1]),
+                rom_req=random.randint(rom_range[0], rom_range[1]),
+                asil_req=random.choice(asil_levels),
+                hw_required=hw_req
+            )
             
             self.scs.append(sc)
    
     def assign_sensors_actuators(self):
         """
-        Assign sensors/actuators to SCs based on domain-specific logic.
+        Assign sensors/actuators to SCs based on domain-specific logic from config.
         """
-        # Access probability by domain
-        access_probability = {
-            "ADAS": 0.30,
-            "VehicleDynamics": 0.70,
-            "BodyComfort": 0.70,
-            "Infotainment": 0.10,
-            "Connectivity": 0.05
-        }
+        # Get assignment config from config reader
+        assignment_config = self.config_reader.get_sc_sensor_actuator_assignments()
         
-        # Sensor type assignments by domain (if SC is selected for access)
-        sensor_type_assignments = {
-            "ADAS": ["CAMERA", "LIDAR", "RADAR"],
-            "VehicleDynamics": ["RADAR"],
-            "BodyComfort": ["LIDAR"],
-            "Infotainment": ["CAMERA"],  # Rare, but possible
-            "Connectivity": []
-        }
-        
-        # Actuator type assignments by domain (if SC is selected for access)
-        actuator_type_assignments = {
-            "ADAS": ["BRAKE", "STEERING"],
-            "VehicleDynamics": ["BRAKE", "STEERING", "MOTOR"],
-            "BodyComfort": ["HVAC", "LIGHT"],
-            "Infotainment": ["LIGHT"],
-            "Connectivity": []
-        }
+        access_probability = assignment_config.get('access_probability', {})
+        sensor_type_assignments = assignment_config.get('sensor_types', {})
+        actuator_type_assignments = assignment_config.get('actuator_types', {})
         
         for sc in self.scs:
             # Determine if this SC gets sensor/actuator access
@@ -209,7 +150,7 @@ class VehicleDataGenerator:
                 sc.actuators = []
 
     def generate_comm_matrix(self):
-        comm_matrix = []
+        """Generate communication matrix between SCs based on random probabilities"""
         for i, src in enumerate(self.scs):
             for j, dst in enumerate(self.scs):
                 if i != j and random.random() < 0.3:
@@ -218,32 +159,23 @@ class VehicleDataGenerator:
                         max_latency = random.randint(1, 10)
                     else:
                         max_latency = random.randint(10, 100)
-                    comm_matrix.append({
+                    self.comm_matrix.append({
                         'src': src.id,
                         'dst': dst.id,
                         'volume': volume,
                         'max_latency': max_latency,
                     })
-        return comm_matrix
     
     def generate_ecu(self):
-        """Generate ECUs strictly INSIDE the vehicle dimensions (X: ±0.8m, Y: ±2.0m)"""
-        hpc_hw = ['HW_ACC', 'HW_ETH', 'HW_HSM']
-        zone_hw = ['HW_CANFD', 'HW_FLEX', 'HW_ETH', 'HW_LIN',"HW_BT"]
-        mcu_hw = ['HW_CANFD', 'HW_LIN']
+        """Generate ECUs using types and placement bounds from configuration"""
+        ecu_types = self.config_reader.get_ecu_types_config()
         
-        # Place ECUs in a grid pattern strictly inside the vehicle
-        # Vehicle is approx 1.8m wide (X: -0.9 to 0.9) and 4.5m long (Y: -2.25 to 2.25)
-        # We stay within safe margins: X: -0.8 to 0.8, Y: -2.0 to 2.0
-        
+        # Place ECUs in a grid pattern using config bounds
         cols = int(self.num_ecus ** 0.5) 
         rows = (self.num_ecus + cols - 1) // cols
         
-        x_min, x_max = -0.7, 0.7 
-        y_min, y_max = -2.0, 2.0
-        
-        x_step = (x_max - x_min) / max(1, cols - 1) if cols > 1 else 0
-        y_step = (y_max - y_min) / max(1, rows - 1) if rows > 1 else 0
+        x_step = (self.ECU_X_MAX - self.ECU_X_MIN) / max(1, cols - 1) if cols > 1 else 0
+        y_step = (self.ECU_Y_MAX - self.ECU_Y_MIN) / max(1, rows - 1) if rows > 1 else 0
 
         ecu_idx = 0
         for r in range(rows):
@@ -251,55 +183,39 @@ class VehicleDataGenerator:
                 if ecu_idx >= self.num_ecus:
                     break
                     
-                # Calculate grid position inside vehicle
-                x_pos = x_min + c * x_step
-                y_pos = y_max - r * y_step # Top to bottom
+                # Calculate grid position
+                x_pos = self.ECU_X_MIN + c * x_step
+                y_pos = self.ECU_Y_MAX - r * y_step # Top to bottom
                 
                 location = Point(x_pos, y_pos)
                 
-                r_val = random.random()
+                # Select ECU type based on probability
+                rand_val = random.random()
+                cumulative_prob = 0
+                selected_type = None
                 
-                r = random.random()
+                for ecu_type_config in ecu_types:
+                    cumulative_prob += ecu_type_config['probability']
+                    if rand_val < cumulative_prob:
+                        selected_type = ecu_type_config
+                        break
                 
-                if r < 0.10:
-                    ecu = CandidateECU(
-                        id=f"ECU_{ecu_idx}_HPC",
-                        cpu_cap=200000,
-                        ram_cap=64000,
-                        rom_cap=256000,
-                        max_containers=16,
-                        cost=1000,
-                        type='HPC',
-                        asil_level=4,
-                        hw_offered=hpc_hw,
-                        location=location
-                    )
-                elif r < 0.40:
-                    ecu = CandidateECU(
-                        id=f"ECU_{ecu_idx}_SAFE",
-                        cpu_cap=30000,
-                        ram_cap=4000,
-                        rom_cap=8000,
-                        max_containers=4,
-                        cost=300,
-                        type='ZONE',
-                        asil_level=4,
-                        hw_offered=zone_hw,
-                        location=location
-                    )
-                else:
-                    ecu = CandidateECU(
-                        id=f"ECU_{ecu_idx}_MCU",
-                        cpu_cap=5000,
-                        ram_cap=512,
-                        rom_cap=2048,
-                        max_containers=1,
-                        cost=50,
-                        type='MCU',
-                        asil_level=3,
-                        hw_offered=mcu_hw,
-                        location=location
-                    )
+                # Fallback to last type if not selected
+                if selected_type is None:
+                    selected_type = ecu_types[-1]
+                
+                ecu = CandidateECU(
+                    id=f"ECU_{ecu_idx}_{selected_type['type']}",
+                    cpu_cap=selected_type['cpu_cap'],
+                    ram_cap=selected_type['ram_cap'],
+                    rom_cap=selected_type['rom_cap'],
+                    max_containers=selected_type['max_containers'],
+                    cost=selected_type['cost'],
+                    type=selected_type['type'],
+                    asil_level=selected_type['asil_level'],
+                    hw_offered=selected_type['hw_offered'],
+                    location=location
+                )
                 self.ecus.append(ecu)
                 ecu_idx += 1
 
@@ -308,7 +224,6 @@ class VehicleDataGenerator:
         self.generate_actuators()
         self.generate_scs()
         self.assign_sensors_actuators()
-        comm_matrix = self.generate_comm_matrix()
-
+        self.generate_comm_matrix()
         self.generate_ecu()
-        return self.ecus, self.scs, comm_matrix, self.sensors, self.actuators, self.cable_types
+        return self.ecus, self.scs, self.comm_matrix, self.sensors, self.actuators, self.cable_types

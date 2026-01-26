@@ -1,30 +1,4 @@
 {
-  "vehicle_dimensions": {
-    "length": 4.5,
-    "width": 1.8
-  },
-  "cable_types": {
-    "ETH": {
-      "cost_multiplier": 5.0,
-      "latency_per_meter": 0.005,
-      "weight_per_meter": 50
-    },
-    "FLEXRAY": {
-      "cost_multiplier": 3.0,
-      "latency_per_meter": 0.005,
-      "weight_per_meter": 30
-    },
-    "CAN": {
-      "cost_multiplier": 1.0,
-      "latency_per_meter": 0.005,
-      "weight_per_meter": 20
-    },
-    "LIN": {
-      "cost_multiplier": 0.5,
-      "latency_per_meter": 0.005,
-      "weight_per_meter": 10
-    }
-  },
   "sensors": [
     {
       "type": "CAMERA",
@@ -127,60 +101,9 @@
     {
       "type": "GPS",
       "id": "GPS_Center",
-      "interface": "ETH",
+      "interface": "CAN",
       "volume": 2.0,
       "location": {"x_ratio": 0.0, "y_ratio": -0.4}
-    }
-  ],
-  "actuators": [
-    {
-      "type": "STEERING",
-      "id": "ACT_Steering",
-      "interface": "FLEXRAY",
-      "volume": 1.0,
-      "location": {"x_ratio": 0.5, "y_ratio": 0.8}
-    },
-    {
-      "type": "MOTOR",
-      "id": "ACT_Motor_Front",
-      "interface": "CAN",
-      "volume": 3.0,
-      "location": {"x_ratio": 0.0, "y_ratio": 0.8}
-    },
-    {
-      "type": "BRAKE",
-      "id": "ACT_Brake_Front",
-      "interface": "CAN",
-      "volume": 2.0,
-      "location": {"x_ratio": 0.4, "y_ratio": 0.85}
-    },
-    {
-      "type": "BRAKE",
-      "id": "ACT_Brake_Rear",
-      "interface": "CAN",
-      "volume": 2.0,
-      "location": {"x_ratio": 0.4, "y_ratio": -0.85}
-    },
-    {
-      "type": "HVAC",
-      "id": "ACT_HVAC_Cabin",
-      "interface": "LIN",
-      "volume": 0.5,
-      "location": {"x_ratio": 0.0, "y_ratio": 0.7}
-    },
-    {
-      "type": "LIGHT",
-      "id": "ACT_Light_Front",
-      "interface": "LIN",
-      "volume": 0.2,
-      "location": {"x_ratio": 0.6, "y_ratio": 0.85}
-    },
-    {
-      "type": "LIGHT",
-      "id": "ACT_Light_Rear",
-      "interface": "LIN",
-      "volume": 0.2,
-      "location": {"x_ratio": 0.6, "y_ratio": -0.85}
     }
   ]
 }

@@ -1,0 +1,12 @@
+{
+  "dimensions": {
+    "length": 4.5,
+    "width": 1.8,
+    "ecu_placement_bounds": {
+      "x_min": -0.5,
+      "x_max": 0.5,
+      "y_min": -1.0,
+      "y_max": 1.0
+    }
+  }
+}
