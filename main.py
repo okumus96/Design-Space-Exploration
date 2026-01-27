@@ -33,7 +33,7 @@ def main(args):
     visualizer.display_data_summary(ecus, scs, sensors, actuators, cable_types,comm_matrix)
     visualizer.display_data(sensors, actuators, scs, ecus)
     visualizer.plot_charts(scs, ecus, sensors, actuators)
-    visualizer.plot_sw_sensor_actuator_graph_final(scs, sensors, actuators, comm_matrix)
+    #visualizer.plot_sw_sensor_actuator_graph_final(scs, sensors, actuators, comm_matrix)
 
     return
     # Step 2: Run optimization
@@ -74,7 +74,7 @@ def main(args):
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description="ECU Optimization and Visualization Pipeline")
     argparser.add_argument("--num_ecus", type=int, default=30, help="Number of candidate ECUs to generate")
-    argparser.add_argument("--num_scs", type=int, default=20, help="Number of software components to generate")
+    argparser.add_argument("--num_scs", type=int, default=100, help="Number of software components to generate")
     argparser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     argparser.add_argument("--config_dir", type=str, default="configs", help="Directory containing configuration JSON files")
     args = argparser.parse_args()

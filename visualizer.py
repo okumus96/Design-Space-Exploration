@@ -47,9 +47,24 @@ class Visualization:
 
     def display_scs(self,df_sc):
         print("\n" + "="*80)
-        print("SOFTWARE COMPONENTS")
+        print("SOFTWARE COMPONENTS - Resource Requirements")
         print("="*80)
-        print(tabulate(df_sc, headers="keys", tablefmt="grid", showindex=True))
+        # Convert to DataFrame if it's a list
+        if isinstance(df_sc, list):
+            df_sc = pd.DataFrame([vars(s) for s in df_sc])
+        
+        # First table: Resource requirements
+        resource_cols = ['id', 'domain', 'cpu_req', 'ram_req', 'rom_req', 'asil_req', 'hw_required']
+        df_resources = df_sc[resource_cols]
+        print(tabulate(df_resources, headers="keys", tablefmt="grid", showindex=False))
+        
+        # Second table: Connectivity
+        print("\n" + "="*80)
+        print("SOFTWARE COMPONENTS - Connectivity")
+        print("="*80)
+        connectivity_cols = ['id', 'interface_required', 'sensors', 'actuators']
+        df_connectivity = df_sc[connectivity_cols]
+        print(tabulate(df_connectivity, headers="keys", tablefmt="grid", showindex=False))
 
     def display_ECUs(self,df_ecu):
         print("\n" + "="*80)

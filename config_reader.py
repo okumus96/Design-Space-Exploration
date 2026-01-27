@@ -75,8 +75,12 @@ class ConfigReader:
         """Get software component domain weights"""
         weights_dict = self.software_config.get('sc_domain_weights')
         # Return as list in the expected order
-        domains = ["ADAS", "Infotainment", "VehicleDynamics", "BodyComfort", "Connectivity"]
+        domains = list(weights_dict.keys())
         return [weights_dict[d] for d in domains]
+    
+    def get_domains(self):
+        """Get list of software component domains"""
+        return list(self.software_config.get('sc_domain_weights', {}).keys())
     
     def get_sc_domain_configs(self):
         """Get software component domain configurations"""
@@ -85,3 +89,7 @@ class ConfigReader:
     def get_sc_sensor_actuator_assignments(self):
         """Get sensor/actuator assignment configurations for SCs"""
         return self.software_config.get('sc_sensor_actuator_assignments', {})
+    
+    def get_sc_communication_config(self):
+        """Get software component communication configuration"""
+        return self.software_config.get('sc_communication')

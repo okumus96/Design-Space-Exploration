@@ -51,10 +51,13 @@ class SoftwareComponent:
     rom_req: int
     asil_req: int
     hw_required: list
+    interface_required: list = None
     sensors: list = None
     actuators: list = None
 
     def __post_init__(self):
+        if self.interface_required is None:
+            self.interface_required = []
         if self.sensors is None:
             self.sensors = []
         if self.actuators is None:
@@ -71,4 +74,5 @@ class CandidateECU:
     type: str
     asil_level: int
     hw_offered: list
+    interface_offered: list
     location: 'Point' = None
