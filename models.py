@@ -33,6 +33,7 @@ class Sensor:
     interface: str
     volume: float
     location: 'Point' = None
+    max_latency: float = None  # ms
 
 @dataclass
 class Actuator:
@@ -41,6 +42,7 @@ class Actuator:
     interface: str
     volume: float
     location: 'Point' = None
+    max_latency: float = None  # ms
 
 @dataclass
 class SoftwareComponent:

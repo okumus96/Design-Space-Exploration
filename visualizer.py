@@ -17,7 +17,7 @@ class Visualization:
         print(f"   - Sensors: {len(sensors)}")
         print(f"   - Actuators: {len(actuators)}")
         print(f"   - Communication Links: {len(comm_matrix)}")
-        print(f"   - Cable Types: {len(cable_types)}")
+        print(f"   - Bus Types: {len(cable_types)}")
 
     def display_assignments(self,assignments):
             # Summary by ECU
@@ -88,21 +88,13 @@ class Visualization:
         print("\n" + "-" * 80)
         print(f"SOLUTION {solution_idx}")
         print(f"  Hardware Cost: ${solution['hardware_cost']:.2f}")
-        print(f"  Cable Length: {solution['kpis']['total_length']:.2f}m")
-        print(f"  Cable Cost: ${solution['kpis']['total_cost']:.2f} (Real)")
-        print(f"    - Sensor→ECU: ${solution['kpis']['breakdown']['sensor']['cost']:.2f}")
-        print(f"    - Actuator→ECU: ${solution['kpis']['breakdown']['actuator']['cost']:.2f}")
-        print(f"    - ECU↔ECU: ${solution['kpis']['breakdown']['ecu_ecu']['cost']:.2f}")
-        print(f"  Total Latency: {solution['kpis']['total_latency']*1000:.2f}us")
-        print(f"  Total Weight: {solution['kpis']['total_weight']:.2f}kg")
-        print(f"  Total Project Cost: ${solution['total_cost']:.2f}")
-        print(f"  Max Utilization: {solution['max_utilization']:.1%}")
+        print(f"  Cable Length: {solution['cable_length']:.2f}m")
+        print(f"  Total Cost: ${solution['hardware_cost']:.2f}")
+        print(f"  ECUs Used: {solution['num_ecus_used']}")
         print("-" * 80)
         
         print(f"\nAssignment Summary:")
         print(f"   - Total SWs Assigned: {len(assignments)} / {len(scs)}")
-        print(f"   - ECUs Used: {solution['num_ecus_used']}")
-        print(f"   - Max Utilization: {solution['max_utilization']:.1%}")
 
     def plot_charts(self, sc_list, ecu_list, sensor_list, actuator_list):
         """Convert lists to DataFrames and plot charts"""
@@ -323,7 +315,7 @@ class Visualization:
         
         # Extract data
         ecus = [sol['num_ecus_used'] for sol in pareto_solutions]
-        costs = [sol['total_cost'] for sol in pareto_solutions]
+        costs = [sol['hardware_cost'] for sol in pareto_solutions]
         
         # Create figure with subplots
         fig, axes = plt.subplots(1, 2, figsize=(14, 5))
@@ -352,7 +344,8 @@ class Visualization:
         # Plot 2: Efficiency (SCs per ECU)
         ax2 = axes[1]
         efficiency = [len(sol['assignment']) / sol['num_ecus_used'] for sol in pareto_solutions]
-        colors = plt.cm.RdYlGn([(c - min(costs)) / (max(costs) - min(costs)) for c in costs])
+        cost_range = max(costs) - min(costs) if max(costs) != min(costs) else 1
+        colors = plt.cm.RdYlGn([(c - min(costs)) / cost_range for c in costs])
         
         bars = ax2.bar(range(1, len(pareto_solutions)+1), efficiency, color=colors, 
                        edgecolor='black', linewidth=1.5, alpha=0.7)
@@ -589,9 +582,9 @@ class Visualization:
         ax.add_patch(vehicle_rect)
         
         # Add FRONT and REAR labels
-        ax.text(0, vehicle_length/2 + 0.3, 'FRONT', fontsize=14, weight='bold', ha='center', va='bottom',
+        ax.text(0, vehicle_length/2 + 0.3, 'REAR', fontsize=14, weight='bold', ha='center', va='bottom',
                bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.7))
-        ax.text(0, -vehicle_length/2 - 0.3, 'REAR', fontsize=14, weight='bold', ha='center', va='top',
+        ax.text(0, -vehicle_length/2 - 0.1, 'FRONT', fontsize=14, weight='bold', ha='center', va='top',
                bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.7))
         
         # Draw vehicle centerline
@@ -618,7 +611,7 @@ class Visualization:
         # Helper function to offset labels to avoid overlap
         label_offsets = {}
         
-        # Plot sensors (only those within vehicle bounds)
+        # Plot sensors 
         sensor_types_plotted = set()
         for idx, sensor in enumerate(sensors):
             y_pos = -sensor.location.y
@@ -639,7 +632,7 @@ class Visualization:
                 if sensor.type not in sensor_types_plotted:
                     sensor_types_plotted.add(sensor.type)
         
-        # Plot actuators (only those within vehicle bounds)
+        # Plot actuators 
         actuator_types_plotted = set()
         for idx, actuator in enumerate(actuators):
             y_pos = -actuator.location.y
@@ -665,7 +658,7 @@ class Visualization:
             # ECU tiplerine göre farklı renkler
             ecu_type_colors = {
                 'HPC': '#FF6B6B',      # Kırmızı
-                'ZONE': '#4ECDC4',     # Cyan
+                'ZONE': "#050370",     # Cyan
                 'MCU': '#95E1D3'       # Mint green
             }
             
@@ -685,16 +678,15 @@ class Visualization:
                 
                 label = f'ECU: {ecu.type}' if ecu.type not in ecu_types_plotted else ''
                 
-                ax.scatter(ecu.location.x, y_pos, s=400, c=color, 
-                          marker='D', edgecolor='darkviolet', linewidth=3, zorder=4, 
-                          alpha=0.9, label=label)
+                ax.scatter(ecu.location.x, y_pos, s=200, c=color, 
+                          marker='D', edgecolor='black', linewidth=2, zorder=4, 
+                          alpha=0.7, label=label)
                 
+                # Label next to the marker (not on top)
                 short_id = ecu.id.split('_')[1]
                 ax.annotate(short_id, (ecu.location.x, y_pos), 
                            fontsize=8, ha='center', va='center', fontweight='bold', 
-                           color='darkviolet',
-                           bbox=dict(boxstyle='round,pad=0.3', facecolor='white', 
-                                   alpha=0.8, edgecolor='darkviolet', linewidth=2))
+                           color='black')
                 
                 if ecu.type not in ecu_types_plotted:
                     ecu_types_plotted.add(ecu.type)
@@ -719,11 +711,11 @@ class Visualization:
         legend_elements = [
             patches.Rectangle((0, 0), 1, 1, facecolor='lightgray', edgecolor='black', linewidth=2, label='Vehicle Body'),
             Line2D([0], [0], marker='D', color='w', markerfacecolor='#FF6B6B', markersize=12, 
-                   markeredgecolor='darkviolet', markeredgewidth=2, label='ECU: HPC'),
-            Line2D([0], [0], marker='D', color='w', markerfacecolor='#4ECDC4', markersize=12, 
-                   markeredgecolor='darkviolet', markeredgewidth=2, label='ECU: ZONE'),
+                   markeredgecolor='black', markeredgewidth=2, label='ECU: HPC'),
+            Line2D([0], [0], marker='D', color='w', markerfacecolor='#050370', markersize=12, 
+                   markeredgecolor='black', markeredgewidth=2, label='ECU: ZONE'),
             Line2D([0], [0], marker='D', color='w', markerfacecolor='#95E1D3', markersize=12, 
-                   markeredgecolor='darkviolet', markeredgewidth=2, label='ECU: MCU'),
+                   markeredgecolor='black', markeredgewidth=2, label='ECU: MCU'),
             Line2D([0], [0], marker='o', color='w', markerfacecolor='#2ECC71', markersize=12, markeredgecolor='black', markeredgewidth=2, label='CAMERA'),
             Line2D([0], [0], marker='o', color='w', markerfacecolor='#E74C3C', markersize=12, markeredgecolor='black', markeredgewidth=2, label='LIDAR'),
             Line2D([0], [0], marker='o', color='w', markerfacecolor='#F39C12', markersize=12, markeredgecolor='black', markeredgewidth=2, label='IMU'),

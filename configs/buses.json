@@ -1,22 +1,22 @@
 {"cable_types": {
     "ETH": {
       "cost_per_meter": 50.0,
-      "latency_per_meter": 0.005,
+      "latency_per_meter": 0.1,
       "weight_per_meter": 50
     },
     "FLEXRAY": {
       "cost_per_meter": 30.0,
-      "latency_per_meter": 0.005,
+      "latency_per_meter": 0.1,
       "weight_per_meter": 30
     },
     "CAN": {
       "cost_per_meter": 10.0,
-      "latency_per_meter": 0.005,
+      "latency_per_meter": 0.1,
       "weight_per_meter": 20
     },
     "LIN": {
       "cost_per_meter": 5.0,
-      "latency_per_meter": 0.005,
+      "latency_per_meter": 0.1,
       "weight_per_meter": 10
     }
   }

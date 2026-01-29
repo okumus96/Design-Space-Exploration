@@ -52,7 +52,8 @@ class VehicleDataGenerator:
                 type=sensor_config['type'],
                 interface=sensor_config['interface'],
                 volume=sensor_config['volume'],
-                location=location
+                location=location,
+                max_latency=random.randint(5, 100)  # 5-100ms tolerance
             )
             self.sensors.append(sensor)
 
@@ -72,7 +73,8 @@ class VehicleDataGenerator:
                 type=actuator_config['type'],
                 interface=actuator_config['interface'],
                 volume=actuator_config['volume'],
-                location=location
+                location=location,
+                max_latency=random.randint(5, 100)  # 5-100ms tolerance
             )
             self.actuators.append(actuator)
 
@@ -252,7 +254,7 @@ class VehicleDataGenerator:
                     prob = intra_prob if src.domain == dst.domain else inter_prob                 
                     if random.random() < prob:
                         volume = random.randint(1, 50)
-                        max_latency = random.randint(1, 100)
+                        max_latency = random.randint(10, 500)
                         self.comm_matrix.append({
                             'src': src.id,
                             'dst': dst.id,

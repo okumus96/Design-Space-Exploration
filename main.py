@@ -33,19 +33,20 @@ def main(args):
     visualizer.display_data_summary(ecus, scs, sensors, actuators, cable_types,comm_matrix)
     visualizer.display_data(sensors, actuators, scs, ecus)
     visualizer.plot_charts(scs, ecus, sensors, actuators)
+    visualizer.plot_vehicle_layout_topdown(sensors, actuators, assignments=None, ecus=ecus)
     #visualizer.plot_sw_sensor_actuator_graph_final(scs, sensors, actuators, comm_matrix)
 
-    return
+    #return
     # Step 2: Run optimization
     print("\n" + "-" * 80)
     print("STEP 2: Running Gurobi Optimization")
     print("-" * 80)
     opt = AssignmentOptimizer()
     
-    
-    # Generate Pareto front: Total Cost (Hardware + Cable) vs Load Balancing
-    pareto_solutions = opt.optimize_pareto_cost_vs_loadbalance(
-        scs, ecus, sensors, actuators, cable_types, comm_matrix, num_points=5
+    # Generate Pareto front: HW Cost vs Cable Length
+    pareto_solutions = opt.optimize(
+        scs, ecus, sensors, actuators, cable_types, comm_matrix, num_points=5,
+        include_cable_cost=True, enable_latency_constraints=True
     )
     
     # Visualize Pareto front
