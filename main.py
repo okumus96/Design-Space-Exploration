@@ -45,7 +45,7 @@ def main(args):
     
     # Generate Pareto front: HW Cost vs Cable Length
     pareto_solutions = opt.optimize(
-        scs, ecus, sensors, actuators, cable_types, comm_matrix, num_points=5,
+        scs, ecus, sensors, actuators, cable_types, comm_matrix, num_points=3,
         include_cable_cost=True, enable_latency_constraints=True
     )
     
@@ -61,7 +61,7 @@ def main(args):
         visualizer.display_assignments(solution_idx,solution,scs,ecus)
         # Visualize this solution
         print(f"\n   Generating visualization for Solution {solution_idx}...")
-        visualizer.visualize_optimization_result(scs, ecus, sensors, actuators, solution['assignment'])
+        #visualizer.visualize_optimization_result(scs, ecus, sensors, actuators, solution['assignment'])
         
         # Vehicle layout with assigned ECUs
         print(f"   Generating vehicle layout for Solution {solution_idx}...")

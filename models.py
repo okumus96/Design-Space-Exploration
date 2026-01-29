@@ -56,6 +56,7 @@ class SoftwareComponent:
     interface_required: list = None
     sensors: list = None
     actuators: list = None
+    redundant_with: str = None  # ID of redundant SC pair
 
     def __post_init__(self):
         if self.interface_required is None:

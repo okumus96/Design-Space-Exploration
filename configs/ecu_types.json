@@ -9,7 +9,7 @@
       "max_containers": 16,
       "cost": 1000,
       "asil_level": 4,
-      "hw_offered": ["HW_ACC"],
+      "hw_offered": ["HW_ACC", "DSP"],
       "interface_offered": ["ETH"]
     },
     {
@@ -21,7 +21,7 @@
       "max_containers": 4,
       "cost": 300,
       "asil_level": 4,
-      "hw_offered": [],
+      "hw_offered": ["HSM"],
       "interface_offered": ["CAN", "FLEXRAY", "ETH", "LIN"]
     },
     {
@@ -33,7 +33,7 @@
       "max_containers": 1,
       "cost": 50,
       "asil_level": 3,
-      "hw_offered": [],
+      "hw_offered": ["HSM"],
       "interface_offered": ["CAN", "LIN"]
     }
   ]

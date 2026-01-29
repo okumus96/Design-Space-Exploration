@@ -9,12 +9,14 @@
   "sc_domain_configs": {
     "ADAS": {
       "hw_requirements": {
-        "HW_ACC": 0.70
+        "HW_ACC": 0.70,
+        "DSP": 0.40
       },
       "cpu_range": [15000, 40000],
       "ram_range": [1000, 3000],
       "rom_range": [50, 200],
-      "asil_levels": [3, 4]
+      "asil_levels": [3, 4],
+      "redundancy_ratio": 0.10
     },
     "Infotainment": {
       "hw_requirements": {
@@ -23,16 +25,19 @@
       "cpu_range": [10000, 30000],
       "ram_range": [1000, 4000],
       "rom_range": [20, 100],
-      "asil_levels": [0, 1]
+      "asil_levels": [0, 1],
+      "redundancy_ratio": 0.0
     },
     "VehicleDynamics": {
       "hw_requirements": {
-        "HW_ACC": 0.0
+        "HW_ACC": 0.0,
+        "HSM": 0.30
       },
       "cpu_range": [1000, 5000],
       "ram_range": [256, 512],
       "rom_range": [10, 50],
-      "asil_levels": [4]
+      "asil_levels": [4],
+      "redundancy_ratio": 0.30
     },
     "BodyComfort": {
       "hw_requirements": {
@@ -41,7 +46,8 @@
       "cpu_range": [200, 1000],
       "ram_range": [64, 256],
       "rom_range": [5, 20],
-      "asil_levels": [0, 1, 2]
+      "asil_levels": [0, 1, 2],
+      "redundancy_ratio": 0.0
     },
     "Connectivity": {
       "hw_requirements": {
@@ -50,7 +56,8 @@
       "cpu_range": [3000, 8000],
       "ram_range": [256, 1024],
       "rom_range": [50, 200],
-      "asil_levels": [0, 1, 2]
+      "asil_levels": [0, 1, 2],
+      "redundancy_ratio": 0.0
     }
   },
   "sc_sensor_actuator_assignments": {

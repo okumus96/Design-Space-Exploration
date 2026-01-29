@@ -54,7 +54,7 @@ class Visualization:
             df_sc = pd.DataFrame([vars(s) for s in df_sc])
         
         # First table: Resource requirements
-        resource_cols = ['id', 'domain', 'cpu_req', 'ram_req', 'rom_req', 'asil_req', 'hw_required']
+        resource_cols = ['id', 'domain', 'cpu_req', 'ram_req', 'rom_req', 'asil_req', 'hw_required', 'redundant_with']
         df_resources = df_sc[resource_cols]
         print(tabulate(df_resources, headers="keys", tablefmt="grid", showindex=False))
         

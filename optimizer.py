@@ -7,8 +7,7 @@ from gurobipy import GRB
 ## Add container and container communication latency later
 ## Consider ASIL decomposition later
 ## Add load balancing later
-## Add redundant components later
-## Elaborate hardware requirements later
+
 ## Add interface count (5 ETH) later
 
 
@@ -261,6 +260,20 @@ class AssignmentOptimizer:
                     model.addConstr(z[j1, j2] <= y[j1])
                     model.addConstr(z[j1, j2] <= y[j2])
                     model.addConstr(z[j1, j2] >= y[j1] + y[j2] - 1)
+        
+        # 4.5. Redundancy Constraints
+        # Redundant SC pairs must be placed on different ECUs for fault tolerance
+        sc_id_to_idx = {sc.id: i for i, sc in enumerate(scs)}
+        for i in range(n_sc):
+            if scs[i].redundant_with:
+                partner_id = scs[i].redundant_with
+                if partner_id in sc_id_to_idx:
+                    partner_idx = sc_id_to_idx[partner_id]
+                    # Prevent both SCs from being on the same ECU
+                    for j in range(n_ecu):
+                        if (i, j) in x and (partner_idx, j) in x:
+                            model.addConstr(x[i, j] + x[partner_idx, j] <= 1, 
+                                          name=f"redundancy_{i}_{partner_idx}_{j}")
         
         # 5. Latency Constraints
         if enable_latency:

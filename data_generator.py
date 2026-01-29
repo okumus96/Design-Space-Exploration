@@ -167,6 +167,43 @@ class VehicleDataGenerator:
             )
             
             self.scs.append(sc)
+    
+    def assign_redundancy(self):
+        """
+        Assign redundancy pairs for high-ASIL safety-critical components.
+        Uses domain-specific redundancy ratios from software.json config.
+        Redundant SCs must be placed on different ECUs for fault tolerance.
+        """
+        domain_configs = self.config_reader.get_sc_domain_configs()
+        
+        # Group high-ASIL SCs by domain
+        high_asil_by_domain = {}
+        for sc in self.scs:
+            if sc.asil_req == 4:  # ASIL D only
+                if sc.domain not in high_asil_by_domain:
+                    high_asil_by_domain[sc.domain] = []
+                high_asil_by_domain[sc.domain].append(sc)
+        
+        # Process each domain separately
+        for domain, scs_in_domain in high_asil_by_domain.items():
+            domain_config = domain_configs.get(domain, {})
+            redundancy_ratio = domain_config.get('redundancy_ratio', 0.0)
+            
+            if redundancy_ratio <= 0:
+                continue
+            
+            # Calculate number of redundant pairs for this domain
+            num_redundant = max(1, int(len(scs_in_domain) * redundancy_ratio))
+            redundant_candidates = random.sample(scs_in_domain, min(num_redundant, len(scs_in_domain)))
+            
+            # Create pairs within this domain
+            for sc in redundant_candidates:
+                candidates = [s for s in scs_in_domain 
+                             if s != sc and not s.redundant_with]
+                if candidates:
+                    partner = random.choice(candidates)
+                    sc.redundant_with = partner.id
+                    partner.redundant_with = sc.id
    
     def assign_sensors_actuators(self):
         """
@@ -214,13 +251,57 @@ class VehicleDataGenerator:
             # Shuffle combined list for randomness
             random.shuffle(items)
             
-            # Distribute items round-robin across SCs (each SC gets max 1 item)
-            for i, (item_type, item_id) in enumerate(items):
-                sc_index = i % len(scs_in_domain)
-                if item_type == 'sensor':
-                    scs_in_domain[sc_index].sensors.append(item_id)
-                else:  # actuator
-                    scs_in_domain[sc_index].actuators.append(item_id)
+            # Distribute items ensuring 1 item per SC limit and Interface compatibility
+            assigned_scs = set()
+            
+            # Helper to get item interface
+            def get_item_interface(itype, iid):
+                if itype == 'sensor':
+                    return next((s.interface for s in self.sensors if s.id == iid), None)
+                else:
+                    return next((a.interface for a in self.actuators if a.id == iid), None)
+
+            for item_type, item_id in items:
+                item_interface = get_item_interface(item_type, item_id)
+                
+                # Find best candidate SC
+                best_sc = None
+                
+                # Try to find an SC that Matches HW requirements (e.g. HW_ACC/DSP -> requires ETH)
+                # And has no items yet
+                candidates = [sc for sc in scs_in_domain if sc.id not in assigned_scs]
+                
+                # Filter candidates based on interface compatibility with their HW requirements
+                valid_candidates = []
+                for sc in candidates:
+                    # If SC requires HW_ACC/DSP OR has huge CPU requirements (>30k), it must go on HPC (ETH only)
+                    # Because only HPC handles >30k CPU, and HPC only offers ETH.
+                    is_hpc_bound = ('HW_ACC' in sc.hw_required or 'DSP' in sc.hw_required or sc.cpu_req > 30000)
+                    
+                    if is_hpc_bound:
+                        if item_interface == 'ETH':
+                            valid_candidates.append(sc)
+                    # If SC requires HSM or is generic, it goes on ZONE or MCU (CAN, ETH, LIN...)
+                    else:
+                        valid_candidates.append(sc)
+                
+                if valid_candidates:
+                    best_sc = valid_candidates[0] # Pick first valid (already shuffled)
+                elif candidates and item_interface != 'ETH': 
+                    # If no valid candidates found but we have generic candidates and item is not ETH
+                    # (Fallback for e.g. CAN item but only HW_ACC SCs left? Should not happen if config is sane)
+                     pass
+
+                if best_sc:
+                    if item_type == 'sensor':
+                        best_sc.sensors.append(item_id)
+                    else:
+                        best_sc.actuators.append(item_id)
+                    assigned_scs.add(best_sc.id)
+                else:
+                    # Could not assign this item (no suitable empty SCs left)
+                    # This respects "One SC = One Item", so excess items are dropped/unassigned
+                    pass
         
         # Derive interface_required from assigned sensors/actuators
         for sc in self.scs:
@@ -329,6 +410,7 @@ class VehicleDataGenerator:
         self.generate_sensors()
         self.generate_actuators()
         self.generate_scs()
+        self.assign_redundancy()
         self.assign_sensors_actuators()
         self.generate_comm_matrix()
         self.generate_ecu()
