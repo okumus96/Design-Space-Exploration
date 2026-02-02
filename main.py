@@ -11,6 +11,7 @@ import argparse
 from config_reader import ConfigReader
 from data_generator import VehicleDataGenerator
 from optimizer import AssignmentOptimizer
+from optimizer_z3 import AssignmentOptimizerZ3
 from visualizer import Visualization
 from tabulate import tabulate
 
@@ -28,7 +29,7 @@ def main(args):
     generator = VehicleDataGenerator(num_ecus=args.num_ecus, num_scs=args.num_scs, seed=args.seed, config_reader=config_reader)
     ecus, scs, comm_matrix, sensors, actuators, cable_types = generator.generate_data()
     
-    # Summary and visualzation of generated data
+    # Summary and visualization of generated data
     visualizer = Visualization()
     visualizer.display_data_summary(ecus, scs, sensors, actuators, cable_types,comm_matrix)
     visualizer.display_data(sensors, actuators, scs, ecus)
@@ -39,14 +40,20 @@ def main(args):
     #return
     # Step 2: Run optimization
     print("\n" + "-" * 80)
-    print("STEP 2: Running Gurobi Optimization")
-    print("-" * 80)
-    opt = AssignmentOptimizer()
+
+    if hasattr(args, 'solver') and args.solver == 'z3':
+        print("STEP 2: Running Z3 Optimization")
+        print("-" * 80)
+        opt = AssignmentOptimizerZ3()
+    else:
+        print("STEP 2: Running Gurobi Optimization")
+        print("-" * 80)
+        opt = AssignmentOptimizer()
     
     # Generate Pareto front: HW Cost vs Cable Length
     pareto_solutions = opt.optimize(
         scs, ecus, sensors, actuators, cable_types, comm_matrix, num_points=3,
-        include_cable_cost=True, enable_latency_constraints=True
+        include_cable_cost=True, enable_latency_constraints=True, warm_start=args.warm_start, time_limit=args.time_limit
     )
     
     # Visualize Pareto front
@@ -78,5 +85,8 @@ if __name__ == "__main__":
     argparser.add_argument("--num_scs", type=int, default=100, help="Number of software components to generate")
     argparser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     argparser.add_argument("--config_dir", type=str, default="configs", help="Directory containing configuration JSON files")
+    argparser.add_argument("--solver", type=str, default="gurobi", choices=["gurobi", "z3"], help="Solver to use")
+    argparser.add_argument("--time_limit", type=int, default=None, help="Time limit in seconds")
+    argparser.add_argument("--warm_start", action="store_true", help="Enable warm start for optimization")
     args = argparser.parse_args()
     main(args)
