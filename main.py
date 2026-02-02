@@ -30,11 +30,11 @@ def main(args):
     ecus, scs, comm_matrix, sensors, actuators, cable_types = generator.generate_data()
     
     # Summary and visualization of generated data
-    visualizer = Visualization()
+    visualizer = Visualization(save_dir=args.output_dir)
     visualizer.display_data_summary(ecus, scs, sensors, actuators, cable_types,comm_matrix)
     visualizer.display_data(sensors, actuators, scs, ecus)
     visualizer.plot_charts(scs, ecus, sensors, actuators)
-    visualizer.plot_vehicle_layout_topdown(sensors, actuators, assignments=None, ecus=ecus)
+    visualizer.plot_vehicle_layout_topdown(sensors, actuators, assignments=None, ecus=ecus, filename="initial_vehicle_layout.png")
     #visualizer.plot_sw_sensor_actuator_graph_final(scs, sensors, actuators, comm_matrix)
 
     #return
@@ -68,11 +68,11 @@ def main(args):
         visualizer.display_assignments(solution_idx,solution,scs,ecus)
         # Visualize this solution
         print(f"\n   Generating visualization for Solution {solution_idx}...")
-        #visualizer.visualize_optimization_result(scs, ecus, sensors, actuators, solution['assignment'])
+        #visualizer.visualize_optimization_result(scs, ecus, sensors, actuators, solution['assignment'], filename=f"solution_{solution_idx}_optimization.png")
         
         # Vehicle layout with assigned ECUs
         print(f"   Generating vehicle layout for Solution {solution_idx}...")
-        visualizer.plot_vehicle_layout_topdown(sensors, actuators, solution['assignment'], ecus)
+        visualizer.plot_vehicle_layout_topdown(sensors, actuators, solution['assignment'], ecus, filename=f"solution_{solution_idx}_vehicle_layout.png")
     
     print("\n" + "=" * 80)
     print("PIPELINE COMPLETED SUCCESSFULLY")
@@ -88,5 +88,6 @@ if __name__ == "__main__":
     argparser.add_argument("--solver", type=str, default="gurobi", choices=["gurobi", "z3"], help="Solver to use")
     argparser.add_argument("--time_limit", type=int, default=None, help="Time limit in seconds")
     argparser.add_argument("--warm_start", action="store_true", help="Enable warm start for optimization")
+    argparser.add_argument("--output_dir", type=str, default="results", help="Directory to save visualization results")
     args = argparser.parse_args()
     main(args)

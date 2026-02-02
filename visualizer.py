@@ -3,13 +3,27 @@ import matplotlib.patches as patches
 import networkx as nx
 import pandas as pd
 import seaborn as sns
+import os
 from matplotlib.lines import Line2D
 from tabulate import tabulate
 
 
 class Visualization:
-    def __init__(self):
-        pass
+    def __init__(self, save_dir=None):
+        self.save_dir = save_dir
+        if self.save_dir and not os.path.exists(self.save_dir):
+            os.makedirs(self.save_dir)
+            print(f"Created directory for results: {self.save_dir}")
+
+    def save_plot(self, filename):
+        if self.save_dir:
+            filepath = os.path.join(self.save_dir, filename)
+            plt.savefig(filepath, bbox_inches='tight')
+            print(f"Saved plot to: {filepath}")
+            plt.close()
+        else:
+            plt.show()
+
     def display_data_summary(self, ecus, scs, sensors, actuators, cable_types, comm_matrix):
         print(f"\n Generated Data Summary:")
         print(f"   - ECUs: {len(ecus)}")
@@ -145,9 +159,9 @@ class Visualization:
         axes[1, 1].set_ylabel('Count')
 
         plt.tight_layout()
-        plt.show()
+        self.save_plot("hw_sw_distribution.png")
 
-    def plot_sw_sensor_actuator_graph_final(self, scs, sensors, actuators, comm_matrix):
+    def plot_sw_sensor_actuator_graph_final(self, scs, sensors, actuators, comm_matrix, filename="system_graph.png"):
         """
         SW-Sensor-Actuator connection graph visualization with custom layout:
         - SWs in outer ring (circular layout)
@@ -300,9 +314,9 @@ class Visualization:
         plt.title('Complete System Graph: Ring Layout (SWs outer ring, Sensors/Actuators inside)', fontsize=14, weight='bold')
         plt.axis('off')
         plt.tight_layout()
-        plt.show()
+        self.save_plot(filename)
 
-    def visualize_pareto_front(self, pareto_solutions):
+    def visualize_pareto_front(self, pareto_solutions, filename="pareto_front_analysis.png"):
         """
         Create a visualization of the Pareto front showing trade-offs.
         
@@ -363,11 +377,9 @@ class Visualization:
                     f'{eff:.2f}', ha='center', va='bottom', fontsize=9, fontweight='bold')
         
         plt.tight_layout()
-        #plt.savefig('pareto_front_analysis.png', dpi=300, bbox_inches='tight')
-        #print("\n✓ Saved: pareto_front_analysis.png")
-        plt.show()
+        self.save_plot(filename)
 
-    def visualize_optimization_result(self,scs, ecus, sensors, actuators, assignments):
+    def visualize_optimization_result(self,scs, ecus, sensors, actuators, assignments, filename="optimization_result.png"):
         """
         ECU'ları kutular olarak görselleştir, SW'leri içinde göster
         """
@@ -559,9 +571,9 @@ class Visualization:
         plt.title('ECU Assignment Visualization: SW Components Inside ECU Containers', 
                 fontsize=14, weight='bold', pad=20)
         plt.tight_layout()
-        plt.show()
+        self.save_plot(filename)
 
-    def plot_vehicle_layout_topdown(self, sensors, actuators, assignments=None, ecus=None, vehicle_length=4.5, vehicle_width=1.8):
+    def plot_vehicle_layout_topdown(self, sensors, actuators, assignments=None, ecus=None, vehicle_length=4.5, vehicle_width=1.8, filename="vehicle_layout.png"):
         """
         Bird's eye view of vehicle layout showing sensors, actuators, and optionally ECUs.
         Displays the physical dimensions and locations of all components.
@@ -773,4 +785,4 @@ class Visualization:
         ax.set_facecolor('#F8F9F9')
         
         plt.tight_layout()
-        plt.show()
+        self.save_plot(filename)

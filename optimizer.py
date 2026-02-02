@@ -1,5 +1,5 @@
 import os
-os.environ["GRB_LICENSE_FILE"] = "/home/frk/gurobi.lic"
+os.environ["GRB_LICENSE_FILE"] = "/home/okumus/gurobi.lic"
 import gurobipy as gp
 from gurobipy import GRB
 
@@ -10,9 +10,6 @@ from gurobipy import GRB
 ## Add interface count (5 ETH) later
 ## Every position can be every type of ECU type.  For this position we need to select type of ECU as well..
 ## There is  different can lines we do not put info and sc thing in same can line. 
-
-
-
 
 class AssignmentOptimizer:
     """
