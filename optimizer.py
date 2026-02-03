@@ -3,13 +3,26 @@ os.environ["GRB_LICENSE_FILE"] = "/home/okumus/gurobi.lic"
 import gurobipy as gp
 from gurobipy import GRB
 
+## Uncertainties
+    ## HW Failures
+    ## OTA Updates/Scalability
+    ## Performance Variations and Degradations in HW.
+    ## Network Uncertainties (sporadic  events, etc.)
+    ## SW Failures/wrong tests (bugs, crashes, memory leaks, etc.)
 
-## Add container and container communication latency later
-## Consider ASIL decomposition later
-## Add load balancing later
-## Add interface count (5 ETH) later
-## Every position can be every type of ECU type.  For this position we need to select type of ECU as well..
-## There is  different can lines we do not put info and sc thing in same can line. 
+## POSSIBLE OBJECTIVES:
+    ## Power Consumption
+    ## ECU Resource Balancing
+    ## Bus/Network Load Balancing
+
+## Possible Constraints:
+    ## Add container and container communication latency later
+    ## Consider ASIL decomposition later
+    ## Add interface count (5 ETH) later
+
+## Other Features:
+    ## There is  different can lines we do not put info and sc thing in same can line. 
+
 
 class AssignmentOptimizer:
     """
@@ -69,8 +82,8 @@ class AssignmentOptimizer:
         """Calculates Euclidean distance between two points."""
         if not loc1 or not loc2:
             return 0.0
-        _, dist_euclidean = loc1.dist(loc2)
-        return dist_euclidean
+        dist_manhattan, dist_euclidean = loc1.dist(loc2)
+        return dist_manhattan
 
     def _precompute_all_metrics(self, scs, ecus, sensors, actuators, cable_types):
         """
@@ -293,10 +306,44 @@ class AssignmentOptimizer:
                 
         return solution
     
+    def extract_solution(self,model, x_vars, y_vars, z_vars, scs, ecus, sensor_ecu_dists, actuator_ecu_dists, ecu_ecu_dists, sensor_ecu_costs, actuator_ecu_costs, ecu_ecu_costs):
+            """Helper to extract solution data from solved model"""
+            assignment_ = {}
+            ecus_used_ = set()
+            for (i_sc, j_ecu), var in x_vars.items():
+                if var.X > 0.5:
+                    assignment_[scs[i_sc].id] = ecus[j_ecu].id
+                    ecus_used_.add(j_ecu)
+            
+            hw_cost_ = sum(ecus[j].cost for j in ecus_used_)
+            
+            len_ = 0.0
+            cable_cost_ = 0.0
+            for (i_xx, j_xx), var in x_vars.items():
+                if var.X > 0.5:
+                    len_ += sensor_ecu_dists.get((i_xx, j_xx), 0)
+                    len_ += actuator_ecu_dists.get((i_xx, j_xx), 0)
+                    cable_cost_ += sensor_ecu_costs.get((i_xx, j_xx), 0)
+                    cable_cost_ += actuator_ecu_costs.get((i_xx, j_xx), 0)
+            for (j1, j2), var in z_vars.items():
+                if var.X > 0.5:
+                    len_ += ecu_ecu_dists.get((j1, j2), 0)
+                    cable_cost_ += ecu_ecu_costs.get((j1, j2), 0)
+            
+            return {
+                'assignment': assignment_,
+                'hardware_cost': hw_cost_,
+                'cable_cost': cable_cost_,
+                'total_cost': hw_cost_ + cable_cost_,
+                'cable_length': len_,
+                'num_ecus_used': len(ecus_used_),
+                'status': "OPTIMAL" if model.status == GRB.OPTIMAL else f"GAP {model.MIPGap:.0%}"
+            }
+
     def _create_base_model(self, name, scs, ecus, sensors, actuators, 
                           comm_constraints_data=None, 
                           sensor_ecu_latencies=None, actuator_ecu_latencies=None, ecu_ecu_latencies=None, 
-                          comm_matrix=None, enable_latency=False, time_limit=60, mip_gap=0.01):
+                          comm_matrix=None, enable_latency=False, time_limit=60, mip_gap=0.01, verbose=False):
         """
         Creates variables and core constraints.
         Does NOT set the objective function.
@@ -309,12 +356,13 @@ class AssignmentOptimizer:
         """
         model = gp.Model(name)
         # Enable output to monitor progress
-        model.setParam('OutputFlag', 1)
+        model.setParam('OutputFlag', 1 if verbose else 0)
         # MIPFocus=2: Focus on proving optimality (improves BestBound)
         model.setParam('MIPFocus', 2)
         if time_limit is not None:
             model.setParam('TimeLimit', time_limit)
-        model.setParam('MIPGap', mip_gap)
+        if mip_gap is not None:
+            model.setParam('MIPGap', mip_gap)
         
         n_sc = len(scs)
         n_ecu = len(ecus)
@@ -349,6 +397,19 @@ class AssignmentOptimizer:
                 if (i, j) in x:
                     # x <= y  -->  If assigned, ECU is active.
                     model.addConstr(x[i, j] <= y[j], name=f"activate_{i}_{j}")
+
+        # 2.5. Location Exclusivity: At most one ECU active per physical location
+        location_groups = {}
+        for j in range(n_ecu):
+            # Rounding to avoid float precision issues, though data generator uses exact values
+            loc_key = (round(ecus[j].location.x, 3), round(ecus[j].location.y, 3))
+            if loc_key not in location_groups:
+                location_groups[loc_key] = []
+            location_groups[loc_key].append(j)
+        
+        for loc, group in location_groups.items():
+            if len(group) > 1:
+                model.addConstr(gp.quicksum(y[j] for j in group) <= 1, name=f"one_ecu_at_{loc}")
         
         # 3. Capacity: Check CPU, RAM, ROM, Containers limits
         for j in range(n_ecu):
@@ -497,10 +558,14 @@ class AssignmentOptimizer:
         
         return model, x, y, z
 
-    def optimize(self, scs, ecus, sensors, actuators, cable_types, comm_matrix=None, num_points=5, include_cable_cost=False, enable_latency_constraints=False, warm_start=False, time_limit=60):
+    def optimize(self, scs, ecus, sensors, actuators, cable_types, comm_matrix=None, num_points=5, include_cable_cost=False, enable_latency_constraints=False, warm_start=False, time_limit=60, mip_gap=None, verbose=False):
         """
         Main optimization routine. 
-        Generates Pareto front for [HW Cost] vs [Cable Length].
+        Generates Pareto front for [HW Cost] vs [Cable Length] using Bounds-Based Search.
+        Strategy:
+        1. Find Min Cost Solution -> Get Max Cable Length (L_max)
+        2. Find Min Cable Length Solution -> Get Min Cable Length (L_min)
+        3. Sweep Cable Length constraint from L_max to L_min to find Pareto points.
         """
         print("\n" + "="*60)
         print("PARETO OPTIMIZATION: HW Cost vs Cable Length")
@@ -516,147 +581,104 @@ class AssignmentOptimizer:
          sensor_ecu_latencies, actuator_ecu_latencies, ecu_ecu_latencies) = self._precompute_all_metrics(scs, ecus, sensors, actuators, cable_types)
         
         if warm_start:
-            # --- Attempt Warm Start (Greedy Heuristic) ---
             print("      Generating Warm Start solution...")
             greedy_sol = self._generate_greedy_solution(scs, ecus, sensors, actuators, comm_matrix)
-            if greedy_sol:
-                print("      -> Warm Start generated successfully.")
-            else:
-                print("      -> Warm Start failed (could not satisfy constraints greedily).")
 
-        # --- Step 1: Find Min Cost ---
-        print("\n[1/3] Finding Minimum Cost...")
+        solutions = []
+
+        # --- Step 1: Minimize Cost (Extremity 1) ---
+        print("\n[1] Finding Extremity 1: Minimum Cost...")
         m1, x1, y1, z1 = self._create_base_model("MinCost", scs, ecus, sensors, actuators, comm_pairs, 
-                                                 sensor_ecu_latencies, actuator_ecu_latencies, ecu_ecu_latencies, 
-                                                 comm_matrix, enable_latency_constraints, time_limit=time_limit, mip_gap=0.01)
-
-        # Inject Warm Start to Step 1
-        if warm_start:
-            print("      -> Injecting Warm Start into Gurobi model (Min Cost)...")
-            self.inject_warm_start(x1,greedy_sol)
+            sensor_ecu_latencies, actuator_ecu_latencies, ecu_ecu_latencies, comm_matrix, enable_latency_constraints, time_limit, mip_gap, verbose)
+        if warm_start: self.inject_warm_start(x1, greedy_sol)
         
-        # Set Objective with optional cable cost
-        obj1 = self.min_cost_objective(y1, ecus, x1, z1, 
-                                       sensor_ecu_costs, actuator_ecu_costs, ecu_ecu_costs, 
-                                       include_cable_cost=include_cable_cost)
-        m1.setObjective(obj1, GRB.MINIMIZE)
+        c1 = self.min_cost_objective(y1, ecus, x1, z1, sensor_ecu_costs, actuator_ecu_costs, ecu_ecu_costs, include_cable_cost)
+        #l1 = self.min_cable_objective(x1, z1, sensor_ecu_dists, actuator_ecu_dists, ecu_ecu_dists)
+        m1.setObjective(c1, GRB.MINIMIZE)
         m1.optimize()
         
-        # Check if we have a feasible solution (Optimal or TimeLimit with solution)
         if m1.SolCount == 0:
-            print("ERROR: No feasible solution found!")
+            print("Error: No feasible solution found for Min Cost!")
             return []
-        
-        if m1.status == GRB.TIME_LIMIT:
-             print(f"      Warning: Time limit reached. Using best solution found (Gap: {m1.MIPGap:.2%})")
+            
+        sol1 = self.extract_solution(m1, x1, y1, z1, scs, ecus, sensor_ecu_dists, actuator_ecu_dists, ecu_ecu_dists, sensor_ecu_costs, actuator_ecu_costs, ecu_ecu_costs)
+        L_max = sol1['cable_length']
+        print(f"-> Status: {sol1['status']}, Min Cost: ${sol1['total_cost']:.0f}, Length: {L_max:.1f}m")
 
-        min_cost_val = m1.ObjVal
-        print(f"Min Cost = ${min_cost_val:.0f}")
-        
-        print("\n[2/3] Finding Minimum Cable Length...")
+        # --- Step 2: Minimize Length (Extremity 2) ---
+        print("\n[2] Finding Extremity 2: Minimum Cable Length...")
         m2, x2, y2, z2 = self._create_base_model("MinCable", scs, ecus, sensors, actuators, comm_pairs, 
-                                                 sensor_ecu_latencies, actuator_ecu_latencies, ecu_ecu_latencies, 
-                                                 comm_matrix, enable_latency_constraints, time_limit=time_limit)
+            sensor_ecu_latencies, actuator_ecu_latencies, ecu_ecu_latencies, comm_matrix, enable_latency_constraints, time_limit, mip_gap, verbose)
+        if warm_start: self.inject_warm_start(x2, greedy_sol)
         
-        # Inject Warm Start to Step 2
-        if warm_start:
-            self.inject_warm_start(x2, greedy_sol)
-
-        m2.setObjective(self.min_cable_objective(x2, z2, sensor_ecu_dists, actuator_ecu_dists, ecu_ecu_dists), GRB.MINIMIZE)
+        l2 = self.min_cable_objective(x2, z2, sensor_ecu_dists, actuator_ecu_dists, ecu_ecu_dists)
+        m2.setObjective(l2, GRB.MINIMIZE)
         m2.optimize()
         
-        hw_c = sum(ecus[j].cost for j in range(len(ecus)) if y2[j].X > 0.5)
-        cable_c = 0.0
-        if include_cable_cost:
-            for (i, j), var in x2.items():
-                if var.X > 0.5:
-                    cable_c += sensor_ecu_costs.get((i, j), 0)
-                    cable_c += actuator_ecu_costs.get((i, j), 0)
-            for (j1, j2), var in z2.items():
-                 if var.X > 0.5:
-                    cable_c += ecu_ecu_costs.get((j1, j2), 0)
-        
-        cost_at_min_cable = hw_c + cable_c
-        print(f"Cost at Min Cable = ${cost_at_min_cable:.0f}")
-        
-        # --- Step 3: Generate Pareto Points ---
-        print(f"\n[3/3] Generating {num_points} Pareto solutions...")
-        print("-" * 50)
-        
-        # Handle small numerical diffs
-        if abs(cost_at_min_cable - min_cost_val) < 1.0:
-            cost_levels = [min_cost_val]
-            print("      (Min Cost == Cost at Min Cable. No trade-off range exists.)")
+        if m2.SolCount == 0:
+            print("Error: No feasible solution found for Min Cable!")
+            # Use L_max as fallback if we can't find min cable (should only happen if inconsistent constraints)
+            L_min = L_max 
         else:
-            step = (cost_at_min_cable - min_cost_val) / (num_points - 1)
-            cost_levels = [min_cost_val + i * step for i in range(num_points)]
-        
-        solutions = []
-        for idx, limit in enumerate(cost_levels):
-            m, x, y, z = self._create_base_model(f"Pareto_{idx}", scs, ecus, sensors, actuators, comm_pairs, 
-                                                 sensor_ecu_latencies, actuator_ecu_latencies, ecu_ecu_latencies, 
-                                                 comm_matrix, enable_latency_constraints, time_limit=time_limit)
-            
-            # Inject Warm Start to Step 3
-            if warm_start:
-                self.inject_warm_start(x, greedy_sol)
+            sol2 = self.extract_solution(m2, x2, y2, z2, scs, ecus, sensor_ecu_dists, actuator_ecu_dists, ecu_ecu_dists, sensor_ecu_costs, actuator_ecu_costs, ecu_ecu_costs)
+            L_min = sol2['cable_length']
+            print(f"-> Status: {sol2['status']}, Min Length: {L_min:.1f}m (Cost: ${sol2['total_cost']:.0f})")
 
-            # Constraint: Cost <= limit
-            cost_expr = self.min_cost_objective(y, ecus, x, z, 
-                                                sensor_ecu_costs, actuator_ecu_costs, ecu_ecu_costs, 
-                                                include_cable_cost=include_cable_cost)
-            m.addConstr(cost_expr <= limit, name="epsilon_constraint")
+        # --- Step 3: Grid Search ---
+        print(f"\n[3] Searching Pareto Front from {L_max:.1f}m to {L_min:.1f}m using {num_points} intermediate points...")
+        
+        if abs(L_max - L_min) < 0.5:
+            targets = [L_max]
+            print("    -> Range is too small (Min Cost is already Min Length). Returning minimal set.")
+        else:
+            # We want num_points strictly BETWEEN L_max and L_min
+            # Total steps including start (L_max) and end (L_min) would be num_points + 2
+            # But user wants specific logic: Generate points between them.
+            # Let's generate a full range including endpoints, then slice or just rely on duplicates checking.
+            # Strategy: Generate (num_points + 2) targets linearly spaced.
+            # This ensures we hit L_max, L_min, and exactly num_points in between.
             
-            # Objective: Minimize Cable Length
-            m.setObjective(self.min_cable_objective(x, z, sensor_ecu_dists, actuator_ecu_dists, ecu_ecu_dists), GRB.MINIMIZE)
+            total_points = num_points + 2
+            targets = [L_max - i * (L_max - L_min) / (total_points - 1) for i in range(total_points)]
+            print(targets)
+            
+        print("-" * 110)
+        print(f"| {'Iter':<4} | {'Limit (m)':<10} | {'Status':<10} | {'Total Cost':<12} | {'HW Cost':<10} | {'Cable Cost':<10} | {'Length (m)':<10} | {'ECUs':<4} |")
+        print("-" * 110)
+        
+        processed_solutions = set() # Store hashes to avoid duplicates
+
+        for idx, target_len in enumerate(targets):
+            
+            m, x, y, z = self._create_base_model(f"Grid_{idx}", scs, ecus, sensors, actuators, comm_pairs, 
+                sensor_ecu_latencies, actuator_ecu_latencies, ecu_ecu_latencies, comm_matrix, enable_latency_constraints, time_limit, mip_gap, verbose)
+            
+            if warm_start: self.inject_warm_start(x, greedy_sol)
+            
+            # Constraint: Length <= Target
+            l_expr = self.min_cable_objective(x, z, sensor_ecu_dists, actuator_ecu_dists, ecu_ecu_dists)
+            m.addConstr(l_expr <= target_len, name="length_constraint")
+            
+            # Objective: Min Cost (+ epsilon length)
+            c_expr = self.min_cost_objective(y, ecus, x, z, sensor_ecu_costs, actuator_ecu_costs, ecu_ecu_costs, include_cable_cost)
+            m.setObjective(c_expr + 0.001 * l_expr, GRB.MINIMIZE)
+            
             m.optimize()
             
-            if m.status == GRB.OPTIMAL:
-                # Extract solution
-                assignment = {}
-                ecus_used = set()
+            if m.SolCount > 0:
+                sol = self.extract_solution(m, x, y, z, scs, ecus, sensor_ecu_dists, actuator_ecu_dists, ecu_ecu_dists, sensor_ecu_costs, actuator_ecu_costs, ecu_ecu_costs)
                 
-                # Check Assignments
-                for (i, j), var in x.items():
-                    if var.X > 0.5:
-                        assignment[scs[i].id] = ecus[j].id
-                        ecus_used.add(j)
-                
-                # Calculate metrics
-                hw_cost_sol = sum(ecus[j].cost for j in ecus_used)
-                
-                # Calculate Length
-                cable_len_sol = 0.0
-                cable_cost_sol = 0.0
-                
-                for (i, j), var in x.items():
-                    if var.X > 0.5:
-                        cable_len_sol += sensor_ecu_dists.get((i, j), 0)
-                        cable_len_sol += actuator_ecu_dists.get((i, j), 0)
-                        cable_cost_sol += sensor_ecu_costs.get((i, j), 0)
-                        cable_cost_sol += actuator_ecu_costs.get((i, j), 0)
-                        
-                for (j1, j2), var in z.items():
-                    if var.X > 0.5:
-                        cable_len_sol += ecu_ecu_dists.get((j1, j2), 0)
-                        cable_cost_sol += ecu_ecu_costs.get((j1, j2), 0)
-                
-                total_cost_sol = hw_cost_sol + cable_cost_sol
+                # Check duplicate by exact cost and length tuple
+                sol_key = (round(sol['total_cost'], 2), round(sol['cable_length'], 2))
+                if sol_key not in processed_solutions:
+                    processed_solutions.add(sol_key)
+                    solutions.append(sol)
+                    
+                    print(f"| {idx+1:<4} | {target_len:<10.1f} | {sol['status']:<10} | ${sol['total_cost']:<11.0f} | ${sol['hardware_cost']:<9.0f} | ${sol['cable_cost']:<9.0f} | {sol['cable_length']:<10.1f} | {sol['num_ecus_used']:<4} |")
+                else:
+                    print(f"| {idx+1:<4} | {target_len:<10.1f} | {'DUPLICATE':<10} | {'-':<12} | {'-':<10} | {'-':<10} | {'-':<10} | {'-':<4} |")
+            else:
+                 print(f"| {idx+1:<4} | {target_len:<10.1f} | {'INFEASIBLE':<10} | {'-':<12} | {'-':<10} | {'-':<10} | {'-':<10} | {'-':<4} |")
 
-                # Determine status string
-                status_str = "OPTIMAL" if m.status == GRB.OPTIMAL else f"SUB-OPT (Gap: {m.MIPGap:.1%})"
-
-                solutions.append({
-                    'assignment': assignment,
-                    'hardware_cost': hw_cost_sol,
-                    'cable_cost': cable_cost_sol,
-                    'total_cost': total_cost_sol,
-                    'cable_length': cable_len_sol,
-                    'num_ecus_used': len(ecus_used),
-                    'optimality_status': status_str # Saved for simple check later
-                })
-                print(f"  #{idx+1}: {status_str} | Cost=${total_cost_sol:.0f} (HW=${hw_cost_sol:.0f}, Cable=${cable_cost_sol:.0f}) | Len={cable_len_sol:.1f}m | ECUs={len(ecus_used)}")
-                
-        print("-" * 50)
-        print(f"✓ Found {len(solutions)} Pareto solutions.")
+        print("-" * 110)
         return solutions

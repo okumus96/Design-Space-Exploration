@@ -52,8 +52,9 @@ def main(args):
     
     # Generate Pareto front: HW Cost vs Cable Length
     pareto_solutions = opt.optimize(
-        scs, ecus, sensors, actuators, cable_types, comm_matrix, num_points=3,
-        include_cable_cost=True, enable_latency_constraints=True, warm_start=args.warm_start, time_limit=args.time_limit
+        scs, ecus, sensors, actuators, cable_types, comm_matrix, num_points=args.num_points,
+        include_cable_cost=True, enable_latency_constraints=True, warm_start=args.warm_start, time_limit=args.time_limit,
+        mip_gap=args.mip_gap, verbose=args.verbose
     )
     
     # Visualize Pareto front
@@ -68,11 +69,11 @@ def main(args):
         visualizer.display_assignments(solution_idx,solution,scs,ecus)
         # Visualize this solution
         print(f"\n   Generating visualization for Solution {solution_idx}...")
-        #visualizer.visualize_optimization_result(scs, ecus, sensors, actuators, solution['assignment'], filename=f"solution_{solution_idx}_optimization.png")
+        visualizer.visualize_optimization_result(scs, ecus, sensors, actuators, solution['assignment'], filename=f"optimization_result_solution_{solution_idx}.png")
         
         # Vehicle layout with assigned ECUs
         print(f"   Generating vehicle layout for Solution {solution_idx}...")
-        visualizer.plot_vehicle_layout_topdown(sensors, actuators, solution['assignment'], ecus, filename=f"solution_{solution_idx}_vehicle_layout.png")
+        visualizer.plot_vehicle_layout_topdown(sensors, actuators, solution['assignment'], ecus, filename=f"vehicle_layout_solution_{solution_idx}.png")
     
     print("\n" + "=" * 80)
     print("PIPELINE COMPLETED SUCCESSFULLY")
@@ -88,6 +89,9 @@ if __name__ == "__main__":
     argparser.add_argument("--solver", type=str, default="gurobi", choices=["gurobi", "z3"], help="Solver to use")
     argparser.add_argument("--time_limit", type=int, default=None, help="Time limit in seconds")
     argparser.add_argument("--warm_start", action="store_true", help="Enable warm start for optimization")
+    argparser.add_argument("--mip_gap", type=float, default=None, help="MIP Gap for Gurobi optimizer")
     argparser.add_argument("--output_dir", type=str, default="results", help="Directory to save visualization results")
+    argparser.add_argument("--num_points", type=int, default=5, help="Number of Pareto points to generate")
+    argparser.add_argument("--verbose", action="store_true", help="Enable verbose output during optimization")
     args = argparser.parse_args()
     main(args)

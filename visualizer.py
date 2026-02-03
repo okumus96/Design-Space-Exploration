@@ -5,6 +5,8 @@ import pandas as pd
 import seaborn as sns
 import os
 from matplotlib.lines import Line2D
+from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
+from matplotlib.patches import ConnectionPatch
 from tabulate import tabulate
 
 
@@ -328,53 +330,31 @@ class Visualization:
             return
         
         # Extract data
-        ecus = [sol['num_ecus_used'] for sol in pareto_solutions]
-        costs = [sol['hardware_cost'] for sol in pareto_solutions]
+        cable_lengths = [sol['cable_length'] for sol in pareto_solutions]
+        total_costs = [sol['total_cost'] for sol in pareto_solutions]
         
         # Create figure with subplots
-        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+        fig, axes = plt.subplots(1, 1, figsize=(14, 5))
         
-        # Plot 1: Pareto Front (ECU vs Cost)
-        ax1 = axes[0]
-        ax1.scatter(ecus, costs, s=200, alpha=0.6, c='blue', edgecolors='black', linewidth=2)
+        # Plot 1: Pareto Front (Cable Length vs Total Cost)
+        ax1 = axes
+        ax1.scatter(cable_lengths, total_costs, s=200, alpha=0.6, c='blue', edgecolors='black', linewidth=2)
         
         # Add solution numbers
-        for i, (ecu, cost) in enumerate(zip(ecus, costs), 1):
-            ax1.annotate(f'S{i}', (ecu, cost), textcoords="offset points", 
+        for i, (length, cost) in enumerate(zip(cable_lengths, total_costs), 1):
+            ax1.annotate(f'S{i}', (length, cost), textcoords="offset points", 
                         xytext=(0,10), ha='center', fontsize=10, fontweight='bold')
         
-        # Add line connecting solutions
-        sorted_indices = sorted(range(len(ecus)), key=lambda i: ecus[i])
-        sorted_ecus = [ecus[i] for i in sorted_indices]
-        sorted_costs = [costs[i] for i in sorted_indices]
-        ax1.plot(sorted_ecus, sorted_costs, 'b--', alpha=0.3, linewidth=1)
+        # Add line connecting solutions (Sorted by cable length)
+        sorted_indices = sorted(range(len(cable_lengths)), key=lambda i: cable_lengths[i])
+        sorted_lengths = [cable_lengths[i] for i in sorted_indices]
+        sorted_costs = [total_costs[i] for i in sorted_indices]
+        ax1.plot(sorted_lengths, sorted_costs, 'b--', alpha=0.3, linewidth=1)
         
-        ax1.set_xlabel('Number of ECUs Used', fontsize=12, fontweight='bold')
+        ax1.set_xlabel('Total Cable Length (m)', fontsize=12, fontweight='bold')
         ax1.set_ylabel('Total Cost ($)', fontsize=12, fontweight='bold')
-        ax1.set_title('Pareto Front: Cost vs ECU Count', fontsize=14, fontweight='bold')
+        ax1.set_title('Pareto Front: Cost vs Cable Length', fontsize=14, fontweight='bold')
         ax1.grid(True, alpha=0.3)
-        ax1.set_xticks(range(int(min(ecus)), int(max(ecus))+1))
-        
-        # Plot 2: Efficiency (SCs per ECU)
-        ax2 = axes[1]
-        efficiency = [len(sol['assignment']) / sol['num_ecus_used'] for sol in pareto_solutions]
-        cost_range = max(costs) - min(costs) if max(costs) != min(costs) else 1
-        colors = plt.cm.RdYlGn([(c - min(costs)) / cost_range for c in costs])
-        
-        bars = ax2.bar(range(1, len(pareto_solutions)+1), efficiency, color=colors, 
-                       edgecolor='black', linewidth=1.5, alpha=0.7)
-        
-        ax2.set_xlabel('Solution Number', fontsize=12, fontweight='bold')
-        ax2.set_ylabel('SCs per ECU (Efficiency)', fontsize=12, fontweight='bold')
-        ax2.set_title('Solution Efficiency Comparison', fontsize=14, fontweight='bold')
-        ax2.set_xticks(range(1, len(pareto_solutions)+1))
-        ax2.grid(True, alpha=0.3, axis='y')
-        
-        # Add value labels on bars
-        for i, (bar, eff) in enumerate(zip(bars, efficiency)):
-            height = bar.get_height()
-            ax2.text(bar.get_x() + bar.get_width()/2., height,
-                    f'{eff:.2f}', ha='center', va='bottom', fontsize=9, fontweight='bold')
         
         plt.tight_layout()
         self.save_plot(filename)
@@ -383,8 +363,6 @@ class Visualization:
         """
         ECU'ları kutular olarak görselleştir, SW'leri içinde göster
         """
-        from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
-        from matplotlib.patches import ConnectionPatch
         
         # Lookup dictionaries
         sc_dict = {s.id: s for s in scs}
@@ -665,43 +643,73 @@ class Visualization:
                 if actuator.type not in actuator_types_plotted:
                     actuator_types_plotted.add(actuator.type)
         
-        # Plot ECUs (if provided, show only assigned ones)
+        # Plot ECUs (if provided)
         if ecus is not None:
-            # ECU tiplerine göre farklı renkler
-            ecu_type_colors = {
-                'HPC': '#FF6B6B',      # Kırmızı
-                'ZONE': "#050370",     # Cyan
-                'MCU': '#95E1D3'       # Mint green
-            }
-            
-            # Filter: only show ECUs that are in assignments
-            assigned_ecu_ids = set()
-            if assignments:
-                assigned_ecu_ids = set(assignments.values())
-            
-            ecu_types_plotted = set()
-            for ecu in ecus:
-                # Skip ECUs that are not assigned (if assignments provided)
-                if assignments and ecu.id not in assigned_ecu_ids:
-                    continue
+            # Check mode: Candidate Sites (no assignments) or Assigned ECUs
+            if assignments is None:
+                # --- CANDIDATE SITES MODE ---
+                unique_locations = []
+                seen_coords = set()
                 
-                color = ecu_type_colors.get(ecu.type, '#FADBD8')
-                y_pos = -ecu.location.y
+                # Sort to ensure stable labeling
+                sorted_ecus = sorted(ecus, key=lambda e: e.id)
                 
-                label = f'ECU: {ecu.type}' if ecu.type not in ecu_types_plotted else ''
+                for ecu in sorted_ecus:
+                    coord = (round(ecu.location.x, 2), round(ecu.location.y, 2))
+                    if coord not in seen_coords:
+                        seen_coords.add(coord)
+                        unique_locations.append(ecu)
                 
-                ax.scatter(ecu.location.x, y_pos, s=200, c=color, 
-                          marker='D', edgecolor='black', linewidth=2, zorder=4, 
-                          alpha=0.7, label=label)
-                
-                # Label next to the marker (not on top)
-                short_id = ecu.id.split('_')[1]
-                ax.annotate(short_id, (ecu.location.x, y_pos), 
+                for idx, ecu in enumerate(unique_locations, 1):
+                    y_pos = -ecu.location.y
+                    
+                    label = 'Candidate Site' if idx == 1 else ""
+                    ax.scatter(ecu.location.x, y_pos, s=350, c='lightgray', 
+                              marker='s', edgecolor='black', linewidth=2, zorder=4, 
+                              label=label)
+                    
+                    # Label as L1, L2... (ensure zorder is higher than scatter)
+                    ax.text(ecu.location.x, y_pos, f"L{idx-1}", 
                            fontsize=8, ha='center', va='center', fontweight='bold', 
-                           color='black')
+                           color='black', zorder=10)
+            
+            else:
+                # --- ASSIGNED ECUS MODE ---
+                ecu_type_colors = {
+                    'HPC': '#FF6B6B',      # Red
+                    'ZONE': "#050370",     # Cyan
+                    'MCU': '#95E1D3'       # Mint green
+                }
                 
-                if ecu.type not in ecu_types_plotted:
-                    ecu_types_plotted.add(ecu.type)
+                assigned_ecu_ids = set(assignments.values())
+                
+                ecu_types_plotted = set()
+                for ecu in ecus:
+                    # Only show assigned ECUs
+                    if ecu.id not in assigned_ecu_ids:
+                        continue
+                    
+                    color = ecu_type_colors.get(ecu.type, '#FADBD8')
+                    y_pos = -ecu.location.y
+                    
+                    label = f'ECU: {ecu.type}' if ecu.type not in ecu_types_plotted else ''
+                    
+                    ax.scatter(ecu.location.x, y_pos, s=200, c=color, 
+                              marker='D', edgecolor='black', linewidth=2, zorder=4, 
+                              alpha=0.7, label=label)
+                    
+                    # Label using the ID number from ECU_X
+                    try:
+                        short_id = ecu.id.split('_')[1]
+                    except:
+                        short_id = ecu.id
+                        
+                    ax.annotate(short_id, (ecu.location.x, y_pos), 
+                               fontsize=8, ha='center', va='center', fontweight='bold', 
+                               color='black')
+                    
+                    if ecu.type not in ecu_types_plotted:
+                        ecu_types_plotted.add(ecu.type)
         
         # Add dimension annotations
         # Length annotation (vertical on the left)
@@ -722,12 +730,25 @@ class Visualization:
         from matplotlib.lines import Line2D
         legend_elements = [
             patches.Rectangle((0, 0), 1, 1, facecolor='lightgray', edgecolor='black', linewidth=2, label='Vehicle Body'),
-            Line2D([0], [0], marker='D', color='w', markerfacecolor='#FF6B6B', markersize=12, 
-                   markeredgecolor='black', markeredgewidth=2, label='ECU: HPC'),
-            Line2D([0], [0], marker='D', color='w', markerfacecolor='#050370', markersize=12, 
-                   markeredgecolor='black', markeredgewidth=2, label='ECU: ZONE'),
-            Line2D([0], [0], marker='D', color='w', markerfacecolor='#95E1D3', markersize=12, 
-                   markeredgecolor='black', markeredgewidth=2, label='ECU: MCU'),
+        ]
+        
+        if ecus is not None:
+            if assignments is None:
+                legend_elements.append(
+                    Line2D([0], [0], marker='s', color='w', markerfacecolor='lightgray', markersize=12, 
+                           markeredgecolor='black', markeredgewidth=2, label='Candidate Site')
+                )
+            else:
+                legend_elements.extend([
+                    Line2D([0], [0], marker='D', color='w', markerfacecolor='#FF6B6B', markersize=12, 
+                           markeredgecolor='black', markeredgewidth=2, label='ECU: HPC'),
+                    Line2D([0], [0], marker='D', color='w', markerfacecolor='#050370', markersize=12, 
+                           markeredgecolor='black', markeredgewidth=2, label='ECU: ZONE'),
+                    Line2D([0], [0], marker='D', color='w', markerfacecolor='#95E1D3', markersize=12, 
+                           markeredgecolor='black', markeredgewidth=2, label='ECU: MCU'),
+                ])
+
+        legend_elements.extend([
             Line2D([0], [0], marker='o', color='w', markerfacecolor='#2ECC71', markersize=12, markeredgecolor='black', markeredgewidth=2, label='CAMERA'),
             Line2D([0], [0], marker='o', color='w', markerfacecolor='#E74C3C', markersize=12, markeredgecolor='black', markeredgewidth=2, label='LIDAR'),
             Line2D([0], [0], marker='o', color='w', markerfacecolor='#F39C12', markersize=12, markeredgecolor='black', markeredgewidth=2, label='IMU'),
@@ -737,7 +758,7 @@ class Visualization:
             Line2D([0], [0], marker='^', color='w', markerfacecolor='#3498DB', markersize=12, markeredgecolor='black', markeredgewidth=2, label='STEERING'),
             Line2D([0], [0], marker='^', color='w', markerfacecolor='#FFD700', markersize=12, markeredgecolor='black', markeredgewidth=2, label='LIGHT'),
             Line2D([0], [0], marker='^', color='w', markerfacecolor='#F39C12', markersize=12, markeredgecolor='black', markeredgewidth=2, label='HVAC'),
-        ]
+        ])
         
         ax.legend(handles=legend_elements, loc='upper right', fontsize=11, ncol=2, framealpha=0.95, edgecolor='black', fancybox=True)
         

@@ -344,42 +344,24 @@ class VehicleDataGenerator:
                         })
     
     def generate_ecu(self):
-        """Generate ECUs using types and placement bounds from configuration"""
+        """Generate ECUs: One of each type at each candidate location to avoid placement bias."""
         ecu_types = self.config_reader.get_ecu_types_config()
         
-        # Calculate exact count for each ECU type based on probability
-        type_counts = {}
-        remaining = self.num_ecus
+        # We treat 'self.num_ecus' as the number of 'Candidate Sites/Locations'
+        num_locations = self.num_ecus
         
-        for i, ecu_type_config in enumerate(ecu_types):
-            if i < len(ecu_types) - 1:
-                count = round(ecu_type_config['probability'] * self.num_ecus)
-                type_counts[ecu_type_config['type']] = count
-                remaining -= count
-            else:
-                # Last type gets remaining ECUs to ensure exact total
-                type_counts[ecu_type_config['type']] = remaining
-        
-        # Create list of ECU type configs with exact counts
-        ecu_type_list = []
-        for ecu_type_config in ecu_types:
-            count = type_counts[ecu_type_config['type']]
-            ecu_type_list.extend([ecu_type_config] * count)
-        
-        # Shuffle to avoid ordered placement
-        random.shuffle(ecu_type_list)
-        
-        # Place ECUs in a grid pattern using config bounds
-        cols = int(self.num_ecus ** 0.5) 
-        rows = (self.num_ecus + cols - 1) // cols
+        # Place Locations in a grid pattern using config bounds
+        cols = int(num_locations ** 0.5) 
+        rows = (num_locations + cols - 1) // cols
         
         x_step = (self.ECU_X_MAX - self.ECU_X_MIN) / max(1, cols - 1) if cols > 1 else 0
         y_step = (self.ECU_Y_MAX - self.ECU_Y_MIN) / max(1, rows - 1) if rows > 1 else 0
 
-        ecu_idx = 0
+        self.ecus = []
+        loc_idx = 0
         for r in range(rows):
             for c in range(cols):
-                if ecu_idx >= self.num_ecus:
+                if loc_idx >= num_locations:
                     break
                     
                 # Calculate grid position
@@ -387,24 +369,27 @@ class VehicleDataGenerator:
                 y_pos = self.ECU_Y_MAX - r * y_step # Top to bottom
                 location = Point(x_pos, y_pos)
                 
-                # Get pre-assigned ECU type
-                selected_type = ecu_type_list[ecu_idx]
+                # At this location, generate ONE of EACH ECU type
+                for type_config in ecu_types:
+                    # Create unique ID: ECU_L{loc_idx}_{Type}
+                    ecu_id = f"ECU_L{loc_idx}_{type_config['type']}"
+                    
+                    ecu = CandidateECU(
+                        id=ecu_id,
+                        cpu_cap=type_config['cpu_cap'],
+                        ram_cap=type_config['ram_cap'],
+                        rom_cap=type_config['rom_cap'],
+                        max_containers=type_config['max_containers'],
+                        cost=type_config['cost'],
+                        type=type_config['type'],
+                        asil_level=type_config['asil_level'],
+                        hw_offered=type_config['hw_offered'],
+                        interface_offered=type_config['interface_offered'],
+                        location=location
+                    )
+                    self.ecus.append(ecu)
                 
-                ecu = CandidateECU(
-                    id=f"ECU_{ecu_idx}_{selected_type['type']}",
-                    cpu_cap=selected_type['cpu_cap'],
-                    ram_cap=selected_type['ram_cap'],
-                    rom_cap=selected_type['rom_cap'],
-                    max_containers=selected_type['max_containers'],
-                    cost=selected_type['cost'],
-                    type=selected_type['type'],
-                    asil_level=selected_type['asil_level'],
-                    hw_offered=selected_type['hw_offered'],
-                    interface_offered=selected_type['interface_offered'],
-                    location=location
-                )
-                self.ecus.append(ecu)
-                ecu_idx += 1
+                loc_idx += 1
 
     def generate_data(self):
         self.generate_sensors()

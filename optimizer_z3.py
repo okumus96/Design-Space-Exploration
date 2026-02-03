@@ -293,13 +293,15 @@ class AssignmentOptimizerZ3:
 
         return opt, x, y, z
 
-    def optimize(self, scs, ecus, sensors, actuators, cable_types, comm_matrix=None, num_points=5, include_cable_cost=False, enable_latency_constraints=False, time_limit=60):
+    def optimize(self, scs, ecus, sensors, actuators, cable_types, comm_matrix=None, num_points=5, include_cable_cost=False, enable_latency_constraints=False, warm_start=False, time_limit=60, mip_gap=None):
         """
         Z3-based Pareto Optimization.
         """
         print("\n" + "="*60)
         print("Z3 PARETO OPTIMIZATION: HW Cost vs Cable Length")
         print("="*60)
+        if mip_gap is not None:
+             print(f"      (Warning: mip_gap={mip_gap} ignored for Z3 solver)")
 
         # Convert time limit to ms
         time_limit_ms = int(time_limit * 1000)
