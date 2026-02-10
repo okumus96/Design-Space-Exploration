@@ -10,8 +10,9 @@ Main script that orchestrates the entire workflow:
 import argparse
 from config_reader import ConfigReader
 from data_generator import VehicleDataGenerator
-from optimizer import AssignmentOptimizer
-from optimizer_z3 import AssignmentOptimizerZ3
+#from optimizer import AssignmentOptimizer
+#from optimizer_z3 import AssignmentOptimizerZ3
+from optimizer_new import AssignmentOptimizerNew
 from visualizer import Visualization
 from tabulate import tabulate
 
@@ -44,18 +45,21 @@ def main(args):
     if hasattr(args, 'solver') and args.solver == 'z3':
         print("STEP 2: Running Z3 Optimization")
         print("-" * 80)
-        opt = AssignmentOptimizerZ3()
+        #opt = AssignmentOptimizerZ3()
     else:
         print("STEP 2: Running Gurobi Optimization")
         print("-" * 80)
-        opt = AssignmentOptimizer()
+        #opt = AssignmentOptimizer()
+        opt = AssignmentOptimizerNew()
     
     # Generate Pareto front: HW Cost vs Cable Length
-    pareto_solutions = opt.optimize(
-        scs, ecus, sensors, actuators, cable_types, comm_matrix, num_points=args.num_points,
-        include_cable_cost=True, enable_latency_constraints=True, warm_start=args.warm_start, time_limit=args.time_limit,
-        mip_gap=args.mip_gap, verbose=args.verbose
-    )
+    #pareto_solutions = opt.optimize(
+    #    scs, ecus, sensors, actuators, cable_types, comm_matrix, num_points=args.num_points,
+    #    include_cable_cost=True, enable_latency_constraints=True, warm_start=args.warm_start, time_limit=args.time_limit,
+    #    mip_gap=args.mip_gap, verbose=args.verbose
+    #)
+    pareto_solutions = opt.optimize(scs, ecus, sensors, actuators, cable_types, comm_matrix)
+    
     
     # Visualize Pareto front
     visualizer.visualize_pareto_front(pareto_solutions)
@@ -82,8 +86,8 @@ def main(args):
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description="ECU Optimization and Visualization Pipeline")
-    argparser.add_argument("--num_ecus", type=int, default=30, help="Number of candidate ECUs to generate")
-    argparser.add_argument("--num_scs", type=int, default=100, help="Number of software components to generate")
+    argparser.add_argument("--num_ecus", type=int, default=10, help="Number of candidate ECUs to generate")
+    argparser.add_argument("--num_scs", type=int, default=20, help="Number of software components to generate")
     argparser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     argparser.add_argument("--config_dir", type=str, default="configs", help="Directory containing configuration JSON files")
     argparser.add_argument("--solver", type=str, default="gurobi", choices=["gurobi", "z3"], help="Solver to use")

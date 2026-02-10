@@ -5,3 +5,5 @@
 .vscode/
 ECU optimization/
 results/
+*.lp
+*.ilp

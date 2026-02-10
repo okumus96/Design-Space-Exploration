@@ -1,4 +1,5 @@
 {
+  "_comment": "CPU Requirements in DMIPS, RAM/ROM Requirements in MB and cost in USD",
   "sc_domain_weights": {
     "ADAS": 0.30,
     "Infotainment": 0.15,
@@ -12,8 +13,8 @@
         "HW_ACC": 0.70,
         "DSP": 0.40
       },
-      "cpu_range": [15000, 40000],
-      "ram_range": [1000, 3000],
+      "cpu_range": [3000, 8000],
+      "ram_range": [500, 2000],
       "rom_range": [50, 200],
       "asil_levels": [3, 4],
       "redundancy_ratio": 0.10
@@ -22,8 +23,8 @@
       "hw_requirements": {
         "HW_ACC": 0.30
       },
-      "cpu_range": [10000, 30000],
-      "ram_range": [1000, 4000],
+      "cpu_range": [2000, 6000],
+      "ram_range": [500, 1500],
       "rom_range": [20, 100],
       "asil_levels": [0, 1],
       "redundancy_ratio": 0.0

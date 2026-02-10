@@ -53,7 +53,7 @@ class VehicleDataGenerator:
                 interface=sensor_config['interface'],
                 volume=sensor_config['volume'],
                 location=location,
-                max_latency=random.randint(5, 100)  # 5-100ms tolerance
+                max_latency=sensor_config.get('max_latency', random.randint(5, 100))
             )
             self.sensors.append(sensor)
 
@@ -74,7 +74,7 @@ class VehicleDataGenerator:
                 interface=actuator_config['interface'],
                 volume=actuator_config['volume'],
                 location=location,
-                max_latency=random.randint(5, 100)  # 5-100ms tolerance
+                max_latency=actuator_config.get('max_latency', random.randint(5, 100))
             )
             self.actuators.append(actuator)
 
@@ -379,13 +379,15 @@ class VehicleDataGenerator:
                         cpu_cap=type_config['cpu_cap'],
                         ram_cap=type_config['ram_cap'],
                         rom_cap=type_config['rom_cap'],
-                        max_containers=type_config['max_containers'],
+                        max_partitions=type_config['max_partitions'],
                         cost=type_config['cost'],
                         type=type_config['type'],
                         asil_level=type_config['asil_level'],
                         hw_offered=type_config['hw_offered'],
                         interface_offered=type_config['interface_offered'],
-                        location=location
+                        location=location,
+                        system_overhead_percent=type_config.get('system_overhead_percent', 0.0),
+                        partition_reservation_percent=type_config.get('partition_reservation_percent', 0.0)
                     )
                     self.ecus.append(ecu)
                 

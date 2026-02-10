@@ -30,7 +30,6 @@ class AssignmentOptimizer:
     
     Objectives: Minimize HW Cost and Cable Length (Pareto front)
     """
-    
     # =========================================================================
     # HELPER FUNCTIONS
     # =========================================================================
@@ -174,137 +173,6 @@ class AssignmentOptimizer:
         interface_ok = set(sc.interface_required).issubset(set(ecu.interface_offered)) if sc.interface_required else True
         asil_ok = ecu.asil_level >= sc.asil_req
         return hw_ok and interface_ok and asil_ok
-
-    def inject_warm_start(self, x_vars,greedy_sol):
-        if greedy_sol:     # Helper to inject warm start
-            # print("      -> Injecting Warm Start into Gurobi model...") # Optional logging
-            for i_sc, j_ecu in greedy_sol.items():
-                if (i_sc, j_ecu) in x_vars:
-                    x_vars[i_sc, j_ecu].Start = 1
-    
-    def _generate_greedy_solution(self, scs, ecus, sensors, actuators, comm_matrix=None):
-        """
-        Generates a smart initial solution (Warm Start) considering:
-        1. Constraints (Resources, ASIL, Interface)
-        2. Physical Cabling (Sensors/Actuators)
-        3. Communication Locality (SC-to-SC)
-        4. Hardware Cost (Minimizing active ECUs)
-        """
-        solution = {} # sc_idx -> ecu_idx
-        
-        # Track remaining capacities of ECUs
-        ecu_caps = []
-        ecu_active = [False] * len(ecus)
-        for e in ecus:
-            ecu_caps.append({
-                'cpu': e.cpu_cap,
-                'ram': e.ram_cap,
-                'rom': e.rom_cap,
-                'cont': e.max_containers
-            })
-            
-        sensor_lookup = {s.id: s for s in sensors}
-        actuator_lookup = {a.id: a for a in actuators}
-        sc_id_to_idx = {sc.id: i for i, sc in enumerate(scs)}
-
-        # Precompute communication partners for locality score
-        comm_neighbors = {i: [] for i in range(len(scs))}
-        if comm_matrix:
-            for link in comm_matrix:
-                src = link.get('src')
-                dst = link.get('dst')
-                if src in sc_id_to_idx and dst in sc_id_to_idx:
-                    u, v = sc_id_to_idx[src], sc_id_to_idx[dst]
-                    comm_neighbors[u].append(v)
-                    comm_neighbors[v].append(u)
-
-        # Sort SCs: Combining Resource Heaviness and Connectivity Degree
-        # "Hardest to place" first. 
-        # Score = (CPU_req normalized) + (Connectivity Count)
-        def urgency_score(i):
-            res_norm = (scs[i].cpu_req / 500.0) # Approx weight
-            conn_count = len(comm_neighbors[i])
-            return res_norm + conn_count
-
-        sorted_sc_indices = sorted(range(len(scs)), key=urgency_score, reverse=True)
-
-        for i in sorted_sc_indices:
-            sc = scs[i]
-            best_ecu = -1
-            best_score = float('inf')
-            
-            # Identify forbidden ECUs (redundancy)
-            forbidden_ecus = set()
-            if sc.redundant_with and sc.redundant_with in sc_id_to_idx:
-                partner_idx = sc_id_to_idx[sc.redundant_with]
-                if partner_idx in solution:
-                    forbidden_ecus.add(solution[partner_idx])
-            
-            # Try all ECUs
-            for j, ecu in enumerate(ecus):
-                if j in forbidden_ecus: continue
-                if not self._is_compatible(sc, ecu): continue
-                
-                # Check capacity
-                cap = ecu_caps[j]
-                if (cap['cpu'] >= sc.cpu_req and 
-                    cap['ram'] >= sc.ram_req and 
-                    cap['rom'] >= sc.rom_req and 
-                    cap['cont'] >= 1):
-                    
-                    # --- SCORING (Lower is better) ---
-                    
-                    # 1. Distances to Peripherals (Sensors/Actuators)
-                    dev_dist = 0.0
-                    for s_id in sc.sensors:
-                        s = sensor_lookup.get(s_id)
-                        if s: dev_dist += self._get_distance(s.location, ecu.location)
-                    for a_id in sc.actuators:
-                        a = actuator_lookup.get(a_id)
-                        if a: dev_dist += self._get_distance(a.location, ecu.location)
-                    
-                    # 2. SC-to-SC Communication Proximity
-                    # Calculate distance to partners that are ALREADY placed.
-                    comm_dist = 0.0
-                    for partner_idx in comm_neighbors[i]:
-                        if partner_idx in solution:
-                            partner_ecu_idx = solution[partner_idx]
-                            # Distance between candidate ECU and partner ECU
-                            d = self._get_distance(ecu.location, ecus[partner_ecu_idx].location)
-                            comm_dist += d
-                            
-                    # 3. Hardware Cost / Activation Penalty
-                    # Heavily penalize opening a new ECU if not necessary.
-                    # This drives the algorithm to pack SCs into fewer ECUs (Bin Packing behavior).
-                    hw_penalty = 0.0
-                    if not ecu_active[j]:
-                        # Use ECU cost as penalty (or a multiplier of it)
-                        hw_penalty = ecu.cost * 1.5 
-                    
-                    # Combined Weighted Score
-                    # Weights can be tuned. Currently:
-                    # - 1.0 for cable distance
-                    # - 1.0 for comm distance
-                    # - 1.5 * HW_Cost for using new ECU
-                    current_score = dev_dist + comm_dist + hw_penalty
-                    
-                    if current_score < best_score:
-                        best_score = current_score
-                        best_ecu = j
-            
-            if best_ecu != -1:
-                solution[i] = best_ecu
-                ecu_active[best_ecu] = True
-                # Update caps
-                ecu_caps[best_ecu]['cpu'] -= sc.cpu_req
-                ecu_caps[best_ecu]['ram'] -= sc.ram_req
-                ecu_caps[best_ecu]['rom'] -= sc.rom_req
-                ecu_caps[best_ecu]['cont'] -= 1
-            else:
-                # Greedy search failed for at least one SC
-                return None
-                
-        return solution
     
     def extract_solution(self,model, x_vars, y_vars, z_vars, scs, ecus, sensor_ecu_dists, actuator_ecu_dists, ecu_ecu_dists, sensor_ecu_costs, actuator_ecu_costs, ecu_ecu_costs):
             """Helper to extract solution data from solved model"""
@@ -343,7 +211,7 @@ class AssignmentOptimizer:
     def _create_base_model(self, name, scs, ecus, sensors, actuators, 
                           comm_constraints_data=None, 
                           sensor_ecu_latencies=None, actuator_ecu_latencies=None, ecu_ecu_latencies=None, 
-                          comm_matrix=None, enable_latency=False, time_limit=60, mip_gap=0.01, verbose=False):
+                          comm_matrix=None, enable_latency=False, time_limit=None, mip_gap=0.01, verbose=False):
         """
         Creates variables and core constraints.
         Does NOT set the objective function.
@@ -356,7 +224,7 @@ class AssignmentOptimizer:
         """
         model = gp.Model(name)
         # Enable output to monitor progress
-        model.setParam('OutputFlag', 1 if verbose else 0)
+        model.setParam('OutputFlag', 1)
         # MIPFocus=2: Focus on proving optimality (improves BestBound)
         model.setParam('MIPFocus', 2)
         if time_limit is not None:
@@ -428,7 +296,7 @@ class AssignmentOptimizer:
                 for j2 in range(j1 + 1, n_ecu):
                     model.addConstr(z[j1, j2] <= y[j1])
                     model.addConstr(z[j1, j2] <= y[j2])
-            
+      
             # Now add traffic constraints (FORCE connection if traffic exists)
             # For every communicating pair (u, v), if u on j1 and v on j2, enforce z[j1,j2]=1
             # Constraint: z[j1, j2] >= x[u, j1] + x[v, j2] - 1
@@ -440,14 +308,14 @@ class AssignmentOptimizer:
             for (u, v) in comm_constraints_data:
                 possible_j_u = sc_compat_ecus.get(u, [])
                 possible_j_v = sc_compat_ecus.get(v, [])
-                
+          
                 for j1 in possible_j_u:
                     for j2 in possible_j_v:
                         if j1 == j2: continue # Same ECU, no cable needed
-                        
+                  
                         # Normalize order for z index
                         u_ecu, v_ecu = (j1, j2) if j1 < j2 else (j2, j1)
-                        
+                  
                         model.addConstr(z[u_ecu, v_ecu] >= x[u, j1] + x[v, j2] - 1)
 
         else:
@@ -458,7 +326,7 @@ class AssignmentOptimizer:
                     model.addConstr(z[j1, j2] <= y[j2])
                     model.addConstr(z[j1, j2] >= y[j1] + y[j2] - 1)
         
-        # 4.5. Redundancy Constraints
+        # Redundancy Constraints
         # Redundant SC pairs must be placed on different ECUs for fault tolerance
         sc_id_to_idx = {sc.id: i for i, sc in enumerate(scs)}
         for i in range(n_sc):
@@ -556,6 +424,10 @@ class AssignmentOptimizer:
                                 )
                                 added_count += 1
         
+        # DEBUG: Modelyi dosyaya yaz
+        model.write(f"model_ECU_Assignment_big.lp")
+        print(f"Model yazildi: model_ECU_Assignment_big.lp")
+        
         return model, x, y, z
 
     def optimize(self, scs, ecus, sensors, actuators, cable_types, comm_matrix=None, num_points=5, include_cable_cost=False, enable_latency_constraints=False, warm_start=False, time_limit=60, mip_gap=None, verbose=False):
@@ -579,10 +451,6 @@ class AssignmentOptimizer:
         (sensor_ecu_dists, actuator_ecu_dists, ecu_ecu_dists,
          sensor_ecu_costs, actuator_ecu_costs, ecu_ecu_costs, 
          sensor_ecu_latencies, actuator_ecu_latencies, ecu_ecu_latencies) = self._precompute_all_metrics(scs, ecus, sensors, actuators, cable_types)
-        
-        if warm_start:
-            print("      Generating Warm Start solution...")
-            greedy_sol = self._generate_greedy_solution(scs, ecus, sensors, actuators, comm_matrix)
 
         solutions = []
 
@@ -590,9 +458,9 @@ class AssignmentOptimizer:
         print("\n[1] Finding Extremity 1: Minimum Cost...")
         m1, x1, y1, z1 = self._create_base_model("MinCost", scs, ecus, sensors, actuators, comm_pairs, 
             sensor_ecu_latencies, actuator_ecu_latencies, ecu_ecu_latencies, comm_matrix, enable_latency_constraints, time_limit, mip_gap, verbose)
-        if warm_start: self.inject_warm_start(x1, greedy_sol)
+
         
-        c1 = self.min_cost_objective(y1, ecus, x1, z1, sensor_ecu_costs, actuator_ecu_costs, ecu_ecu_costs, include_cable_cost)
+        c1 = self.min_cost_objective(y1, ecus, x1, z1, sensor_ecu_costs, actuator_ecu_costs, ecu_ecu_costs, include_cable_cost=False)
         #l1 = self.min_cable_objective(x1, z1, sensor_ecu_dists, actuator_ecu_dists, ecu_ecu_dists)
         m1.setObjective(c1, GRB.MINIMIZE)
         m1.optimize()
@@ -604,12 +472,15 @@ class AssignmentOptimizer:
         sol1 = self.extract_solution(m1, x1, y1, z1, scs, ecus, sensor_ecu_dists, actuator_ecu_dists, ecu_ecu_dists, sensor_ecu_costs, actuator_ecu_costs, ecu_ecu_costs)
         L_max = sol1['cable_length']
         print(f"-> Status: {sol1['status']}, Min Cost: ${sol1['total_cost']:.0f}, Length: {L_max:.1f}m")
+        
+        return [sol1]
 
         # --- Step 2: Minimize Length (Extremity 2) ---
+        """
         print("\n[2] Finding Extremity 2: Minimum Cable Length...")
         m2, x2, y2, z2 = self._create_base_model("MinCable", scs, ecus, sensors, actuators, comm_pairs, 
             sensor_ecu_latencies, actuator_ecu_latencies, ecu_ecu_latencies, comm_matrix, enable_latency_constraints, time_limit, mip_gap, verbose)
-        if warm_start: self.inject_warm_start(x2, greedy_sol)
+
         
         l2 = self.min_cable_objective(x2, z2, sensor_ecu_dists, actuator_ecu_dists, ecu_ecu_dists)
         m2.setObjective(l2, GRB.MINIMIZE)
@@ -653,8 +524,6 @@ class AssignmentOptimizer:
             m, x, y, z = self._create_base_model(f"Grid_{idx}", scs, ecus, sensors, actuators, comm_pairs, 
                 sensor_ecu_latencies, actuator_ecu_latencies, ecu_ecu_latencies, comm_matrix, enable_latency_constraints, time_limit, mip_gap, verbose)
             
-            if warm_start: self.inject_warm_start(x, greedy_sol)
-            
             # Constraint: Length <= Target
             l_expr = self.min_cable_objective(x, z, sensor_ecu_dists, actuator_ecu_dists, ecu_ecu_dists)
             m.addConstr(l_expr <= target_len, name="length_constraint")
@@ -682,3 +551,4 @@ class AssignmentOptimizer:
 
         print("-" * 110)
         return solutions
+        """

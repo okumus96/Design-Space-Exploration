@@ -72,10 +72,12 @@ class CandidateECU:
     cpu_cap: int
     ram_cap: int
     rom_cap: int
-    max_containers: int
+    max_partitions: int
     cost: int
     type: str
     asil_level: int
     hw_offered: list
     interface_offered: list
     location: 'Point' = None
+    system_overhead_percent: float = 0.0      # Base overhead for OS/Hypervisor
+    partition_reservation_percent: float = 0.0 # Reserved capacity per partition
