@@ -39,18 +39,19 @@ class Visualization:
         print(f"   - Bus Types: {len(cable_types)}")
 
     def display_assignments(self,assignments):
-            # Summary by ECU
-            print(f"\n   SWs assigned per ECU:")
-            ecu_assignments = {}
-            for sc_id, ecu_id in assignments.items():
-                if ecu_id not in ecu_assignments:
-                    ecu_assignments[ecu_id] = []
-                ecu_assignments[ecu_id].append(sc_id)
+            # Summary by location
+            print(f"\n   SWs assigned per Location:")
+            print(f"   [RAW ASSIGNMENT DATA]: {assignments}")
+            loc_assignments = {}
+            for sc_id, loc_id in assignments.items():
+                if loc_id not in loc_assignments:
+                    loc_assignments[loc_id] = []
+                loc_assignments[loc_id].append(sc_id)
             
-            for ecu_id in sorted(ecu_assignments.keys()):
-                assigned_scs = ecu_assignments[ecu_id]
+            for loc_id in sorted(loc_assignments.keys()):
+                assigned_scs = loc_assignments[loc_id]
                 sc_list = ", ".join(assigned_scs)
-                print(f"      - {ecu_id}: {len(assigned_scs)} SWs → [{sc_list}]")
+                print(f"      - {loc_id}: {len(assigned_scs)} SWs → [{sc_list}]")
 
     def display_sensors(self,df_sensors):
         print("\n" + "="*80)
@@ -97,6 +98,265 @@ class Visualization:
         print("="*80)
         rows = [[loc.id, loc.location.x, loc.location.y] for loc in locations]
         print(tabulate(rows, headers=["id", "x", "y"], tablefmt="grid", showindex=False))
+
+    def display_solution_details(self, solution, scs, locations, sensors=None, actuators=None):
+        """
+        Detailed solution analysis with comprehensive cost breakdown and assignment details
+        """
+        print("\n" + "="*80)
+        print("DETAILED SOLUTION ANALYSIS")
+        print("="*80)
+        
+        assignment = solution.get('assignment', {})
+        
+        # 1. ASSIGNMENT SUMMARY
+        print("\n" + "-"*80)
+        print("1. SOFTWARE COMPONENT ASSIGNMENTS")
+        print("-"*80)
+        
+        sc_lookup = {sc.id: sc for sc in scs}
+        loc_lookup = {loc.id: loc for loc in locations}
+        
+        # Group SCs by location
+        location_mapping = {}
+        for sc_id, loc_id in assignment.items():
+            if loc_id not in location_mapping:
+                location_mapping[loc_id] = []
+            location_mapping[loc_id].append(sc_id)
+        
+        # Print assignment table
+        assignment_rows = []
+        for sc_id in sorted(assignment.keys()):
+            loc_id = assignment[sc_id]
+            sc = sc_lookup.get(sc_id, None)
+            asil_str = f"ASIL{sc.asil_req}" if sc else "N/A"
+            cpu_req = f"{sc.cpu_req}" if sc else "N/A"
+            assignment_rows.append([sc_id, loc_id, asil_str, cpu_req])
+        
+        print(tabulate(
+            assignment_rows,
+            headers=["Software Component", "Location", "ASIL Level", "CPU Req"],
+            tablefmt="grid",
+            showindex=False
+        ))
+        
+        # 2. LOCATION-WISE SUMMARY
+        print("\n" + "-"*80)
+        print("2. LOCATION-WISE ASSIGNMENT SUMMARY")
+        print("-"*80)
+        
+        total_cpu_per_location = {}
+        
+        # First pass: calculate totals
+        for loc_id in sorted(location_mapping.keys()):
+            scs_at_loc = location_mapping[loc_id]
+            total_cpu = sum(sc_lookup[sc_id].cpu_req for sc_id in scs_at_loc if sc_id in sc_lookup)
+            total_cpu_per_location[loc_id] = total_cpu
+        
+        # Parse HW and Interface by location for detailed view
+        hw_by_location = {}
+        if_by_location = {}
+        
+        hw_features = solution.get('hw_features', [])
+        for hw_str in hw_features:
+            parts = hw_str.rsplit('@', 1)
+            if len(parts) == 2:
+                hw_name, loc_id = parts
+                if loc_id not in hw_by_location:
+                    hw_by_location[loc_id] = []
+                hw_by_location[loc_id].append(hw_name)
+        
+        interfaces = solution.get('interfaces', [])
+        for if_str in interfaces:
+            parts = if_str.rsplit('@', 1)
+            if len(parts) == 2:
+                if_name, loc_id = parts
+                if loc_id not in if_by_location:
+                    if_by_location[loc_id] = []
+                if_by_location[loc_id].append(if_name)
+        
+        # Display each location with its details
+        for loc_id in sorted(location_mapping.keys()):
+            scs_at_loc = sorted(location_mapping[loc_id])
+            loc = loc_lookup.get(loc_id, None)
+            
+            # Location header
+            loc_coords = f"({loc.location.x:.2f}, {loc.location.y:.2f})" if loc else "N/A"
+            print(f"\n▸ {loc_id} {loc_coords}")
+            print(f"   Status: {len(scs_at_loc)} SCs assigned | Total CPU: {total_cpu_per_location[loc_id]}")
+            
+            if hw_by_location.get(loc_id):
+                print(f"   HW Features: {', '.join(sorted(set(hw_by_location[loc_id])))}")
+            if if_by_location.get(loc_id):
+                print(f"   Interfaces: {', '.join(sorted(set(if_by_location[loc_id])))}")
+            
+            # SCs assigned to this location
+            sc_details = []
+            for sc_id in scs_at_loc:
+                sc = sc_lookup.get(sc_id)
+                if sc:
+                    asil = f"ASIL{sc.asil_req}"
+                    cpu = sc.cpu_req
+                    domain = getattr(sc, 'domain', 'N/A')
+                    hw_req = ", ".join(sc.hw_required) if sc.hw_required else "-"
+                    if_req = ", ".join(sc.interface_required) if sc.interface_required else "-"
+                    
+                    sc_details.append([sc_id, asil, cpu, domain, hw_req, if_req])
+            
+            if sc_details:
+                print(tabulate(
+                    sc_details,
+                    headers=["SC ID", "ASIL", "CPU", "Domain", "HW Req", "IF Req"],
+                    tablefmt="simple",
+                    showindex=False
+                ))
+        
+        # 3. PARTITION DETAILS
+        print("\n" + "-"*80)
+        print("3. PARTITION OPENINGS")
+        print("-"*80)
+        
+        hw_features = solution.get('hw_features', [])
+        if hw_features:
+            # Parse HW features by location
+            hw_by_location = {}
+            for hw_str in hw_features:
+                parts = hw_str.rsplit('@', 1)
+                if len(parts) == 2:
+                    hw_name, loc_id = parts
+                    if loc_id not in hw_by_location:
+                        hw_by_location[loc_id] = []
+                    hw_by_location[loc_id].append(hw_name)
+            
+            partition_rows = []
+            for loc_id in sorted(location_mapping.keys()):
+                num_partitions = solution.get('num_partitions', 0)  # This is global in current impl
+                partition_cost = solution.get('partition_cost', 0)
+                partition_rows.append([
+                    loc_id,
+                    num_partitions,
+                    partition_cost,
+                    " | ".join(sorted(set(hw_by_location.get(loc_id, []))))
+                ])
+            
+            print("Partition Config:")
+            print(f"  Total Partitions Opened: {solution.get('num_partitions', 0)}")
+            print(f"  Partition Cost (per partition): ${solution.get('partition_cost', 0):.2f}")
+        
+        # 4. HW FEATURES SUMMARY
+        print("\n" + "-"*80)
+        print("4. HARDWARE FEATURES OPENED")
+        print("-"*80)
+        
+        if hw_features:
+            hw_by_location = {}
+            for hw_str in hw_features:
+                parts = hw_str.rsplit('@', 1)
+                if len(parts) == 2:
+                    hw_name, loc_id = parts
+                    if loc_id not in hw_by_location:
+                        hw_by_location[loc_id] = []
+                    hw_by_location[loc_id].append(hw_name)
+            
+            hw_rows = []
+            for loc_id in sorted(hw_by_location.keys()):
+                for hw_name in sorted(set(hw_by_location[loc_id])):
+                    hw_rows.append([loc_id, hw_name])
+            
+            if hw_rows:
+                print(tabulate(
+                    hw_rows,
+                    headers=["Location", "HW Feature"],
+                    tablefmt="grid",
+                    showindex=False
+                ))
+            else:
+                print("  No HW features opened")
+        else:
+            print("  No HW features opened")
+        
+        # 5. INTERFACES SUMMARY
+        print("\n" + "-"*80)
+        print("5. INTERFACES OPENED")
+        print("-"*80)
+        
+        interfaces = solution.get('interfaces', [])
+        if interfaces:
+            if_by_location = {}
+            for if_str in interfaces:
+                parts = if_str.rsplit('@', 1)
+                if len(parts) == 2:
+                    if_name, loc_id = parts
+                    if loc_id not in if_by_location:
+                        if_by_location[loc_id] = []
+                    if_by_location[loc_id].append(if_name)
+            
+            if_rows = []
+            for loc_id in sorted(if_by_location.keys()):
+                for if_name in sorted(set(if_by_location[loc_id])):
+                    if_rows.append([loc_id, if_name])
+            
+            if if_rows:
+                print(tabulate(
+                    if_rows,
+                    headers=["Location", "Interface"],
+                    tablefmt="grid",
+                    showindex=False
+                ))
+            else:
+                print("  No interfaces opened")
+        else:
+            print("  No interfaces opened")
+        
+        # 6. COST BREAKDOWN
+        print("\n" + "-"*80)
+        print("6. COST BREAKDOWN")
+        print("-"*80)
+        
+        cost_rows = [
+            ["Partition Cost", f"${solution.get('partition_cost', 0):.2f}"],
+            ["HW Features Cost", f"${solution.get('hw_cost', 0):.2f}"],
+            ["Interfaces Cost", f"${solution.get('interface_cost', 0):.2f}"],
+            ["Cable Cost", f"${solution.get('cable_cost', 0):.2f}"],
+            ["Communication Cost", f"${solution.get('comm_cost', 0):.2f}"],
+            ["─" * 20, "─" * 15],
+            ["TOTAL COST", f"${solution.get('total_cost', 0):.2f}"],
+        ]
+        
+        print(tabulate(cost_rows, tablefmt="plain", showindex=False))
+        
+        # 7. RESOURCE METRICS
+        print("\n" + "-"*80)
+        print("7. RESOURCE METRICS")
+        print("-"*80)
+        
+        metrics_rows = [
+            ["Locations Used", solution.get('num_locations_used', 0)],
+            ["Total Cable Length", f"{solution.get('cable_length', 0):.2f} m"],
+            ["Optimization Status", solution.get('status', 'UNKNOWN')],
+        ]
+        
+        print(tabulate(metrics_rows, headers=["Metric", "Value"], tablefmt="grid", showindex=False))
+        
+        # 8. CPU UTILIZATION PER LOCATION
+        print("\n" + "-"*80)
+        print("8. CPU UTILIZATION PER LOCATION")
+        print("-"*80)
+        
+        cpu_rows = []
+        for loc_id in sorted(location_mapping.keys()):
+            cpu_used = total_cpu_per_location.get(loc_id, 0)
+            # Note: Max CPU per partition is typically in config, showing raw usage for now
+            cpu_rows.append([loc_id, cpu_used])
+        
+        print(tabulate(
+            cpu_rows,
+            headers=["Location", "CPU Used"],
+            tablefmt="grid",
+            showindex=False
+        ))
+        
+        print("\n" + "="*80 + "\n")
 
     def display_partition(self, partitions):
         print("\n" + "="*80)
@@ -153,18 +413,6 @@ class Visualization:
             self.display_interfaces(interface_costs)
         self.display_scs(df_sc)
     
-    def display_assignments(self,solution_idx, solution,scs, ecus):
-        assignments = solution['assignment']
-        print("\n" + "-" * 80)
-        print(f"SOLUTION {solution_idx}")
-        print(f"  Hardware Cost: ${solution['hardware_cost']:.2f}")
-        print(f"  Cable Length: {solution['cable_length']:.2f}m")
-        print(f"  Total Cost: ${solution['hardware_cost']:.2f}")
-        print(f"  ECUs Used: {solution['num_ecus_used']}")
-        print("-" * 80)
-        
-        print(f"\nAssignment Summary:")
-        print(f"   - Total SWs Assigned: {len(assignments)} / {len(scs)}")
 
     def plot_charts(self, sc_list, sensor_list, actuator_list, ecu_list=None):
         """Convert lists to DataFrames and plot charts"""
@@ -881,6 +1129,159 @@ class Visualization:
         
         ax.grid(True, alpha=0.4, linestyle=':', linewidth=0.8)
         ax.set_facecolor('#F8F9F9')
+        
+        plt.tight_layout()
+        self.save_plot(filename)
+
+    def display_solution_architecture(self, solution, scs, locations, filename="solution_architecture.png"):
+        """
+        Display the complete optimization solution architecture:
+        - Each location as a container
+        - Partitions within each location
+        - SWs assigned to each partition
+        - HW features and interfaces enabled at each location
+        """
+        sc_dict = {s.id: s for s in scs}
+        location_dict = {l.id: l for l in locations}
+        
+        assignment = solution['assignment']  # {SC_id: location_id}
+        partitions = solution['partitions']  # {SC_id: "LOC0_asil3_p0"}
+        hw_features = solution['hw_features']  # ["HW_ACC@LOC0", ...]
+        interfaces = solution['interfaces']  # ["ETH@LOC0", ...]
+        
+        # Group SCs by location and partition
+        loc_partition_sws = {}  # {location_id: {partition_name: [SC_ids]}}
+        loc_hw = {}  # {location_id: [hw_features]}
+        loc_if = {}  # {location_id: [interfaces]}
+        
+        for sc_id, loc_id in assignment.items():
+            if loc_id not in loc_partition_sws:
+                loc_partition_sws[loc_id] = {}
+            partition_name = partitions.get(sc_id, "unknown")
+            if partition_name not in loc_partition_sws[loc_id]:
+                loc_partition_sws[loc_id][partition_name] = []
+            loc_partition_sws[loc_id][partition_name].append(sc_id)
+        
+        # Group HW features by location
+        for hw_feat in hw_features:
+            hw_name, loc_id = hw_feat.rsplit('@', 1)
+            if loc_id not in loc_hw:
+                loc_hw[loc_id] = []
+            loc_hw[loc_id].append(hw_name)
+        
+        # Group interfaces by location
+        for iface in interfaces:
+            iface_name, loc_id = iface.rsplit('@', 1)
+            if loc_id not in loc_if:
+                loc_if[loc_id] = []
+            loc_if[loc_id].append(iface_name)
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(18, 12))
+        
+        # Color schemes
+        asil_colors = {
+            'ASIL-A': '#FFE5E5',
+            'ASIL-B': '#FFD1D1',
+            'ASIL-C': '#FFB3B3',
+            'ASIL-D': '#FF9999',
+            'QM': '#E8F4E8',
+        }
+        
+        # Render locations and their contents
+        num_locs = len(loc_partition_sws)
+        loc_width = 12  # Width of each location box
+        loc_height = 8  # Height of each location box
+        spacing_x = 14
+        spacing_y = 10
+        
+        start_x = 2
+        start_y = (num_locs - 1) * spacing_y
+        
+        for loc_idx, (loc_id, partitions_dict) in enumerate(sorted(loc_partition_sws.items())):
+            x_pos = start_x
+            y_pos = start_y - loc_idx * spacing_y
+            
+            # Location box
+            loc_box = FancyBboxPatch((x_pos, y_pos), loc_width, loc_height,
+                                      boxstyle="round,pad=0.3",
+                                      edgecolor='darkblue', facecolor='#E8F8FF',
+                                      linewidth=3, alpha=0.9)
+            ax.add_patch(loc_box)
+            
+            # Location title
+            loc = location_dict.get(loc_id)
+            title_text = f"📍 {loc_id}"
+            ax.text(x_pos + loc_width/2, y_pos + loc_height - 0.6, title_text,
+                   fontsize=12, ha='center', va='top', weight='bold')
+            
+            # HW Features section
+            hw_text = f"Hardware: {', '.join(loc_hw.get(loc_id, ['None']))}"
+            ax.text(x_pos + 0.3, y_pos + loc_height - 1.2, hw_text,
+                   fontsize=8, ha='left', va='top', style='italic',
+                   bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.6))
+            
+            # Interfaces section
+            if_text = f"Interfaces: {', '.join(loc_if.get(loc_id, ['None']))}"
+            ax.text(x_pos + 0.3, y_pos + loc_height - 1.8, if_text,
+                   fontsize=8, ha='left', va='top', style='italic',
+                   bbox=dict(boxstyle='round', facecolor='lightcyan', alpha=0.6))
+            
+            # Render partitions within location
+            partition_y = y_pos + 3.8
+            partition_height = 2.8
+            partition_width = (loc_width - 0.6) / max(len(partitions_dict), 1)
+            
+            for part_idx, (partition_name, sc_ids) in enumerate(sorted(partitions_dict.items())):
+                part_x = x_pos + 0.3 + part_idx * partition_width
+                
+                # Extract ASIL from partition name (e.g., "LOC0_asil3_p0")
+                asil_level = 'ASIL-' + partition_name.split('asil')[1][0].upper() if 'asil' in partition_name else 'QM'
+                asil_color = asil_colors.get(asil_level, '#E8E8E8')
+                
+                # Partition box
+                part_box = FancyBboxPatch((part_x, partition_y - partition_height), 
+                                         partition_width - 0.1, partition_height,
+                                         boxstyle="round,pad=0.1",
+                                         edgecolor='darkred', facecolor=asil_color,
+                                         linewidth=2, alpha=0.85)
+                ax.add_patch(part_box)
+                
+                # Partition header
+                part_header = f"{asil_level}\n{partition_name.split('_')[-1]}"
+                ax.text(part_x + partition_width/2 - 0.05, partition_y - 0.3, part_header,
+                       fontsize=7, ha='center', va='top', weight='bold')
+                
+                # SWs in partition
+                sw_list_text = "\n".join(sc_ids)
+                ax.text(part_x + partition_width/2 - 0.05, partition_y - 1.0, sw_list_text,
+                       fontsize=6, ha='center', va='top',
+                       bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+        
+        # Legend
+        legend_elements = [
+            Line2D([0], [0], marker='s', color='w', label='ASIL-D', 
+                   markerfacecolor='#FF9999', markersize=8),
+            Line2D([0], [0], marker='s', color='w', label='ASIL-C', 
+                   markerfacecolor='#FFB3B3', markersize=8),
+            Line2D([0], [0], marker='s', color='w', label='ASIL-B', 
+                   markerfacecolor='#FFD1D1', markersize=8),
+            Line2D([0], [0], marker='s', color='w', label='ASIL-A', 
+                   markerfacecolor='#FFE5E5', markersize=8),
+            Line2D([0], [0], marker='s', color='w', label='QM', 
+                   markerfacecolor='#E8F4E8', markersize=8),
+        ]
+        ax.legend(handles=legend_elements, loc='upper right', fontsize=9)
+        
+        # Title
+        ax.text(0.5, 0.98, 'LEGO Optimization Solution Architecture',
+               transform=ax.transAxes, fontsize=14, ha='center', va='top',
+               weight='bold',
+               bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.8))
+        
+        ax.set_xlim(-1, 20)
+        ax.set_ylim(-2, (num_locs + 1) * spacing_y)
+        ax.axis('off')
         
         plt.tight_layout()
         self.save_plot(filename)

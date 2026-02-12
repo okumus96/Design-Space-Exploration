@@ -10,11 +10,7 @@ Main script that orchestrates the entire workflow:
 import argparse
 from config_reader import ConfigReader
 from data_generator import VehicleDataGenerator
-#from optimizer import AssignmentOptimizer
-#from optimizer_z3 import AssignmentOptimizerZ3
-from optimizer_new import AssignmentOptimizerNew
-#from optim_interface import OptimizationInterface
-#from optimizer_linear import AssignmentOptimizerNew as AssignmentOptimizerLinear
+from optimizer import AssignmentOptimizer
 from visualizer import Visualization
 from tabulate import tabulate
 import time
@@ -45,20 +41,11 @@ def main(args):
     #visualizer.plot_sw_sensor_actuator_graph_final(scs, sensors, actuators, comm_matrix)
     #visualizer.plot_charts(scs, sensors, actuators)
 
-    #return
     # Step 2: Run optimization
-    print("\n" + "-" * 80)
-
     if hasattr(args, 'solver') and args.solver == 'z3':
-        print("STEP 2: Running Z3 Optimization")
-        print("-" * 80)
-        #opt = OptimizationInterface()
-        #opt = AssignmentOptimizerLinear()
+        pass
     else:
-        print("STEP 2: Running Gurobi Optimization")
-        print("-" * 80)
-        #opt = AssignmentOptimizer()
-        opt = AssignmentOptimizerNew()
+        opt = AssignmentOptimizer()
     
     # Generate Pareto front: HW Cost vs Cable Length
     start_time = time.time()
@@ -72,7 +59,12 @@ def main(args):
     print(f"#"*80)
     print(f"Optimization completed in {end_time - start_time:.2f} seconds.")
     print(f"#"*80)
-    return
+    
+    # Display detailed solution analysis
+    if pareto_solutions:
+        for idx, solution in enumerate(pareto_solutions, 1):
+            visualizer.display_solution_details(solution, scs, locations, sensors, actuators)
+
     # Visualize Pareto front
     visualizer.visualize_pareto_front(pareto_solutions)
     
@@ -82,14 +74,16 @@ def main(args):
     print("=" * 80)
     
     for solution_idx, solution in enumerate(pareto_solutions, 1):
-        visualizer.display_assignments(solution_idx, solution, scs, locations)
+        visualizer.display_assignments(solution['assignment'])
 
-        print(f"\n   Generating visualization for Solution {solution_idx}...")
-        visualizer.visualize_optimization_result(scs, locations, sensors, actuators, solution['assignment'], filename=f"optimization_result_solution_{solution_idx}.png")
+        print(f"\n   Generating architecture visualization for Solution {solution_idx}...")
+        visualizer.display_solution_architecture(solution, scs, locations, 
+                                                 filename=f"solution_architecture_{solution_idx}.png")
         
-        # Vehicle layout with assigned partitions
-        print(f"   Generating vehicle layout for Solution {solution_idx}...")
-        visualizer.plot_vehicle_layout_topdown(sensors, actuators, solution['assignment'], locations, filename=f"vehicle_layout_solution_{solution_idx}.png")
+        # TODO: Fix plot_vehicle_layout_topdown for Location objects
+        # print(f"   Generating vehicle layout for Solution {solution_idx}...")
+        # visualizer.plot_vehicle_layout_topdown(sensors, actuators, solution['assignment'], locations, 
+        #                                        filename=f"vehicle_layout_solution_{solution_idx}.png")
     
     print("\n" + "=" * 80)
     print("PIPELINE COMPLETED SUCCESSFULLY")
