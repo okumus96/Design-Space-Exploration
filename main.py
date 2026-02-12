@@ -3,7 +3,7 @@
 ECU Optimization and Visualization Pipeline
 
 Main script that orchestrates the entire workflow:
-1. Generate vehicle architecture data (ECUs, SCs, sensors, actuators)
+1. Generate vehicle architecture data (possible locations, SCs, sensors, actuators)
 2. Run Gurobi optimization for SW-to-ECU assignment
 3. Visualize the optimization results
 """
@@ -13,30 +13,37 @@ from data_generator import VehicleDataGenerator
 #from optimizer import AssignmentOptimizer
 #from optimizer_z3 import AssignmentOptimizerZ3
 from optimizer_new import AssignmentOptimizerNew
+#from optim_interface import OptimizationInterface
+#from optimizer_linear import AssignmentOptimizerNew as AssignmentOptimizerLinear
 from visualizer import Visualization
 from tabulate import tabulate
+import time
 
 def main(args):
     print("=" * 80)
     print("ECU OPTIMIZATION AND VISUALIZATION PIPELINE")
     print("=" * 80)
+
+    config_reader = ConfigReader(args.config_dir)
+    partitions = config_reader.get_partitions()
+    hardwares = config_reader.get_hardwares()
+    interfaces = config_reader.get_interfaces()
     
     # Step 1: Generate data
     print("\n" + "-" * 80)
     print("STEP 1: Generating Vehicle Architecture Data")
     print("-" * 80)
 
-    config_reader = ConfigReader(args.config_dir)
-    generator = VehicleDataGenerator(num_ecus=args.num_ecus, num_scs=args.num_scs, seed=args.seed, config_reader=config_reader)
-    ecus, scs, comm_matrix, sensors, actuators, cable_types = generator.generate_data()
+    generator = VehicleDataGenerator(num_locs=args.num_locs, num_scs=args.num_scs, seed=args.seed, config_reader=config_reader)
+    scs, comm_matrix, sensors, actuators, cable_types, locations = generator.generate_data()
     
     # Summary and visualization of generated data
     visualizer = Visualization(save_dir=args.output_dir)
-    visualizer.display_data_summary(ecus, scs, sensors, actuators, cable_types,comm_matrix)
-    visualizer.display_data(sensors, actuators, scs, ecus)
-    visualizer.plot_charts(scs, ecus, sensors, actuators)
-    visualizer.plot_vehicle_layout_topdown(sensors, actuators, assignments=None, ecus=ecus, filename="initial_vehicle_layout.png")
+    visualizer.display_data_summary(scs, sensors, actuators, cable_types, comm_matrix, locations=locations)
+    visualizer.display_data(sensors, actuators, scs, locations=locations, hardwares=hardwares, interface_costs=interfaces, partitions=partitions)
+    visualizer.plot_vehicle_layout_topdown( sensors, actuators, assignments=None, locations=locations, filename="initial_vehicle_layout.png")
     #visualizer.plot_sw_sensor_actuator_graph_final(scs, sensors, actuators, comm_matrix)
+    #visualizer.plot_charts(scs, sensors, actuators)
 
     #return
     # Step 2: Run optimization
@@ -45,7 +52,8 @@ def main(args):
     if hasattr(args, 'solver') and args.solver == 'z3':
         print("STEP 2: Running Z3 Optimization")
         print("-" * 80)
-        #opt = AssignmentOptimizerZ3()
+        #opt = OptimizationInterface()
+        #opt = AssignmentOptimizerLinear()
     else:
         print("STEP 2: Running Gurobi Optimization")
         print("-" * 80)
@@ -53,14 +61,18 @@ def main(args):
         opt = AssignmentOptimizerNew()
     
     # Generate Pareto front: HW Cost vs Cable Length
-    #pareto_solutions = opt.optimize(
-    #    scs, ecus, sensors, actuators, cable_types, comm_matrix, num_points=args.num_points,
-    #    include_cable_cost=True, enable_latency_constraints=True, warm_start=args.warm_start, time_limit=args.time_limit,
-    #    mip_gap=args.mip_gap, verbose=args.verbose
-    #)
-    pareto_solutions = opt.optimize(scs, ecus, sensors, actuators, cable_types, comm_matrix)
-    
-    
+    start_time = time.time()
+    pareto_solutions = opt.optimize(
+        scs, locations, sensors, actuators, cable_types, comm_matrix,
+        partitions=partitions,
+        hardwares=hardwares,
+        interfaces=interfaces
+    )
+    end_time = time.time()
+    print(f"#"*80)
+    print(f"Optimization completed in {end_time - start_time:.2f} seconds.")
+    print(f"#"*80)
+    return
     # Visualize Pareto front
     visualizer.visualize_pareto_front(pareto_solutions)
     
@@ -70,14 +82,14 @@ def main(args):
     print("=" * 80)
     
     for solution_idx, solution in enumerate(pareto_solutions, 1):
-        visualizer.display_assignments(solution_idx,solution,scs,ecus)
-        # Visualize this solution
+        visualizer.display_assignments(solution_idx, solution, scs, locations)
+
         print(f"\n   Generating visualization for Solution {solution_idx}...")
-        visualizer.visualize_optimization_result(scs, ecus, sensors, actuators, solution['assignment'], filename=f"optimization_result_solution_{solution_idx}.png")
+        visualizer.visualize_optimization_result(scs, locations, sensors, actuators, solution['assignment'], filename=f"optimization_result_solution_{solution_idx}.png")
         
-        # Vehicle layout with assigned ECUs
+        # Vehicle layout with assigned partitions
         print(f"   Generating vehicle layout for Solution {solution_idx}...")
-        visualizer.plot_vehicle_layout_topdown(sensors, actuators, solution['assignment'], ecus, filename=f"vehicle_layout_solution_{solution_idx}.png")
+        visualizer.plot_vehicle_layout_topdown(sensors, actuators, solution['assignment'], locations, filename=f"vehicle_layout_solution_{solution_idx}.png")
     
     print("\n" + "=" * 80)
     print("PIPELINE COMPLETED SUCCESSFULLY")
@@ -86,7 +98,7 @@ def main(args):
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description="ECU Optimization and Visualization Pipeline")
-    argparser.add_argument("--num_ecus", type=int, default=10, help="Number of candidate ECUs to generate")
+    argparser.add_argument("--num_locs", type=int, default=20, help="Number of locations to generate")
     argparser.add_argument("--num_scs", type=int, default=20, help="Number of software components to generate")
     argparser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     argparser.add_argument("--config_dir", type=str, default="configs", help="Directory containing configuration JSON files")

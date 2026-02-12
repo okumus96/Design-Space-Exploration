@@ -20,11 +20,19 @@ class Point:
         return manhattan, euclidean
 
 @dataclass
-class CableType:
+class Location:
+    """Represents a physical location in the vehicle where components can be deployed."""
+    id: str        # e.g., 'LOC0', 'LOC1'
+    location: 'Point' = None
+
+@dataclass
+class Interface:
     name: str  # e.g., 'CAN', 'ETH'
     cost_per_meter: float
     latency_per_meter: float  # microseconds per meter
     weight_per_meter: float   # grams per meter
+    capacity: float = float('inf')  # traffic capacity in the same units as comm_matrix[*]['volume']
+    port_cost: float = 0.0    # cost per port/interface on ECU or SC
 
 @dataclass
 class Sensor:

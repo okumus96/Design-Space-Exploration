@@ -1,0 +1,17 @@
+{
+  "_comment": "Cost to provide each hardware feature at a location (once per location, not per SC)",
+  "hardware_costs": {
+    "DSP": {
+      "description": "Digital Signal Processor for image/sensor processing",
+      "cost": 100
+    },
+    "HW_ACC": {
+      "description": "Hardware accelerator for ML/vision algorithms",
+      "cost": 2000
+    },
+    "HSM": {
+      "description": "Hardware Security Module for encryption/key management",
+      "cost": 100
+    }
+  }
+}

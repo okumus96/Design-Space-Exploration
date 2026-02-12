@@ -2,22 +2,30 @@
     "ETH": {
       "cost_per_meter": 50.0,
       "latency_per_meter": 0.1,
-      "weight_per_meter": 50
+      "weight_per_meter": 50,
+      "capacity": 1000,
+      "port_cost": 50
     },
     "FLEXRAY": {
       "cost_per_meter": 30.0,
       "latency_per_meter": 0.1,
-      "weight_per_meter": 30
+      "weight_per_meter": 30,
+      "capacity": 300,
+      "port_cost": 40
     },
     "CAN": {
       "cost_per_meter": 10.0,
       "latency_per_meter": 0.1,
-      "weight_per_meter": 20
+      "weight_per_meter": 20,
+      "capacity": 100,
+      "port_cost": 20
     },
     "LIN": {
       "cost_per_meter": 5.0,
       "latency_per_meter": 0.1,
-      "weight_per_meter": 10
+      "weight_per_meter": 10,
+      "capacity": 20,
+      "port_cost": 10
     }
   }
 }

@@ -13,18 +13,27 @@ from gurobipy import GRB
 # Sensor/Actuator Latency Constraints makes things simpler and faster by eliminating infeasible assignments upfront probably. 
 # Instead of creating variables and then relying on solver to find out that certain assignments lead to high latency, we proactively add constraints to prevent those assignments.
 # This reduces the search space significantly, allowing the solver to focus on feasible regions of the solution space. In practice, this can lead to much faster convergence and better solutions.
- 
-# The problem is ECUs can handle too little software, we need enlarge them. At the end 3-4 should have been enough.
-# Choosing our interface b/w ecus unintiutive.
-# Interfaces right now have infinite capacity.
+
+
+# We need change direct link b/w the ECUs to some sort of network topology.
 # We did not include uncertainty in overall system.
 # We do not know numbers we gave is correct (i.e., cost, latency,  etc.)
+# WE do not know our objective functions is correct. (semanatically, we can change distance with complexity model)
+# we need to get rid of the ECU types, model them as a legos of HWs and partitions.
 
-class AssignmentOptimizerNew:
+
+class OptimizationInterface:
     def __init__(self):
         pass
+
+    def _comm_volume(self, link):
+        """Traffic demand for a comm link (same unit as CableType.capacity)."""
+        try:
+            return float(link.get('volume', 1.0))
+        except Exception:
+            return 1.0
     
-    def _extract_solution_from_model(self, x, y, scs, ecus, sensors, actuators, cable_types, objective_name):
+    def _extract_solution_from_model(self, x, y, z, scs, ecus, sensors, actuators, cable_types, objective_name):
         """Extract solution from current model state"""
         assignment_map = {}
         for (i, j), var in x.items():
@@ -61,26 +70,15 @@ class AssignmentOptimizerNew:
                         cable_length += dist
                         cable_cost_val += dist * cost_map.get(actuator.interface, 0.0)
 
-        # ECU-ECU backbone contributions (same logic as objective)
-        for j1 in range(len(ecus)):
-            if y[j1].X <= 0.5:
-                continue
-            for j2 in range(j1 + 1, len(ecus)):
-                if y[j2].X <= 0.5:
-                    continue
-
+        # ECU-ECU link contributions based on chosen interface (z)
+        ecu_links = {}
+        for (j1, j2, iface), var in z.items():
+            if var.X > 0.5:
                 dist = self._get_distance(ecus[j1].location, ecus[j2].location)
-                if dist <= 0:
-                    continue
-
-                common = set(ecus[j1].interface_offered).intersection(set(ecus[j2].interface_offered))
-                if not common:
-                    cable_cost_val += dist * 1e6
+                if dist > 0:
+                    cable_cost_val += dist * cost_map.get(iface, 0.0)
                     cable_length += dist
-                else:
-                    best_iface = max(common, key=lambda x: cost_map.get(x, 0))
-                    cable_cost_val += dist * cost_map.get(best_iface, 0)
-                    cable_length += dist
+                ecu_links[(ecus[j1].id, ecus[j2].id)] = iface
         
         hw_cost_val = sum(ecus[j].cost for j in range(len(ecus)) if y[j].X > 0.5)
         
@@ -92,6 +90,7 @@ class AssignmentOptimizerNew:
             'cable_length': cable_length,
             'num_ecus_used': used_ecus,
             'objective': objective_name,
+            'ecu_links': ecu_links,
             'status': "OPTIMAL"
         }
         return solution
@@ -102,7 +101,7 @@ class AssignmentOptimizerNew:
         dist_manhattan, _ = loc1.dist(loc2)
         return dist_manhattan
     
-    def calculate_cable_expressions(self, x, y, scs, ecus, sensors, actuators, cable_types, comm_matrix):
+    def calculate_cable_expressions(self, x, y, z, scs, ecus, sensors, actuators, cable_types, comm_matrix):
         """
         Calculate cable cost, distance, and latency as Gurobi linear expressions (NOT constraints).
         Includes: sensor cables and actuator cables only (no ECU-ECU cables).
@@ -159,29 +158,18 @@ class AssignmentOptimizerNew:
             if latency > 0:
                 latency_terms.append((x[i, j], latency))
 
-        # ECU-ECU backbone contributions (quadratic in y)
-        ecu_ecu_cost_terms = []  # List of (y_j1, y_j2, cost)
-        ecu_ecu_distance_terms = []  # List of (y_j1, y_j2, dist)
-        ecu_ecu_latency_terms = []  # List of (y_j1, y_j2, latency)
+        # ECU-ECU link contributions (linear in chosen interface z)
+        ecu_ecu_cost_terms = []
+        ecu_ecu_distance_terms = []
+        ecu_ecu_latency_terms = []
 
-        for j1 in range(len(ecus)):
-            for j2 in range(j1 + 1, len(ecus)):
-                dist = self._get_distance(ecus[j1].location, ecus[j2].location)
-                if dist <= 0:
-                    continue
-
-                common = set(ecus[j1].interface_offered).intersection(set(ecus[j2].interface_offered))
-                if not common:
-                    cost = dist * 1e6
-                    lat = dist * 1e6
-                else:
-                    best_iface = max(common, key=lambda x: cost_map.get(x, 0))
-                    cost = dist * cost_map.get(best_iface, 0)
-                    lat = dist * latency_map.get(best_iface, 0)
-
-                ecu_ecu_distance_terms.append((y[j1], y[j2], dist))
-                ecu_ecu_cost_terms.append((y[j1], y[j2], cost))
-                ecu_ecu_latency_terms.append((y[j1], y[j2], lat))
+        for (j1, j2, iface), zvar in z.items():
+            dist = self._get_distance(ecus[j1].location, ecus[j2].location)
+            if dist <= 0:
+                continue
+            ecu_ecu_cost_terms.append((zvar, dist * cost_map.get(iface, 0.0)))
+            ecu_ecu_distance_terms.append((zvar, dist))
+            ecu_ecu_latency_terms.append((zvar, dist * latency_map.get(iface, 0.0)))
         
         # Create compact linear expressions
         if cable_cost_terms:
@@ -189,21 +177,21 @@ class AssignmentOptimizerNew:
         else:
             cable_cost_expr = 0
         if ecu_ecu_cost_terms:
-            cable_cost_expr += gp.quicksum(y1 * y2 * cost for y1, y2, cost in ecu_ecu_cost_terms)
+            cable_cost_expr += gp.quicksum(var * cost for var, cost in ecu_ecu_cost_terms)
             
         if cable_distance_terms:
             cable_distance_expr = gp.quicksum(var * dist for var, dist in cable_distance_terms)
         else:
             cable_distance_expr = 0
         if ecu_ecu_distance_terms:
-            cable_distance_expr += gp.quicksum(y1 * y2 * dist for y1, y2, dist in ecu_ecu_distance_terms)
+            cable_distance_expr += gp.quicksum(var * dist for var, dist in ecu_ecu_distance_terms)
             
         if latency_terms:
             latency_expr = gp.quicksum(var * lat for var, lat in latency_terms)
         else:
             latency_expr = 0
         if ecu_ecu_latency_terms:
-            latency_expr += gp.quicksum(y1 * y2 * lat for y1, y2, lat in ecu_ecu_latency_terms)
+            latency_expr += gp.quicksum(var * lat for var, lat in ecu_ecu_latency_terms)
             
         return cable_cost_expr, cable_distance_expr, latency_expr
 
@@ -245,6 +233,30 @@ class AssignmentOptimizerNew:
             #print(f"Creating variable for ECU {ecu.id} ({j}/{len(ecus)})...")
             y[j] = model.addVar(vtype=GRB.BINARY, name=f"y_{ecu.id}")
 
+        # z[j1,j2,iface] = 1 if interface 'iface' is selected for ECU-ECU link (link exists iff sum(z)=1)
+        z = {}
+        z_by_pair = {}
+        cable_ifaces = set(cable_types.keys())
+
+        for j1 in range(n_ecu):
+            for j2 in range(j1 + 1, n_ecu):
+                common = set(ecus[j1].interface_offered).intersection(set(ecus[j2].interface_offered)).intersection(cable_ifaces)
+                if not common:
+                    # No common physical interface -> cannot create a link between these two ECUs
+                    continue
+
+                zvars = []
+                z_by_pair[j1, j2] = []
+                for iface in sorted(common):
+                    z[j1, j2, iface] = model.addVar(vtype=GRB.BINARY ,name=f"z_{ecus[j1].id}_{ecus[j2].id}_{iface}")
+                    zvars.append(z[j1, j2, iface])
+                    z_by_pair[j1, j2].append((iface, z[j1, j2, iface]))
+
+                # Link existence is sum(zvars). Allow at most one interface.
+                model.addConstr(gp.quicksum(zvars) <= 1, name=f"choose_iface_{j1}_{j2}")
+                model.addConstr(gp.quicksum(zvars) <= y[j1], name=f"link_used1_{j1}_{j2}")
+                model.addConstr(gp.quicksum(zvars) <= y[j2], name=f"link_used2_{j1}_{j2}")
+
         # p[j, a] = 1 if ECU j has partition for ASIL a
         all_asils = sorted(list(set(sc.asil_req for sc in scs)))
         #print(all_asils)
@@ -263,6 +275,8 @@ class AssignmentOptimizerNew:
             compat_ecus_per_sc[i] = [j for j in range(n_ecu) if (i, j) in x]
         for j in range(n_ecu):
             compat_scs_per_ecu[j] = [i for i in range(n_sc) if (i, j) in x]
+
+        connectable_pairs = set(z_by_pair.keys())
 
 
         # ==========================================
@@ -409,51 +423,128 @@ class AssignmentOptimizerNew:
                                 if latency > actuator.max_latency:
                                     model.addConstr(x[i, j] == 0, name=f"actuator_lat_{scs[i].id}_{actuator.id}_{ecus[j].id}")
 
-        # Constraint 8. ECU-ECU Communication Latency Constraints
+        # ==========================================
+        # Constraint 8 & 9: SMART CAPACITY (Loopback-Aware)
+        # ==========================================
+        
+        model.update()
+
+        # --- 1. HAZIRLIK: SC Trafiklerini Topla ---
+        # Her SC'nin ürettiği toplam veri hacmi
+        sc_volume_map = {sc.id: 0.0 for sc in scs}
+        
+        # Kritik linkler listesi
+        CRITICAL_VOLUME_THRESHOLD = 0.0
+        critical_links = []
+        
+        sc_id_map = {sc.id: i for i, sc in enumerate(scs)}
+        cap_map = {name: ct.capacity for name, ct in cable_types.items()}
+        MAX_ECU_THROUGHPUT = float('inf')  
+
         if comm_matrix:
-            # Precompute ECU-ECU latencies
-            cost_map = {name: ct.cost_per_meter for name, ct in cable_types.items()}
-            latency_map = {name: ct.latency_per_meter for name, ct in cable_types.items()}
-            ecu_ecu_latencies = {}
-            for j1 in range(n_ecu):
-                for j2 in range(j1 + 1, n_ecu):
-                    dist = self._get_distance(ecus[j1].location, ecus[j2].location)
-                    common = set(ecus[j1].interface_offered).intersection(set(ecus[j2].interface_offered))
-                    if not common:
-                        ecu_ecu_latencies[j1, j2] = dist * 1e6
-                    else:
-                        best_iface = max(common, key=lambda x: cost_map.get(x, 0))
-                        ecu_ecu_latencies[j1, j2] = dist * latency_map.get(best_iface, 0)
-
-            sc_id_map = {sc.id: i for i, sc in enumerate(scs)}
             for link in comm_matrix:
-                src_id = link.get('src')
-                dst_id = link.get('dst')
-                max_lat = link.get('max_latency', float('inf'))
+                src = link['src']
+                dst = link['dst']
+                vol = self._comm_volume(link)
+                
+                # SC bazlı toplam çıkış
+                if src in sc_volume_map: sc_volume_map[src] += vol
+                
+                # Kritik link
+                if vol >= CRITICAL_VOLUME_THRESHOLD:
+                    if src in sc_id_map and dst in sc_id_map:
+                        critical_links.append({
+                            'u': sc_id_map[src], 'v': sc_id_map[dst], 'vol': vol
+                        })
 
-                if src_id not in sc_id_map or dst_id not in sc_id_map:
-                    continue
+        print(f"Adding Smart Capacity Constraints (Loopback Ignored)...")
 
-                u = sc_id_map[src_id]
-                v = sc_id_map[dst_id]
+        # --- 2. KISIT: Node-Based Interface Capacity ---
+        # Sadece ECU DIŞINA çıkan trafiği kontrol et.
+        # "Eğer SC_u ECU_j'de ise, ürettiği verinin hepsi kabloya gitmez."
+        # "Sadece başka ECU'daki SC'lere giden veri kabloya gider."
+        # Ancak bunu 'route' olmadan tam hesaplamak zordur.
+        # BASİTLEŞTİRİLMİŞ ÇÖZÜM:
+        # Total_SC_Output <= Interface_Capacity + (Aynı ECU'da kalma ihtimali için devasa bir gevşetme payı)
+        # YERİNE DAHA İYİSİ: Slack Variable ile Soft Constraint yapalım.
+        
+        total_violation = 0
 
-                for j1 in range(n_ecu):
-                    for j2 in range(n_ecu):
-                        if j1 == j2:
-                            continue
-                        if (u, j1) not in x or (v, j2) not in x:
-                            continue
+        for j in range(n_ecu):
+            # 1. Bu ECU'ya atanan SC'lerin toplam veri üretimi
+            total_generated = gp.quicksum(x[i, j] * sc_volume_map[scs[i].id] for i in range(n_sc) if (i, j) in x)
+            
+            # 2. Donanım (CPU/Bus) Limiti (Bu her türlü geçerli)
+            # Slack ekliyoruz ki patlamasın, ne kadar aştığını görelim.
+            s_cpu = model.addVar(lb=0, vtype=GRB.CONTINUOUS, name=f"slack_cpu_{j}")
+            model.addConstr(total_generated <= MAX_ECU_THROUGHPUT * y[j] + s_cpu, name=f"cpu_lim_{j}")
+            
+            # 3. Arayüz Kapasitesi (Kablo Limiti)
+            # Burası kritik: Interface'ler toplam trafiği taşımalı.
+            # z_by_pair'den kapasiteyi doğru çekme (Unpacking Fix)
+            
+            # Çıkan Kablolar (j -> k)
+            out_cap = gp.quicksum(
+                z_var * cap_map.get(iface_name, 0)
+                for k in range(n_ecu) if k > j 
+                for iface_name, z_var in z_by_pair.get((j, k), [])
+            )
+            # Gelen Kablolar (k -> j) - Full Duplex varsayımıyla ikisini topluyoruz
+            in_cap = gp.quicksum(
+                z_var * cap_map.get(iface_name, 0)
+                for k in range(n_ecu) if k < j 
+                for iface_name, z_var in z_by_pair.get((k, j), [])
+            )
+            
+            total_iface_cap = out_cap + in_cap
+            
+            # Slack variable for interface capacity
+            s_iface = model.addVar(lb=0, vtype=GRB.CONTINUOUS, name=f"slack_iface_{j}")
+            
+            # KISIT:
+            # Üretilen Trafik <= Kablo Kapasitesi + Slack + (Kendi içi trafik payı)
+            # Kendi içi trafik payı için "Internal Bus" varsayıyoruz.
+            # Eğer slack çok büyürse, demek ki kablo yetmiyor.
+            model.addConstr(total_generated <= total_iface_cap + 1e5*(1-y[j]) + s_iface, name=f"iface_lim_{j}")
+            
+            total_violation += s_cpu + s_iface
 
-                        a, b = (j1, j2) if j1 < j2 else (j2, j1)
-                        lat = ecu_ecu_latencies.get((a, b), 0)
-                        if lat > max_lat:
-                            model.addConstr(
-                                x[u, j1] + x[v, j2] <= 1,
-                                name=f"ecu_ecu_lat_{u}_{v}_{j1}_{j2}"
-                            )
+
+        # --- 3. KISIT: Critical Link Check (Büyük Paketler) ---
+        # Bu kısım kesinlikle "Kablo Seçimi" yaptırır.
+        
+        for idx, item in enumerate(critical_links):
+            u, v, vol = item['u'], item['v'], item['vol']
+            
+            possible_j1 = compat_ecus_per_sc[u]
+            possible_j2 = compat_ecus_per_sc[v]
+            
+            for j1 in possible_j1:
+                for j2 in possible_j2:
+                    if j1 == j2: continue # Aynı ECU ise kablo gerekmez, kısıt yok.
+                    
+                    if j1 < j2: pair = (j1, j2)
+                    else: pair = (j2, j1)
+                    
+                    if pair not in connectable_pairs: continue
+
+                    # Link Kapasitesi
+                    link_cap = gp.quicksum(
+                        z_var * cap_map.get(iface_name, 0)
+                        for iface_name, z_var in z_by_pair.get(pair, [])
+                    )
+                    
+                    s_crit = model.addVar(lb=0, vtype=GRB.CONTINUOUS, name=f"slack_crit_{idx}")
+                    
+                    # Eğer SC_u -> j1 ve SC_v -> j2 ise:
+                    model.addConstr(
+                        vol * (x[u, j1] + x[v, j2] - 1) <= link_cap + s_crit,
+                        name=f"crit_check_{idx}_{j1}_{j2}"
+                    )
+                    total_violation += s_crit
         
 
-        # Constraint 9. Partition Logic
+        # Constraint 10. Partition Logic
         # SC needs partition of its ASIL type
         for i, sc in enumerate(scs):
             a = sc.asil_req
@@ -464,16 +555,16 @@ class AssignmentOptimizerNew:
         model.write(f"model_ECU_Assignment.lp")
         print(f"Model written: model_ECU_Assignment.lp")
 
-        return model, x, y       
+        return model, x, y, z
 
     def optimize(self, scs, ecus, sensors, actuators, cable_types, comm_matrix, enable_latency=True):
 
         # 1. Create Base Model (Constraints)
-        model, x, y = self.create_base_model(scs, ecus, sensors, actuators, comm_matrix, cable_types, verbose=True, mip_gap=0.0)
+        model, x, y, z = self.create_base_model(scs, ecus, sensors, actuators, comm_matrix, cable_types, verbose=True, mip_gap=0.0)
 
         # 2. Calculate Cable Costs, Distances, and Latency (sensor/actuator only)
         cable_cost_expr, cable_distance_expr, latency_expr = self.calculate_cable_expressions(
-            x, y, scs, ecus, sensors, actuators, cable_types, comm_matrix
+            x, y, z, scs, ecus, sensors, actuators, cable_types, comm_matrix
         )
         
         solutions = []
@@ -481,7 +572,7 @@ class AssignmentOptimizerNew:
         print(f"\n[1] Finding Extremity 1: Minimum Cost...")
         hw_cost = gp.quicksum(y[j] * ecus[j].cost for j in range(len(ecus)))
         total_cost = hw_cost + cable_cost_expr
-        model.setObjective(total_cost, GRB.MINIMIZE)
+        model.setObjective(1, GRB.MINIMIZE)
         model.optimize()
         
         if model.status == GRB.INFEASIBLE:
@@ -494,7 +585,7 @@ class AssignmentOptimizerNew:
         if model.status == GRB.OPTIMAL:
             best_distance_at_cost = cable_distance_expr.getValue()
             #best_cost = model.objVal
-            sol_1 = self._extract_solution_from_model(x, y, scs, ecus, sensors, actuators, cable_types, "Min Total Cost")
+            sol_1 = self._extract_solution_from_model(x, y, z, scs, ecus, sensors, actuators, cable_types, "Min Total Cost")
             solutions.append(sol_1)
         else:
             print(f"Optimization Failed for Objective 1. Status Code: {model.Status}")
@@ -515,7 +606,7 @@ class AssignmentOptimizerNew:
         if model.status == GRB.OPTIMAL:
             best_distance = model.objVal
             #best_cost_at_distance = total_cost.getValue()
-            sol_2 = self._extract_solution_from_model(x, y, scs, ecus, sensors, actuators, cable_types, "Min Cable Distance")
+            sol_2 = self._extract_solution_from_model(x, y, z, scs, ecus, sensors, actuators, cable_types, "Min Cable Distance")
             solutions.append(sol_2)
         else:
             print(f"Optimization Failed for Objective 2. Status Code: {model.Status}")
@@ -536,7 +627,7 @@ class AssignmentOptimizerNew:
             model.optimize()
             if model.status == GRB.OPTIMAL:
                 sol_eps = self._extract_solution_from_model(
-                    x, y, scs, ecus, sensors, actuators, cable_types, f"Eps {idx}"
+                    x, y, z, scs, ecus, sensors, actuators, cable_types, f"Eps {idx}"
                 )
                 solutions.append(sol_eps)
             else:

@@ -26,9 +26,12 @@ class Visualization:
         else:
             plt.show()
 
-    def display_data_summary(self, ecus, scs, sensors, actuators, cable_types, comm_matrix):
+    def display_data_summary(self, scs, sensors, actuators, cable_types, comm_matrix, locations=None, ecus=None):
         print(f"\n Generated Data Summary:")
-        print(f"   - ECUs: {len(ecus)}")
+        if locations is not None:
+            print(f"   - Locations: {len(locations)}")
+        if ecus is not None:
+            print(f"   - ECUs: {len(ecus)}")
         print(f"   - Software Components: {len(scs)}")
         print(f"   - Sensors: {len(sensors)}")
         print(f"   - Actuators: {len(actuators)}")
@@ -88,16 +91,67 @@ class Visualization:
         print("="*80)
         print(tabulate(df_ecu, headers="keys", tablefmt="grid", showindex=True))
 
-    def display_data(self,df_sensors, df_actuators, df_sc, df_ecu):
+    def display_locations(self, locations):
+        print("\n" + "="*80)
+        print("LOCATIONS")
+        print("="*80)
+        rows = [[loc.id, loc.location.x, loc.location.y] for loc in locations]
+        print(tabulate(rows, headers=["id", "x", "y"], tablefmt="grid", showindex=False))
 
-        # Display summary of generated Sensors and Actuators
+    def display_partition(self, partitions):
+        print("\n" + "="*80)
+        print("PARTITION")
+        print("="*80)
+        partitions = partitions or {}
+        row = [
+            partitions.get('cost', 0),
+            partitions.get('cpu_cap', 0),
+            partitions.get('ram_cap', 0),
+            partitions.get('rom_cap', 0)
+        ]
+        print(tabulate([row], headers=["cost", "cpu_cap", "ram_cap", "rom_cap"], tablefmt="grid", showindex=False))
+
+    def display_hw_features(self, hardwares):
+        print("\n" + "="*80)
+        print("HW FEATURES")
+        print("="*80)
+        rows = [[k, v] for k, v in sorted((hardwares or {}).items())]
+        print(tabulate(rows, headers=["hw", "cost"], tablefmt="grid", showindex=False))
+
+    def display_interfaces(self, interface_costs):
+        print("\n" + "="*80)
+        print("INTERFACES")
+        print("="*80)
+        interfaces = interface_costs or {}
+        rows = []
+        for name, spec in sorted(interfaces.items()):
+            rows.append([
+                name,
+                spec.name,
+                spec.cost_per_meter,
+                spec.latency_per_meter,
+                spec.weight_per_meter,
+                spec.capacity,
+                spec.port_cost
+            ])
+        print(tabulate(rows, headers=["interface", "name", "cost/meter", "latency/meter", "weight/meter", "capacity", "port_cost"], tablefmt="grid", showindex=False))
+
+    def display_data(self, df_sensors, df_actuators, df_sc, df_ecu=None, locations=None, hardwares=None, interface_costs=None, partitions=None):
+
         self.display_sensors(df_sensors)
         self.display_actuators(df_actuators)
-        # Display summary of generated Software Components (SWs)
+        if locations is not None:
+            self.display_locations(locations)
+        if df_ecu is not None:
+            # Display summary of generated ECUs
+            self.display_ECUs(df_ecu)
+        if partitions is not None:
+            self.display_partition(partitions)
+        if hardwares is not None:
+            self.display_hw_features(hardwares)
+        if interface_costs is not None:
+            self.display_interfaces(interface_costs)
         self.display_scs(df_sc)
-
-        # Display summary of generated ECUs
-        self.display_ECUs(df_ecu)
     
     def display_assignments(self,solution_idx, solution,scs, ecus):
         assignments = solution['assignment']
@@ -112,7 +166,7 @@ class Visualization:
         print(f"\nAssignment Summary:")
         print(f"   - Total SWs Assigned: {len(assignments)} / {len(scs)}")
 
-    def plot_charts(self, sc_list, ecu_list, sensor_list, actuator_list):
+    def plot_charts(self, sc_list, sensor_list, actuator_list, ecu_list=None):
         """Convert lists to DataFrames and plot charts"""
         # Convert lists to DataFrames if not already
         if isinstance(sc_list, list):
@@ -120,10 +174,12 @@ class Visualization:
         else:
             df_sc = sc_list
             
-        if isinstance(ecu_list, list):
-            df_ecu = pd.DataFrame([vars(e) for e in ecu_list])
-        else:
-            df_ecu = ecu_list
+        df_ecu = None
+        if ecu_list is not None:
+            if isinstance(ecu_list, list):
+                df_ecu = pd.DataFrame([vars(e) for e in ecu_list])
+            else:
+                df_ecu = ecu_list
             
         if isinstance(sensor_list, list):
             df_sensors = pd.DataFrame([vars(s) for s in sensor_list])
@@ -139,23 +195,27 @@ class Visualization:
         fig, axes = plt.subplots(2, 2, figsize=(14, 10))
         fig.suptitle('Hardware vs Software Distribution', fontsize=16)
 
-        # ECU Distribution
-        sns.countplot(x='type', data=df_ecu, ax=axes[0, 0], palette='viridis')
-        axes[0, 0].set_title('Distribution of Candidate ECU Types')
+        # ECU Distribution (optional)
+        if df_ecu is not None and 'type' in df_ecu.columns:
+            sns.countplot(x='type', data=df_ecu, ax=axes[0, 0], palette='viridis')
+            axes[0, 0].set_title('Distribution of Candidate ECU Types')
+        else:
+            axes[0, 0].axis('off')
+            axes[0, 0].set_title('')
 
         #  SWC Distribution in terms of Domain
         df_sc['type_guess'] = df_sc['id'].apply(lambda x: x.split('_')[-1])
-        sns.countplot(x='type_guess', data=df_sc, ax=axes[0, 1], palette='magma')
+        sns.countplot(x='type_guess', data=df_sc, hue='type_guess', ax=axes[0, 1], palette='magma', legend=False)
         axes[0, 1].set_title('Distribution of SWC Workloads')
 
         # Sensor Type Distribution
-        sns.countplot(x='type', data=df_sensors, ax=axes[1, 0], palette='Set2')
+        sns.countplot(x='type', data=df_sensors, hue='type', ax=axes[1, 0], palette='Set2', legend=False)
         axes[1, 0].set_title('Distribution of Sensor Types')
         axes[1, 0].set_xlabel('Sensor Type')
         axes[1, 0].set_ylabel('Count')
 
         # Actuator Type Distribution
-        sns.countplot(x='type', data=df_actuators, ax=axes[1, 1], palette='Set1')
+        sns.countplot(x='type', data=df_actuators, hue='type', ax=axes[1, 1], palette='Set1', legend=False)
         axes[1, 1].set_title('Distribution of Actuator Types')
         axes[1, 1].set_xlabel('Actuator Type')
         axes[1, 1].set_ylabel('Count')
@@ -551,7 +611,7 @@ class Visualization:
         plt.tight_layout()
         self.save_plot(filename)
 
-    def plot_vehicle_layout_topdown(self, sensors, actuators, assignments=None, ecus=None, vehicle_length=4.5, vehicle_width=1.8, filename="vehicle_layout.png"):
+    def plot_vehicle_layout_topdown(self, sensors, actuators, assignments=None, ecus=None, locations=None, vehicle_length=4.5, vehicle_width=1.8, filename="vehicle_layout.png"):
         """
         Bird's eye view of vehicle layout showing sensors, actuators, and optionally ECUs.
         Displays the physical dimensions and locations of all components.
@@ -643,8 +703,20 @@ class Visualization:
                 if actuator.type not in actuator_types_plotted:
                     actuator_types_plotted.add(actuator.type)
         
-        # Plot ECUs (if provided)
-        if ecus is not None:
+        # Plot Locations or ECUs (if provided)
+        if locations is not None and assignments is None:
+            for loc in locations:
+                y_pos = -loc.location.y
+
+                label = 'Candidate Site' if loc.id == 'LOC0' else ""
+                ax.scatter(loc.location.x, y_pos, s=350, c='lightgray',
+                          marker='s', edgecolor='black', linewidth=2, zorder=4,
+                          label=label)
+
+                ax.text(loc.location.x, y_pos, loc.id,
+                       fontsize=8, ha='center', va='center', fontweight='bold',
+                       color='black', zorder=10)
+        elif ecus is not None:
             # Check mode: Candidate Sites (no assignments) or Assigned ECUs
             if assignments is None:
                 # --- CANDIDATE SITES MODE ---
@@ -732,19 +804,24 @@ class Visualization:
             patches.Rectangle((0, 0), 1, 1, facecolor='lightgray', edgecolor='black', linewidth=2, label='Vehicle Body'),
         ]
         
-        if ecus is not None:
+        if locations is not None and assignments is None:
+            legend_elements.append(
+                Line2D([0], [0], marker='s', color='w', markerfacecolor='lightgray', markersize=12,
+                       markeredgecolor='black', markeredgewidth=2, label='Candidate Site')
+            )
+        elif ecus is not None:
             if assignments is None:
                 legend_elements.append(
-                    Line2D([0], [0], marker='s', color='w', markerfacecolor='lightgray', markersize=12, 
+                    Line2D([0], [0], marker='s', color='w', markerfacecolor='lightgray', markersize=12,
                            markeredgecolor='black', markeredgewidth=2, label='Candidate Site')
                 )
             else:
                 legend_elements.extend([
-                    Line2D([0], [0], marker='D', color='w', markerfacecolor='#FF6B6B', markersize=12, 
+                    Line2D([0], [0], marker='D', color='w', markerfacecolor='#FF6B6B', markersize=12,
                            markeredgecolor='black', markeredgewidth=2, label='ECU: HPC'),
-                    Line2D([0], [0], marker='D', color='w', markerfacecolor='#050370', markersize=12, 
+                    Line2D([0], [0], marker='D', color='w', markerfacecolor='#050370', markersize=12,
                            markeredgecolor='black', markeredgewidth=2, label='ECU: ZONE'),
-                    Line2D([0], [0], marker='D', color='w', markerfacecolor='#95E1D3', markersize=12, 
+                    Line2D([0], [0], marker='D', color='w', markerfacecolor='#95E1D3', markersize=12,
                            markeredgecolor='black', markeredgewidth=2, label='ECU: MCU'),
                 ])
 

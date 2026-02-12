@@ -1,0 +1,9 @@
+{
+  "partition": {
+    "cost": 500,
+    "cpu_cap": 500000,
+    "ram_cap": 256000,
+    "rom_cap": 1024000,
+    "description": "Infrastructure cost to open/establish a partition at a location. Supports all ASIL levels (0-4)."
+  }
+}

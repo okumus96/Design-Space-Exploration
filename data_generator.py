@@ -1,17 +1,19 @@
 import random
-from models import Point, Sensor, Actuator, SoftwareComponent, CandidateECU, CableType
+from models import Point, Location, Sensor, Actuator, SoftwareComponent, CandidateECU, Interface
 
 
 class VehicleDataGenerator:
-    def __init__(self, num_ecus=10, num_scs=20, seed=42, config_reader=None):
+    def __init__(self, num_ecus=10, num_locs=20, num_scs=20, seed=42, config_reader=None):
         random.seed(seed)
         self.num_ecus = num_ecus
         self.num_scs = num_scs
+        self.num_locs = num_locs
         self.sensors = []
         self.actuators = []
         self.ecus = []
         self.scs = []
         self.comm_matrix = []
+        self.locations = []
 
         if config_reader is None:
             raise ValueError("config_reader is required")
@@ -31,7 +33,7 @@ class VehicleDataGenerator:
         self.ECU_Y_MAX = ecu_bounds['y_max']
         
         # Build cable types from config
-        self.cable_types = self.config_reader.get_cable_types()
+        self.cable_types = self.config_reader.get_interfaces()
         
         # Get SC domain weights from config
         self.sc_domain_weights = self.config_reader.get_sc_domain_weights()
@@ -342,6 +344,28 @@ class VehicleDataGenerator:
                             'volume': volume,
                             'max_latency': max_latency,
                         })
+
+    def generate_locations(self):
+        """Generate candidate locations (with id and Point coordinates)."""
+        num_locations = self.num_locs
+
+        cols = int(num_locations ** 0.5)
+        rows = (num_locations + cols - 1) // cols
+
+        x_step = (self.ECU_X_MAX - self.ECU_X_MIN) / max(1, cols - 1) if cols > 1 else 0
+        y_step = (self.ECU_Y_MAX - self.ECU_Y_MIN) / max(1, rows - 1) if rows > 1 else 0
+
+        self.locations = []
+        loc_idx = 0
+        for r in range(rows):
+            for c in range(cols):
+                if loc_idx >= num_locations:
+                    break
+
+                x_pos = self.ECU_X_MIN + c * x_step
+                y_pos = self.ECU_Y_MAX - r * y_step  # Top to bottom
+                self.locations.append(Location(id=f"LOC{loc_idx}", location=Point(x_pos, y_pos)))
+                loc_idx += 1
     
     def generate_ecu(self):
         """Generate ECUs: One of each type at each candidate location to avoid placement bias."""
@@ -400,5 +424,6 @@ class VehicleDataGenerator:
         self.assign_redundancy()
         self.assign_sensors_actuators()
         self.generate_comm_matrix()
-        self.generate_ecu()
-        return self.ecus, self.scs, self.comm_matrix, self.sensors, self.actuators, self.cable_types
+        self.generate_locations()
+        # ECU generation removed: LEGO model uses locations directly
+        return self.scs, self.comm_matrix, self.sensors, self.actuators, self.cable_types, self.locations
