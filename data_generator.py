@@ -81,23 +81,84 @@ class VehicleDataGenerator:
             self.actuators.append(actuator)
 
     def generate_scs(self, weights=None):
-        """Generate software components with domain distribution from config"""
+        """
+        Generate software components with domain distribution from config.
+        
+        Note: self.num_scs = number of OTHER DOMAIN SCs (not including Driver)
+              Driver SCs = len(sensors) + len(actuators) = 22 (fixed)
+              Total SCs = self.num_scs + 22
+        """
+        # First, generate Driver SCs for each sensor and actuator (1:1 mapping)
+        num_sensors = len(self.sensors)
+        num_actuators = len(self.actuators)
+        num_driver_scs = num_sensors + num_actuators
+        
+        sc_index = 0
+        
+        # Create Driver domain SCs for sensors
+        domain_config = self.config_reader.get_sc_domain_configs().get('Driver', {})
+        if not domain_config:
+            domain_config = {
+                'cpu_range': [100, 500],
+                'ram_range': [1000, 5000],
+                'rom_range': [5000, 10000],
+                'asil_levels': [0, 1],
+                'hw_requirements': {}
+            }
+        
+        for sensor in self.sensors:
+            sc = SoftwareComponent(
+                id=f"SC_{sc_index}_Driver_{sensor.id}",
+                domain='Driver',
+                cpu_req=random.randint(domain_config['cpu_range'][0], domain_config['cpu_range'][1]),
+                ram_req=random.randint(domain_config['ram_range'][0], domain_config['ram_range'][1]),
+                rom_req=random.randint(domain_config['rom_range'][0], domain_config['rom_range'][1]),
+                asil_req=random.choice(domain_config.get('asil_levels', [0, 1])),
+                hw_required=[]
+            )
+            sc.sensors = [sensor.id]
+            sc.actuators = []
+            sc.interface_required = [sensor.interface]
+            self.scs.append(sc)
+            sc_index += 1
+        
+        # Create Driver domain SCs for actuators
+        for actuator in self.actuators:
+            sc = SoftwareComponent(
+                id=f"SC_{sc_index}_Driver_{actuator.id}",
+                domain='Driver',
+                cpu_req=random.randint(domain_config['cpu_range'][0], domain_config['cpu_range'][1]),
+                ram_req=random.randint(domain_config['ram_range'][0], domain_config['ram_range'][1]),
+                rom_req=random.randint(domain_config['rom_range'][0], domain_config['rom_range'][1]),
+                asil_req=random.choice(domain_config.get('asil_levels', [0, 1])),
+                hw_required=[]
+            )
+            sc.sensors = []
+            sc.actuators = [actuator.id]
+            sc.interface_required = [actuator.interface]
+            self.scs.append(sc)
+            sc_index += 1
+        
+        # Now generate OTHER domain SCs (self.num_scs = count of OTHER domain SCs)
         if weights is None:
             weights = self.sc_domain_weights
         
-        # Get domains from config
-        domains = self.config_reader.get_domains()
+        # Get domains from config (excluding Driver)
+        domains = [d for d in self.config_reader.get_domains() if d != 'Driver']
         
         # Get domain configurations from config
         domain_configs = self.config_reader.get_sc_domain_configs()
+        
+        # Number of SCs to create for other domains (self.num_scs is already the count for other domains)
+        remaining_scs = self.num_scs
 
         # Calculate exact count for each domain based on weights
         domain_counts = {}
-        remaining = self.num_scs
+        remaining = remaining_scs
         
         for i, domain in enumerate(domains):
             if i < len(domains) - 1:
-                count = round(weights[i] * self.num_scs)
+                count = round(weights[i] * remaining_scs)
                 domain_counts[domain] = count
                 remaining -= count
             else:
@@ -136,13 +197,10 @@ class VehicleDataGenerator:
             random.shuffle(hw_list)
             hw_assignments[domain] = hw_list
         
-        # Shuffle to avoid ordered placement
-        #random.shuffle(assigned_domains)
-        
         # Track index per domain for HW assignment
         domain_indices = {domain: 0 for domain in domains}
 
-        for i, domain in enumerate(assigned_domains):
+        for domain in assigned_domains:
             domain_config = domain_configs.get(domain)
             if not domain_config:
                 continue
@@ -159,7 +217,7 @@ class VehicleDataGenerator:
             asil_levels = domain_config.get('asil_levels')
             
             sc = SoftwareComponent(
-                id=f"SC_{i}_{domain[:4].upper()}",
+                id=f"SC_{sc_index}_{domain[:4].upper()}",
                 domain=domain,
                 cpu_req=random.randint(cpu_range[0], cpu_range[1]),
                 ram_req=random.randint(ram_range[0], ram_range[1]),
@@ -169,6 +227,7 @@ class VehicleDataGenerator:
             )
             
             self.scs.append(sc)
+            sc_index += 1
     
     def assign_redundancy(self):
         """
@@ -209,101 +268,15 @@ class VehicleDataGenerator:
    
     def assign_sensors_actuators(self):
         """
-        Assign sensors/actuators to SCs:
-        - Each SC gets EITHER 1 sensor OR 1 actuator, never both
-        - Distribute evenly across SCs in each domain (round-robin style)
+        Assign sensors/actuators to SCs.
+        
+        Driver SCs already have 1:1 device mapping from generate_scs().
+        Other SCs (non-Driver domains) are left without devices unless config specifies otherwise.
         """
-        # Get assignment config from config reader
-        assignment_config = self.config_reader.get_sc_sensor_actuator_assignments()
-        
-        sensor_assignments = assignment_config.get('sensor_assignments', {})
-        actuator_assignments = assignment_config.get('actuator_assignments', {})
-        
-        # Initialize all SC sensors/actuators as empty
-        for sc in self.scs:
-            sc.sensors = []
-            sc.actuators = []
-        
-        # Group SCs by domain for easy lookup
-        domain_scs = {}
-        for sc in self.scs:
-            if sc.domain not in domain_scs:
-                domain_scs[sc.domain] = []
-            domain_scs[sc.domain].append(sc)
-        
-        # For each domain, combine sensors and actuators, then distribute
-        for domain, scs_in_domain in domain_scs.items():
-            if not scs_in_domain:
-                continue
-            
-            # Shuffle for randomness
-            random.shuffle(scs_in_domain)
-            
-            # Collect all sensors for this domain
-            domain_sensor_ids = sensor_assignments.get(domain, [])
-            domain_sensors = [s.id for s in self.sensors if s.id in domain_sensor_ids]
-            
-            # Collect all actuators for this domain
-            domain_actuator_ids = actuator_assignments.get(domain, [])
-            domain_actuators = [a.id for a in self.actuators if a.id in domain_actuator_ids]
-            
-            # Combine sensors and actuators with tags
-            items = [('sensor', sid) for sid in domain_sensors] + [('actuator', aid) for aid in domain_actuators]
-            
-            # Shuffle combined list for randomness
-            random.shuffle(items)
-            
-            # Distribute items ensuring 1 item per SC limit and Interface compatibility
-            assigned_scs = set()
-            
-            # Helper to get item interface
-            def get_item_interface(itype, iid):
-                if itype == 'sensor':
-                    return next((s.interface for s in self.sensors if s.id == iid), None)
-                else:
-                    return next((a.interface for a in self.actuators if a.id == iid), None)
-
-            for item_type, item_id in items:
-                item_interface = get_item_interface(item_type, item_id)
-                
-                # Find best candidate SC
-                best_sc = None
-                
-                # Try to find an SC that Matches HW requirements (e.g. HW_ACC/DSP -> requires ETH)
-                # And has no items yet
-                candidates = [sc for sc in scs_in_domain if sc.id not in assigned_scs]
-                
-                # Filter candidates based on interface compatibility with their HW requirements
-                valid_candidates = []
-                for sc in candidates:
-                    # If SC requires HW_ACC/DSP OR has huge CPU requirements (>30k), it must go on HPC (ETH only)
-                    # Because only HPC handles >30k CPU, and HPC only offers ETH.
-                    is_hpc_bound = ('HW_ACC' in sc.hw_required or 'DSP' in sc.hw_required or sc.cpu_req > 30000)
-                    
-                    if is_hpc_bound:
-                        if item_interface == 'ETH':
-                            valid_candidates.append(sc)
-                    # If SC requires HSM or is generic, it goes on ZONE or MCU (CAN, ETH, LIN...)
-                    else:
-                        valid_candidates.append(sc)
-                
-                if valid_candidates:
-                    best_sc = valid_candidates[0] # Pick first valid (already shuffled)
-                elif candidates and item_interface != 'ETH': 
-                    # If no valid candidates found but we have generic candidates and item is not ETH
-                    # (Fallback for e.g. CAN item but only HW_ACC SCs left? Should not happen if config is sane)
-                     pass
-
-                if best_sc:
-                    if item_type == 'sensor':
-                        best_sc.sensors.append(item_id)
-                    else:
-                        best_sc.actuators.append(item_id)
-                    assigned_scs.add(best_sc.id)
-                else:
-                    # Could not assign this item (no suitable empty SCs left)
-                    # This respects "One SC = One Item", so excess items are dropped/unassigned
-                    pass
+        # Driver SCs (indices 0 to num_sensors+num_actuators-1) already have 
+        # sensors/actuators assigned during SCgeneration.
+        # Non-Driver SCs start with empty sensors/actuators lists.
+        pass
         
         # Derive interface_required from assigned sensors/actuators
         for sc in self.scs:
@@ -324,7 +297,12 @@ class VehicleDataGenerator:
             sc.interface_required = list(interfaces)
 
     def generate_comm_matrix(self):
-        """Generate communication matrix between SCs based on random probabilities"""
+        """
+        Generate communication matrix between SCs based on random probabilities.
+        
+        Special case: Driver SWs (sensors/actuators) should NOT communicate with each other.
+        They only communicate with application SWs (ADAS, INFO, etc.)
+        """
         # Get communication probabilities from config
         comm_config = self.config_reader.get_sc_communication_config()
         
@@ -334,10 +312,16 @@ class VehicleDataGenerator:
         for i, src in enumerate(self.scs):
             for j, dst in enumerate(self.scs):
                 if i != j:
+                    # Filter: Driver-to-Driver communication is NOT allowed
+                    if src.domain == 'Driver' and dst.domain == 'Driver':
+                        continue
+                    
+                    # Use intra-domain probability if both are same domain (and not Driver)
+                    # Use inter-domain probability otherwise
                     prob = intra_prob if src.domain == dst.domain else inter_prob                 
                     if random.random() < prob:
                         volume = random.randint(1, 50)
-                        max_latency = random.randint(10, 500)
+                        max_latency = random.uniform(0.2, 0.5) #random.randint(10, 500)
                         self.comm_matrix.append({
                             'src': src.id,
                             'dst': dst.id,

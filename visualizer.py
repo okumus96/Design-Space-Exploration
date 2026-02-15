@@ -859,10 +859,16 @@ class Visualization:
         plt.tight_layout()
         self.save_plot(filename)
 
-    def plot_vehicle_layout_topdown(self, sensors, actuators, assignments=None, ecus=None, locations=None, vehicle_length=4.5, vehicle_width=1.8, filename="vehicle_layout.png"):
+    def plot_vehicle_layout_topdown(self, sensors, actuators, assignments=None, ecus=None, locations=None, scs=None, comm_matrix=None, cable_types=None, vehicle_length=4.5, vehicle_width=1.8, filename="vehicle_layout.png"):
         """
         Bird's eye view of vehicle layout showing sensors, actuators, and optionally ECUs.
         Displays the physical dimensions and locations of all components.
+        
+        When assignments and scs are provided:
+        - Highlights active locations (those with assigned SCs)
+        - Shows connections from active locations to their connected sensors/actuators
+        - Colors connections by bus type (ETH, CAN, FLEXRAY, LIN)
+        - Shows ECU-to-ECU backbone connections with different line styles
         """
         fig, ax = plt.subplots(figsize=(16, 12))
         
@@ -888,6 +894,14 @@ class Visualization:
         # Draw vehicle centerline
         ax.axhline(y=0, color='black', linestyle='--', linewidth=1.5, alpha=0.5, label='Vehicle Centerline')
         ax.axvline(x=0, color='black', linestyle='--', linewidth=1.5, alpha=0.5)
+        
+        # Color maps for bus/interface types
+        interface_colors = {
+            'ETH': '#3498DB',        # Blue
+            'CAN': '#E74C3C',        # Red
+            'FLEXRAY': '#2ECC71',    # Green
+            'LIN': '#F39C12'         # Orange
+        }
         
         # Color maps for sensor/actuator types
         sensor_colors = {
@@ -953,6 +967,7 @@ class Visualization:
         
         # Plot Locations or ECUs (if provided)
         if locations is not None and assignments is None:
+            # Mode 1: Show all candidate locations without assignments
             for loc in locations:
                 y_pos = -loc.location.y
 
@@ -964,6 +979,191 @@ class Visualization:
                 ax.text(loc.location.x, y_pos, loc.id,
                        fontsize=8, ha='center', va='center', fontweight='bold',
                        color='black', zorder=10)
+        
+        elif locations is not None and assignments is not None:
+            # Mode 2: Show locations with assignments and connections
+            # Create a mapping of location to its coordinates
+            loc_dict = {loc.id: loc for loc in locations}
+            
+            # Find active locations and their assigned SCs
+            active_locations = {}
+            for sc_id, loc_id in assignments.items():
+                if loc_id not in active_locations:
+                    active_locations[loc_id] = []
+                active_locations[loc_id].append(sc_id)
+            
+            # Build SC to sensors/actuators mapping if scs provided
+            sc_to_sensors = {}
+            sc_to_actuators = {}
+            if scs is not None:
+                for sc in scs:
+                    if sc.sensors:
+                        sc_to_sensors[sc.id] = sc.sensors
+                    if sc.actuators:
+                        sc_to_actuators[sc.id] = sc.actuators
+            
+            # Create sensor/actuator lookup dictionaries
+            sensor_dict = {s.id: s for s in sensors}
+            actuator_dict = {a.id: a for a in actuators}
+            
+            # Draw connections from active locations to their connected sensors/actuators
+            interfaces_drawn = set()
+            for loc_id, sc_ids in active_locations.items():
+                if loc_id not in loc_dict:
+                    continue
+                
+                loc = loc_dict[loc_id]
+                loc_y = -loc.location.y
+                
+                # Collect all connected sensors and actuators for this location
+                connected_sensors = set()
+                connected_actuators = set()
+                
+                for sc_id in sc_ids:
+                    if sc_id in sc_to_sensors:
+                        connected_sensors.update(sc_to_sensors[sc_id])
+                    if sc_id in sc_to_actuators:
+                        connected_actuators.update(sc_to_actuators[sc_id])
+                
+                # Draw connections to sensors
+                for sensor_id in connected_sensors:
+                    if sensor_id in sensor_dict:
+                        sensor = sensor_dict[sensor_id]
+                        sensor_y = -sensor.location.y
+                        
+                        # Get interface color
+                        interface = getattr(sensor, 'interface', 'CAN')
+                        line_color = interface_colors.get(interface, '#95A5A6')
+                        
+                        # Draw line with interface type as linestyle
+                        ax.plot([loc.location.x, sensor.location.x], [loc_y, sensor_y],
+                               color=line_color, linewidth=2, alpha=0.6, zorder=3)
+                        
+                        # Add small dot at connection point on location
+                        ax.scatter(loc.location.x, loc_y, s=50, c=line_color, 
+                                  marker='o', zorder=6)
+                
+                # Draw connections to actuators
+                for actuator_id in connected_actuators:
+                    if actuator_id in actuator_dict:
+                        actuator = actuator_dict[actuator_id]
+                        actuator_y = -actuator.location.y
+                        
+                        # Get interface color
+                        interface = getattr(actuator, 'interface', 'CAN')
+                        line_color = interface_colors.get(interface, '#95A5A6')
+                        
+                        # Draw line with interface type as linestyle
+                        ax.plot([loc.location.x, actuator.location.x], [loc_y, actuator_y],
+                               color=line_color, linewidth=2, alpha=0.6, zorder=3)
+                        
+                        # Add small dot at connection point on location
+                        ax.scatter(loc.location.x, loc_y, s=50, c=line_color, 
+                                  marker='o', zorder=6)
+            
+            # Draw ECU-to-ECU backbone connections from comm_matrix
+            if comm_matrix is not None and cable_types is not None and scs is not None:
+                # Create SC to location mapping
+                sc_to_loc = {sc_id: loc_id for sc_id, loc_id in assignments.items()}
+                
+                # Create cable_types lookup: interface_name -> interface object
+                cable_dict = {name: iface for name, iface in cable_types.items()}
+                
+                # Track drawn connections to avoid duplicates
+                drawn_connections = set()
+                
+                for comm_link in comm_matrix:
+                    src_sc = comm_link.get('src')
+                    dst_sc = comm_link.get('dst')
+                    
+                    if src_sc not in sc_to_loc or dst_sc not in sc_to_loc:
+                        continue
+                    
+                    src_loc_id = sc_to_loc[src_sc]
+                    dst_loc_id = sc_to_loc[dst_sc]
+                    
+                    # Skip if same location (not backbone)
+                    if src_loc_id == dst_loc_id:
+                        continue
+                    
+                    # Avoid duplicate connections
+                    conn_key = tuple(sorted([src_loc_id, dst_loc_id]))
+                    if conn_key in drawn_connections:
+                        continue
+                    drawn_connections.add(conn_key)
+                    
+                    # Get source and destination locations
+                    if src_loc_id not in loc_dict or dst_loc_id not in loc_dict:
+                        continue
+                    
+                    src_loc = loc_dict[src_loc_id]
+                    dst_loc = loc_dict[dst_loc_id]
+                    
+                    src_y = -src_loc.location.y
+                    dst_y = -dst_loc.location.y
+                    
+                    # Determine bus type from SC interface requirements
+                    # Check both SCs to find compatible interface
+                    src_sc_obj = next((s for s in scs if s.id == src_sc), None)
+                    dst_sc_obj = next((s for s in scs if s.id == dst_sc), None)
+                    
+                    bus_type = 'CAN'  # Default
+                    linestyle = '-'   # Default solid
+                    linewidth = 2.5
+                    
+                    if src_sc_obj and src_sc_obj.interface_required:
+                        bus_type = src_sc_obj.interface_required[0]
+                    elif dst_sc_obj and dst_sc_obj.interface_required:
+                        bus_type = dst_sc_obj.interface_required[0]
+                    
+                    # Set line style based on bus type
+                    if bus_type == 'ETH':
+                        linestyle = '--'    # Solid for Ethernet
+                        linewidth = 3.5
+                    elif bus_type == 'CAN':
+                        linestyle = '--'   # Dashed for CAN
+                        linewidth = 2.5
+                    elif bus_type == 'FLEXRAY':
+                        linestyle = '--'   # Dash-dot for FLEXRAY
+                        linewidth = 2.5
+                    elif bus_type == 'LIN':
+                        linestyle = '--'    # Dotted for LIN
+                        linewidth = 2
+                    
+                    line_color = interface_colors.get(bus_type, '#95A5A6')
+                    
+                    # Draw ECU-ECU backbone connection
+                    ax.plot([src_loc.location.x, dst_loc.location.x], 
+                           [src_y, dst_y],
+                           color=line_color, linewidth=linewidth, linestyle=linestyle, 
+                           alpha=0.7, zorder=2, label=f'ECU-ECU: {bus_type}' if bus_type not in [c.get('_label') for c in []] else '')
+            
+            # Plot all locations (active ones with highlight, inactive ones with less emphasis)
+            for loc in locations:
+                y_pos = -loc.location.y
+                is_active = loc.id in active_locations
+                
+                if is_active:
+                    # Active location: brighter, with border
+                    ax.scatter(loc.location.x, y_pos, s=400, c='#FFE74C', 
+                              marker='s', edgecolor='#FF6B35', linewidth=3, zorder=4,
+                              label='Active Location' if loc.id == list(active_locations.keys())[0] else '')
+                    
+                    # Show number of assigned SCs
+                    num_scs = len(active_locations[loc.id])
+                    ax.text(loc.location.x, y_pos, f"{loc.id}\n({num_scs})",
+                           fontsize=9, ha='center', va='center', fontweight='bold',
+                           color='black', zorder=10)
+                else:
+                    # Inactive location: grayed out
+                    ax.scatter(loc.location.x, y_pos, s=300, c='#D3D3D3',
+                              marker='s', edgecolor='gray', linewidth=1.5, zorder=2, alpha=0.5,
+                              label='Inactive Location' if loc == locations[0] else '')
+                    
+                    ax.text(loc.location.x, y_pos, loc.id,
+                           fontsize=7, ha='center', va='center', fontweight='bold',
+                           color='gray', zorder=5, alpha=0.5)
+        
         elif ecus is not None:
             # Check mode: Candidate Sites (no assignments) or Assigned ECUs
             if assignments is None:
@@ -1057,6 +1257,28 @@ class Visualization:
                 Line2D([0], [0], marker='s', color='w', markerfacecolor='lightgray', markersize=12,
                        markeredgecolor='black', markeredgewidth=2, label='Candidate Site')
             )
+        elif locations is not None and assignments is not None:
+            # Add location legend for active/inactive locations
+            legend_elements.extend([
+                Line2D([0], [0], marker='s', color='w', markerfacecolor='#FFE74C', markersize=12,
+                       markeredgecolor='#FF6B35', markeredgewidth=2, label='Active Location'),
+                Line2D([0], [0], marker='s', color='w', markerfacecolor='#D3D3D3', markersize=12,
+                       markeredgecolor='gray', markeredgewidth=1.5, alpha=0.5, label='Inactive Location'),
+            ])
+            # Add interface/bus type legend
+            legend_elements.extend([
+                Line2D([0], [0], color='#3498DB', linewidth=3, label='Bus: ETH (Ethernet)'),
+                Line2D([0], [0], color='#E74C3C', linewidth=3, label='Bus: CAN'),
+                Line2D([0], [0], color='#2ECC71', linewidth=3, label='Bus: FLEXRAY'),
+                Line2D([0], [0], color='#F39C12', linewidth=3, label='Bus: LIN'),
+            ])
+            # Add ECU-ECU backbone legend
+            legend_elements.extend([
+                Line2D([0], [0], color='#3498DB', linewidth=3.5, linestyle='-', label='ECU-ECU: ETH (solid)'),
+                Line2D([0], [0], color='#E74C3C', linewidth=2.5, linestyle='--', label='ECU-ECU: CAN (dashed)'),
+                Line2D([0], [0], color='#2ECC71', linewidth=2.5, linestyle='-.', label='ECU-ECU: FLEXRAY (dash-dot)'),
+                Line2D([0], [0], color='#F39C12', linewidth=2, linestyle=':', label='ECU-ECU: LIN (dotted)'),
+            ])
         elif ecus is not None:
             if assignments is None:
                 legend_elements.append(
@@ -1085,14 +1307,17 @@ class Visualization:
             Line2D([0], [0], marker='^', color='w', markerfacecolor='#F39C12', markersize=12, markeredgecolor='black', markeredgewidth=2, label='HVAC'),
         ])
         
-        ax.legend(handles=legend_elements, loc='upper right', fontsize=11, ncol=2, framealpha=0.95, edgecolor='black', fancybox=True)
+        ax.legend(handles=legend_elements, loc='upper right', fontsize=10, ncol=2, framealpha=0.95, edgecolor='black', fancybox=True)
         
         # Set labels and title
         ax.set_xlabel('X (Left-Right) [meters]', fontsize=13, weight='bold')
         ax.set_ylabel('Y (Front-Back) [meters]', fontsize=13, weight='bold')
         
         title = "Vehicle Layout - Bird's Eye View (Top-Down)"
-        if assignments:
+        if locations is not None and assignments is not None:
+            active_count = len(set(assignments.values()))
+            title += f" - {active_count} Active Locations"
+        elif assignments:
             title += f" - {len(set(assignments.values()))} ECUs Assigned"
         ax.set_title(title, fontsize=16, weight='bold', pad=20)
         

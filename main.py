@@ -80,10 +80,11 @@ def main(args):
         visualizer.display_solution_architecture(solution, scs, locations, 
                                                  filename=f"solution_architecture_{solution_idx}.png")
         
-        # TODO: Fix plot_vehicle_layout_topdown for Location objects
-        # print(f"   Generating vehicle layout for Solution {solution_idx}...")
-        # visualizer.plot_vehicle_layout_topdown(sensors, actuators, solution['assignment'], locations, 
-        #                                        filename=f"vehicle_layout_solution_{solution_idx}.png")
+        # Generate vehicle layout with active locations and bus connections
+        print(f"   Generating vehicle layout for Solution {solution_idx}...")
+        visualizer.plot_vehicle_layout_topdown(sensors, actuators, solution['assignment'], locations=locations,
+                                               scs=scs, comm_matrix=comm_matrix, cable_types=cable_types,
+                                               filename=f"vehicle_layout_solution_{solution_idx}.png")
     
     print("\n" + "=" * 80)
     print("PIPELINE COMPLETED SUCCESSFULLY")
