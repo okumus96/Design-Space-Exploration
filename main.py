@@ -12,6 +12,7 @@ from config_reader import ConfigReader
 from data_generator import VehicleDataGenerator
 from optimizer import AssignmentOptimizer
 from visualizer import Visualization
+from report import ReportGenerator
 from tabulate import tabulate
 import time
 
@@ -35,8 +36,9 @@ def main(args):
     
     # Summary and visualization of generated data
     visualizer = Visualization(save_dir=args.output_dir)
-    visualizer.display_data_summary(scs, sensors, actuators, cable_types, comm_matrix, locations=locations)
-    visualizer.display_data(sensors, actuators, scs, locations=locations, hardwares=hardwares, interface_costs=interfaces, partitions=partitions)
+    reporter = ReportGenerator()
+    reporter.display_data_summary(scs, sensors, actuators, cable_types, comm_matrix, locations=locations)
+    reporter.display_data(sensors, actuators, scs, locations=locations, hardwares=hardwares, interface_costs=interfaces, partitions=partitions)
     visualizer.plot_vehicle_layout_topdown( sensors, actuators, assignments=None, locations=locations, filename="initial_vehicle_layout.png")
     #visualizer.plot_sw_sensor_actuator_graph_final(scs, sensors, actuators, comm_matrix)
     #visualizer.plot_charts(scs, sensors, actuators)
@@ -47,9 +49,9 @@ def main(args):
     else:
         opt = AssignmentOptimizer()
     
-    # Generate Pareto front: HW Cost vs Cable Length
+    # Step 3: Run optimization
     start_time = time.time()
-    pareto_solutions = opt.optimize(
+    raw_solution = opt.optimize(
         scs, locations, sensors, actuators, cable_types, comm_matrix,
         partitions=partitions,
         hardwares=hardwares,
@@ -60,10 +62,15 @@ def main(args):
     print(f"Optimization completed in {end_time - start_time:.2f} seconds.")
     print(f"#"*80)
     
+    # Step 4: Extract formatted solution from raw optimization results
+    pareto_solutions = []
+    if raw_solution and raw_solution.get('status') == 'OPTIMAL':
+        pareto_solutions.append(raw_solution)
+    
     # Display detailed solution analysis
     if pareto_solutions:
         for idx, solution in enumerate(pareto_solutions, 1):
-            visualizer.display_solution_details(solution, scs, locations, sensors, actuators)
+            reporter.display_solution_details(solution, scs, locations, sensors, actuators)
 
     # Visualize Pareto front
     visualizer.visualize_pareto_front(pareto_solutions)
@@ -74,10 +81,10 @@ def main(args):
     print("=" * 80)
     
     for solution_idx, solution in enumerate(pareto_solutions, 1):
-        visualizer.display_assignments(solution['assignment'])
+        reporter.display_assignments(solution['assignment'])
 
         print(f"\n   Generating architecture visualization for Solution {solution_idx}...")
-        visualizer.display_solution_architecture(solution, scs, locations, 
+        visualizer.visualize_solution_architecture(solution, scs, locations, 
                                                  filename=f"solution_architecture_{solution_idx}.png")
         
         # Generate vehicle layout with active locations and bus connections

@@ -3,10 +3,9 @@ import numpy as np
 os.environ["GRB_LICENSE_FILE"] = "/home/okumus/gurobi.lic"
 import gurobipy as gp
 from gurobipy import GRB
+from optimizer_utils import (get_distance, build_sensor_lookup, build_actuator_lookup, 
+                             precompute_latency_infeasible_pairs, build_cost_map, build_latency_map, extract_solution)
 
-# Choosing our interface b/w ecus unintiutive.
-# Interfaces right now have infinite capacity.
-# we need to get rid of the ECU types, model them as a legos of HWs and partitions.
 # We need change direct link b/w the ECUs to some sort of network topology.
 # We did not include uncertainty in overall system.
 # We do not know numbers we gave is correct (i.e., cost, latency,  etc.)
@@ -18,165 +17,7 @@ class AssignmentOptimizer:
     def __init__(self):
         print("Initialized AssignmentOptimizerNew with quadratic ECU-ECU costs and linear sensor/actuator costs")
         pass
-    
-    def _extract_solution(self, y, z, hw_use, if_use, comm, w, scs, locations, sensors, actuators,
-                               cable_types, partitions, hardwares, interfaces):
 
-        """Extract LEGO solution from optimized model"""
-        assignment_map = {}
-        partition_map = {}
-        num_locations_used = 0
-        num_partitions_opened = 0
-        hw_opened = []
-        if_opened = []
-        
-        # Extract SC assignments and partitions from z
-        for (i, j, a, p), var in z.items():
-            if var.X > 0.5:
-                assignment_map[scs[i].id] = locations[j].id
-                partition_map[scs[i].id] = f"{locations[j].id}_asil{a}_p{p}"
-        
-        # Extract partitions opened
-        for (j, a, p), var in y.items():
-            if var.X > 0.5:
-                num_partitions_opened += 1
-        
-        # Extract HW opened
-        for (j, h), var in hw_use.items():
-            if var.X > 0.5:
-                hw_opened.append(f"{h}@{locations[j].id}")
-        
-        # Extract interfaces opened
-        for (j, i_name), var in if_use.items():
-            if var.X > 0.5:
-                if_opened.append(f"{i_name}@{locations[j].id}")
-        
-        # Count locations used
-        locs_used = set()
-        for (i, j, a, p), var in z.items():
-            if var.X > 0.5:
-                locs_used.add(j)
-        num_locations_used = len(locs_used)
-        
-        # Calculate cable costs and distances
-        cable_length = 0.0
-        cable_cost_calc = 0.0
-        cost_map = {name: ct.cost_per_meter for name, ct in cable_types.items()}
-        sensor_lookup = {s.id: s for s in sensors}
-        actuator_lookup = {a.id: a for a in actuators}
-        
-        for (i, j, a, p), var in z.items():
-            if var.X > 0.5:
-                sc = scs[i]
-
-                # Sensor cable costs and distances
-                for s_id in sc.sensors:
-                    sensor = sensor_lookup.get(s_id)
-                    if sensor and sensor.location:
-                        dist = self._get_distance(sensor.location, locations[j].location)
-                        cable_length += dist
-                        cable_cost_calc += dist * cost_map.get(sensor.interface, 0.0)
-
-                # Actuator cable costs and distances
-                for a_id in sc.actuators:
-                    actuator = actuator_lookup.get(a_id)
-                    if actuator and actuator.location:
-                        dist = self._get_distance(actuator.location, locations[j].location)
-                        cable_length += dist
-                        cable_cost_calc += dist * cost_map.get(actuator.interface, 0.0)
-        
-        # Calculate costs
-        partition_cost = num_partitions_opened * partitions.get('cost', 0)
-        hw_cost = sum(hardwares.get(h.split('@')[0], 0) for h in hw_opened)
-        if_cost = sum(interfaces[i.split('@')[0]].port_cost for i in if_opened)
-        cable_cost = cable_cost_calc
-        
-        # Calculate communication cost (ECU-to-ECU backbone)
-        comm_cost = 0.0
-        for (j1, j2, iface), var in comm.items():
-            if var.X > 0.5:
-                num_links = int(round(var.X))
-                dist = self._get_distance(locations[j1].location, locations[j2].location)
-                cost_per_link = dist * cable_types[iface].cost_per_meter
-                comm_cost += num_links * cost_per_link
-        
-        total_cost = partition_cost + hw_cost + if_cost + cable_cost + comm_cost
-        
-        solution = {
-            'assignment': assignment_map,
-            'partitions': partition_map,
-            'hardware_cost': hw_cost,  # For visualizer compatibility
-            'hw_cost': hw_cost,
-            'interface_cost': if_cost,
-            'cable_cost': cable_cost,
-            'comm_cost': comm_cost,
-            'cable_length': cable_length,
-            'total_cost': total_cost,
-            'num_locations_used': num_locations_used,
-            'num_ecus_used': num_locations_used,  # For visualizer compatibility
-            'num_partitions': num_partitions_opened,
-            'hw_features': hw_opened,
-            'interfaces': if_opened,
-            'partition_cost': partition_cost,
-            'objective': 'LEGO Total Cost',
-            'status': 'OPTIMAL'
-        }
-        return solution
-
-    def _get_distance(self, loc1, loc2):
-        if not loc1 or not loc2:
-            return 0.0
-        dist_manhattan, _ = loc1.dist(loc2)
-        return dist_manhattan
-
-    def _precompute_latency_infeasible_pairs(self, scs, locations, sensors, actuators, cable_types):
-        """Precompute infeasible (sc_idx, loc_idx) pairs due to sensor/actuator max-latency constraints.
-
-        This replaces adding many explicit constraints like:
-            sum_p z[i,j,a,p] == 0
-        by directly setting the corresponding z variables' upper bounds to 0.
-        """
-        latency_map = {name: ct.latency_per_meter for name, ct in cable_types.items()}
-        sensor_lookup = {s.id: s for s in sensors}
-        actuator_lookup = {a.id: a for a in actuators}
-
-        infeasible = set()
-        n_sc = len(scs)
-        n_locs = len(locations)
-
-        for i in range(n_sc):
-            # Sensors
-            for s_id in getattr(scs[i], 'sensors', []) or []:
-                sensor = sensor_lookup.get(s_id)
-                if not sensor or not getattr(sensor, 'max_latency', None):
-                    continue
-                if not getattr(sensor, 'location', None):
-                    continue
-                for j in range(n_locs):
-                    if not getattr(locations[j], 'location', None):
-                        continue
-                    dist = self._get_distance(sensor.location, locations[j].location)
-                    latency = dist * latency_map.get(getattr(sensor, 'interface', None), 0.0)
-                    if latency > sensor.max_latency:
-                        infeasible.add((i, j))
-
-            # Actuators
-            for a_id in getattr(scs[i], 'actuators', []) or []:
-                actuator = actuator_lookup.get(a_id)
-                if not actuator or not getattr(actuator, 'max_latency', None):
-                    continue
-                if not getattr(actuator, 'location', None):
-                    continue
-                for j in range(n_locs):
-                    if not getattr(locations[j], 'location', None):
-                        continue
-                    dist = self._get_distance(actuator.location, locations[j].location)
-                    latency = dist * latency_map.get(getattr(actuator, 'interface', None), 0.0)
-                    if latency > actuator.max_latency:
-                        infeasible.add((i, j))
-
-        return infeasible
-    
     def calculate_cable_expressions(self, z, y, scs, locations, sensors, actuators, cable_types, comm_matrix, max_partitions_per_asil_per_loc, feasible_locs_per_sc, comm=None):
         """
         Calculate cable cost, distance, and latency as Gurobi linear expressions (NOT constraints).
@@ -192,10 +33,10 @@ class AssignmentOptimizer:
             latency_expr: Gurobi expression for total latency (distance-based)
         """
         # Precompute lookups
-        cost_map = {name: ct.cost_per_meter for name, ct in cable_types.items()}
-        latency_map = {name: ct.latency_per_meter for name, ct in cable_types.items()}
-        sensor_lookup = {s.id: s for s in sensors}
-        actuator_lookup = {a.id: a for a in actuators}
+        cost_map = build_cost_map(cable_types)
+        latency_map = build_latency_map(cable_types)
+        sensor_lookup = build_sensor_lookup(sensors)
+        actuator_lookup = build_actuator_lookup(actuators)
         
         # Precompute cable cost, distance, and latency coefficients (only non-zero)
         cable_cost_terms = []  # List of (variable, cable_cost) tuples
@@ -216,7 +57,7 @@ class AssignmentOptimizer:
                 for s_id in (sc.sensors or []):
                     sensor = sensor_lookup.get(s_id)
                     if sensor and sensor.location:
-                        dist = self._get_distance(sensor.location, locations[j].location)
+                        dist = get_distance(sensor.location, locations[j].location)
                         cable_cost += dist * cost_map.get(sensor.interface, 0.0)
                         cable_distance += dist
                         latency += dist * latency_map.get(sensor.interface, 0.0)
@@ -225,7 +66,7 @@ class AssignmentOptimizer:
                 for a_id in (sc.actuators or []):
                     actuator = actuator_lookup.get(a_id)
                     if actuator and actuator.location:
-                        dist = self._get_distance(actuator.location, locations[j].location)
+                        dist = get_distance(actuator.location, locations[j].location)
                         cable_cost += dist * cost_map.get(actuator.interface, 0.0)
                         cable_distance += dist
                         latency += dist * latency_map.get(actuator.interface, 0.0)
@@ -247,7 +88,7 @@ class AssignmentOptimizer:
 
         if comm:  # LEGO model: sparse communication variables
             for (j1, j2, iface), comm_var in comm.items():
-                dist = self._get_distance(locations[j1].location, locations[j2].location)
+                dist = get_distance(locations[j1].location, locations[j2].location)
                 cost = dist * cable_types[iface].cost_per_meter
                 lat = dist * latency_map.get(iface, 0.0)
                 
@@ -299,6 +140,7 @@ class AssignmentOptimizer:
         model = gp.Model("ECU_Assignment")
         model.setParam('OutputFlag', 1)
         model.setParam('MIPFocus', 2)
+        #model.setParam("MIPGap", 0.001)  # 1% gap for faster solutions (adjust as needed)
         model.update()
         
         # y[j,a,p] = Location j has partition for ASIL a (replica p)
@@ -380,39 +222,66 @@ class AssignmentOptimizer:
         # Create w variables for all communicating SC pairs and their feasible locations
         w = {}
         comm_req_pairs = set()
-        if comm_matrix:
-            sc_id_to_idx = {sc.id: i for i, sc in enumerate(scs)}
-            for link in comm_matrix:
-                src_id = link.get('src')
-                dst_id = link.get('dst')
-                volume = link.get('volume', 0)
-                if volume > 0 and src_id in sc_id_to_idx and dst_id in sc_id_to_idx:
-                    i = sc_id_to_idx[src_id]
-                    k = sc_id_to_idx[dst_id]
-                    # Store unique pairs (i, k) 
-                    comm_req_pairs.add((i, k))
+        #if comm_matrix:
+        #    sc_id_to_idx = {sc.id: i for i, sc in enumerate(scs)}
+        #    for link in comm_matrix:
+        #        src_id = link.get('src')
+        #        dst_id = link.get('dst')
+        #        volume = link.get('volume', 0)
+        #        if volume > 0 and src_id in sc_id_to_idx and dst_id in sc_id_to_idx:
+        #            i = sc_id_to_idx[src_id]
+        #            k = sc_id_to_idx[dst_id]
+        #            # Store unique pairs (i, k) 
+        #            comm_req_pairs.add((i, k))
         
         feasible_locs_sets = {i: set(feasible_locs_per_sc[i]) for i in range(n_sc)}
-        
-        for (i, k) in comm_req_pairs:
+        #for (i, k) in comm_req_pairs:
             # We need w for both directions if the link is bidirectional in usage check,
             # but usually we normalize SC pairs. However, traffic aggregation check 
             # iterates over comm_req_map. 
             # Strict definition: w corresponds to existence of specific traffic flow segment.
             
             # Iterate feasible locations
-            for j1 in feasible_locs_sets[i]:
-                for j2 in feasible_locs_sets[k]:
-                    if j1 == j2: continue # Internal comms usually don't use network cables
+        #    for j1 in feasible_locs_sets[i]:
+        #        for j2 in feasible_locs_sets[k]:
+        #            if j1 == j2: continue # Internal comms usually don't use network cables
                     
                     # Only create if this location pair connects via backbone
                     # (j1, j2) or (j2, j1) must be in required_loc_pairs
-                    pair = (j1, j2) if j1 < j2 else (j2, j1)
-                    if pair in required_loc_pairs:
-                         w[i, k, j1, j2] = model.addVar(
-                             vtype=GRB.BINARY, 
-                             name=f"w_{scs[i].id}_{scs[k].id}_{locations[j1].id}_{locations[j2].id}"
-                         )
+        #            pair = (j1, j2) if j1 < j2 else (j2, j1)
+        #            if pair in required_loc_pairs:
+        #                 w[i, k, j1, j2] = model.addVar(
+        #                     vtype=GRB.BINARY, 
+        #                     name=f"w_{scs[i].id}_{scs[k].id}_{locations[j1].id}_{locations[j2].id}"
+        #                 )
+        #NEW
+        # Traffic flow.
+        traffic_flows = []
+        sc_id_map = {sc.id: i for i, sc in enumerate(scs)}
+        t_idx = 0
+        if comm_matrix:
+            for link in comm_matrix:
+                src_id = link.get('src')
+                dst_id = link.get('dst')
+                vol = link.get('volume', 0)
+                # Sadece hacmi olan ve gecerli linkleri al
+                if vol > 0 and src_id in sc_id_map and dst_id in sc_id_map:
+                    traffic_flows.append({
+                        'id': t_idx,
+                        'src_idx': sc_id_map[src_id],
+                        'dst_idx': sc_id_map[dst_id],
+                        'volume': vol
+                    })
+                    t_idx += 1
+
+        # Flow 
+        flow = {}
+        for tr in traffic_flows:
+            t = tr['id']
+            for u in range(n_locs):
+                for v in range(n_locs):
+                    if u == v: continue
+                    flow[t, u, v] = model.addVar(vtype=GRB.CONTINUOUS, lb=0.0, ub=1.0, name=f"flow_{t}_{u}_{v}")
 
         print(f"\nVariables created:")
         print(f"  y: {len(y)} (partitions)")
@@ -421,7 +290,8 @@ class AssignmentOptimizer:
         print(f"  if_use: {len(if_use)} (Interface selection)")
         print(f"  comm: {len(comm)} (ECU-to-ECU communication)")
         print(f"  w: {len(w)} (Linearization vars)")
-
+        print(f"  traffic_flows: {len(traffic_flows)} (Defined communication flows)")
+        print(f"  flow: {len(flow)} (Traffic flow)")
         var_stats = {
             'y': len(y),
             'z': len(z),
@@ -429,13 +299,15 @@ class AssignmentOptimizer:
             'if_use': len(if_use),
             'comm': len(comm),
             'comm_loc_pairs': len(required_loc_pairs),
-            'w': len(w)
+            'w': len(w),
+            'traffic_flows': len(traffic_flows),
+            'flow': len(flow),
         }
-        var_stats['total'] = var_stats['y'] + var_stats['z'] + var_stats['hw_use'] + var_stats['if_use'] + var_stats['comm'] + var_stats['w']
+        var_stats['total'] = var_stats['y'] + var_stats['z'] + var_stats['hw_use'] + var_stats['if_use'] + var_stats['comm'] + var_stats['w'] + var_stats['traffic_flows'] + var_stats['flow']
 
-        return model, y, z, hw_use, if_use, comm, w, max_partitions_per_asil_per_loc, feasible_locs_per_sc, feasible_scs_per_loc, var_stats
+        return model, y, z, hw_use, if_use, comm, w, traffic_flows, flow, max_partitions_per_asil_per_loc, feasible_locs_per_sc, feasible_scs_per_loc, var_stats
 
-    def _add_constraints(self, model, y, z, hw_use, if_use, comm, w, scs, locations, sensors, actuators, 
+    def _add_constraints(self, model, y, z, hw_use, if_use, comm, w, traffic_flows, flow, scs, locations, sensors, actuators, 
                               cable_types, comm_matrix, partitions, unique_asils, max_partitions_per_asil_per_loc,
                               feasible_locs_per_sc, feasible_scs_per_loc, enable_comm_bw_constraints=True,
                               comm_bw_big_m=None):
@@ -561,17 +433,17 @@ class AssignmentOptimizer:
                             cstats['c5_redundancy'] += 1
         
         # Constraint 6/7 (Sensor/Actuator max-latency): precomputed and enforced via sparse z creation.
-        latency_map = {name: ct.latency_per_meter for name, ct in cable_types.items()}
+        latency_map = build_latency_map(cable_types)
         
         # Constraint 8: Location-Location Communication Latency Constraints
         if comm_matrix:
-            cost_map = {name: ct.cost_per_meter for name, ct in cable_types.items()}
+            cost_map = build_cost_map(cable_types)
             loc_loc_latencies = {}
             all_interfaces = list(cable_types.keys())
             
             for j1 in range(n_locs):
                 for j2 in range(j1 + 1, n_locs):
-                    dist = self._get_distance(locations[j1].location, locations[j2].location)
+                    dist = get_distance(locations[j1].location, locations[j2].location)
                     if all_interfaces:
                         best_iface = max(all_interfaces, key=lambda x: cost_map.get(x, 0))
                         loc_loc_latencies[j1, j2] = dist * latency_map.get(best_iface, 0)
@@ -698,6 +570,89 @@ class AssignmentOptimizer:
                         name=f"c10_traffic_agg_{locations[j1].id}_{locations[j2].id}"
                     )
                     cstats['c10_network_load'] += 1
+        
+        # ETH network model constraints
+        ##NEW
+        # Her bir trafik akisi (t) ve her bir lokasyon (j) icin:
+        for tr in traffic_flows:
+            t_id = tr['id']
+            src_idx = tr['src_idx']
+            dst_idx = tr['dst_idx']
+            
+            for j in range(n_locs):
+                # 1. Bu lokasyona GIREN toplam trafik (baska lokasyonlardan)
+                flow_in = gp.quicksum(flow[t_id, k, j] for k in range(n_locs) if k != j)
+                
+                # 2. Bu lokasyondan CIKAN toplam trafik (baska lokasyonlara)
+                flow_out = gp.quicksum(flow[t_id, j, k] for k in range(n_locs) if k != j)
+                
+                # 3. Bu lokasyon bu trafigin KAYNAGI mi? (SC i burada mi?)
+                # (Tum partition ve asil olasiliklarini topluyoruz, sonuc 0 veya 1 olur)
+                is_source = gp.quicksum(z[src_idx, j, a, p] 
+                                    for a in unique_asils 
+                                    for p in range(max_partitions_per_asil_per_loc)
+                                    if (src_idx, j, a, p) in z)
+                
+                # 4. Bu lokasyon bu trafigin HEDEFI mi? (SC k burada mi?)
+                is_dest = gp.quicksum(z[dst_idx, j, a, p] 
+                                    for a in unique_asils 
+                                    for p in range(max_partitions_per_asil_per_loc)
+                                    if (dst_idx, j, a, p) in z)
+                
+                # DENKLEM: Giren + Uretilen = Cikan + Tuketinlen
+                # Matematiksel olarak: Flow_Out - Flow_In = Source - Dest
+                model.addConstr(flow_out - flow_in == is_source - is_dest, 
+                                name=f"flow_conserv_{t_id}_{locations[j].id}")
+                
+        for (u, v, iface), comm_var in comm.items():
+            # Sadece ETH kablolarini network routing icin kullaniyoruz
+            if "ETH" not in iface: 
+                continue
+
+            # u -> v yonundeki trafik toplami
+            traffic_u_v = gp.LinExpr()
+            
+            # v -> u yonundeki trafik toplami (Ethernet Full Duplex oldugu icin ayri ayri kontrol ediyoruz)
+            traffic_v_u = gp.LinExpr()
+            
+            for tr in traffic_flows:
+                t_id = tr['id']
+                vol = tr['volume']
+                
+                # Eger bu flow degiskeni tanimliysa toplama ekle
+                if (t_id, u, v) in flow:
+                    traffic_u_v += flow[t_id, u, v] * vol
+                    
+                if (t_id, v, u) in flow:
+                    traffic_v_u += flow[t_id, v, u] * vol
+                    
+            # KISIT 1: u->v trafigi kapasiteye sigmali
+            model.addConstr(traffic_u_v <= cable_types[iface].capacity * comm_var, 
+                            name=f"cap_uv_{u}_{v}")
+                            
+            # KISIT 2: v->u trafigi kapasiteye sigmali
+            model.addConstr(traffic_v_u <= cable_types[iface].capacity * comm_var, 
+                            name=f"cap_vu_{u}_{v}")
+            
+        for tr in traffic_flows:
+            t_id = tr['id']
+            src_idx = tr['src_idx']
+            
+            for j in range(n_locs):
+                # Bu lokasyondan DISARI cikan trafik miktari (0 ile 1 arasi)
+                flow_out_sum = gp.quicksum(flow[t_id, j, k] for k in range(n_locs) if k != j)
+                
+                # Bu lokasyon KAYNAK mi?
+                is_source = gp.quicksum(z[src_idx, j, a, p] 
+                                    for a in unique_asils 
+                                    for p in range(max_partitions_per_asil_per_loc)
+                                    if (src_idx, j, a, p) in z)
+                
+                # KISIT: Disari trafik cikabilmesi icin YA kaynak olmali YA DA switch olmali.
+                # Flow_Out (max 1) <= Source (0/1) + Switch (0/1)
+                model.addConstr(flow_out_sum <= is_source + hw_use[j, "SWITCH"], 
+                                name=f"switch_perm_{t_id}_{locations[j].id}")
+
 
         cstats['total'] = sum(v for k, v in cstats.items() if k != 'total')
         return model, cstats
@@ -788,18 +743,18 @@ class AssignmentOptimizer:
         print(f"  Partition config: cost={partitions.get('cost', 0)}, cpu_cap={partitions.get('cpu_cap', 0)}, ram_cap={partitions.get('ram_cap', 0)}, rom_cap={partitions.get('rom_cap', 0)}")
         
         # ======================= PRECOMPUTE FEASIBILITY =======================
-        infeasible_ij = self._precompute_latency_infeasible_pairs(scs, locations, sensors, actuators, cable_types)
+        infeasible_ij = precompute_latency_infeasible_pairs(scs, locations, sensors, actuators, cable_types)
         if infeasible_ij:
             print(f"  Precomputed infeasible SC-location pairs (latency): {len(infeasible_ij)}")
 
         # ======================= CREATE MODEL & VARIABLES =======================
-        model, y, z, hw_use, if_use, comm, w, max_partitions_per_asil_per_loc, feasible_locs_per_sc, feasible_scs_per_loc, var_stats = self._create_model_and_variables(
+        model, y, z, hw_use, if_use, comm, w, traffic_flows, flow, max_partitions_per_asil_per_loc, feasible_locs_per_sc, feasible_scs_per_loc, var_stats = self._create_model_and_variables(
             n_sc, n_locs, scs, locations, unique_asils, all_hw, all_interfaces, infeasible_ij=infeasible_ij, comm_matrix=comm_matrix
         )
         
         # ======================= ADD CONSTRAINTS =======================
         model, cstats = self._add_constraints(
-            model, y, z, hw_use, if_use, comm, w, scs, locations, sensors, actuators,
+            model, y, z, hw_use, if_use, comm, w, traffic_flows, flow, scs, locations, sensors, actuators,
             cable_types, comm_matrix, partitions, unique_asils, max_partitions_per_asil_per_loc,
             feasible_locs_per_sc, feasible_scs_per_loc,
             enable_comm_bw_constraints=enable_comm_bw_constraints,
@@ -847,15 +802,18 @@ class AssignmentOptimizer:
         print(f"\nSolving...")
         model.write("model.lp")
         model.optimize()
-        solutions = []
-        # ======================= EXTRACT SOLUTION =======================
+        
+        # ======================= RETURN FORMATTED SOLUTION =======================
         if model.status == GRB.OPTIMAL:
             print(f"\n✓ Optimal solution found!")
-            sol = self._extract_solution(y, z, hw_use, if_use, comm, w, scs, locations, sensors, actuators, cable_types, partitions, hardwares, interfaces)
-            solutions.append(sol)
-            return solutions
+            # Extract and return formatted solution
+            formatted_solution = extract_solution(
+                y, z, hw_use, if_use, comm, w, scs, locations, sensors, actuators,
+                cable_types, partitions, hardwares, interfaces, comm_matrix=comm_matrix
+            )
+            return formatted_solution
         else:
             print(f"\n✗ Optimization failed. Status: {model.status}")
-            return []
+            return None
 
 

@@ -18,7 +18,7 @@ echo "Starting Design Space Exploration..."
 
 # Run
 source ./.optimization/bin/activate
-srun --cpu-bind=none python3 main.py --num_locs 20 --num_scs 100 --verbose --output_dir "results/experiment_${SLURM_JOB_ID}" &
+srun --cpu-bind=none python3 main.py --num_locs 20 --num_scs 30 --verbose --output_dir "results/experiment_${SLURM_JOB_ID}" &
 
 wait
 

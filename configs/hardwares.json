@@ -12,6 +12,10 @@
     "HSM": {
       "description": "Hardware Security Module for encryption/key management",
       "cost": 100
+    },
+    "SWITCH": {
+      "description": "Allows this ECU to act as a network switch/router for pass-through traffic",
+      "cost": 100 
     }
   }
 }
