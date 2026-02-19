@@ -472,7 +472,7 @@ class Visualization:
         plt.tight_layout()
         self.save_plot(filename)
 
-    def plot_vehicle_layout_topdown(self, sensors, actuators, assignments=None, ecus=None, locations=None, scs=None, comm_matrix=None, cable_types=None, vehicle_length=4.5, vehicle_width=1.8, filename="vehicle_layout.png"):
+    def plot_vehicle_layout_topdown(self, sensors, actuators, assignments=None, ecus=None, locations=None, scs=None, comm_matrix=None, cable_types=None, comm_links=None, hw_features=None, eth_sensor_attachments=None, eth_actuator_attachments=None, shared_sensor_attachments=None, shared_actuator_attachments=None, vehicle_length=4.5, vehicle_width=1.8, filename="vehicle_layout.png"):
         """
         Bird's eye view of vehicle layout showing sensors, actuators, and optionally ECUs.
         Displays the physical dimensions and locations of all components.
@@ -480,7 +480,7 @@ class Visualization:
         When assignments and scs are provided:
         - Highlights active locations (those with assigned SCs)
         - Shows connections from active locations to their connected sensors/actuators
-        - Colors connections by bus type (ETH, CAN, FLEXRAY, LIN)
+        - Models CAN/LIN/FLEXRAY as shared buses (trunk + branches), ETH as direct link
         - Shows ECU-to-ECU backbone connections with different line styles
         """
         fig, ax = plt.subplots(figsize=(16, 12))
@@ -513,7 +513,9 @@ class Visualization:
             'ETH': '#3498DB',        # Blue
             'CAN': '#E74C3C',        # Red
             'FLEXRAY': '#2ECC71',    # Green
-            'LIN': '#F39C12'         # Orange
+            'LIN': '#F39C12',        # Orange
+            'UART': '#9B59B6',       # Purple
+            'SPI': '#4ECDC4',        # Teal
         }
         
         # Color maps for sensor/actuator types
@@ -604,6 +606,15 @@ class Visualization:
                 if loc_id not in active_locations:
                     active_locations[loc_id] = []
                 active_locations[loc_id].append(sc_id)
+
+            # Also mark switch-only locations as active (if provided).
+            switch_loc_ids = set()
+            if hw_features:
+                for hw in hw_features:
+                    if isinstance(hw, str) and hw.startswith('SWITCH@'):
+                        parts = hw.split('@', 1)
+                        if len(parts) == 2 and parts[1]:
+                            switch_loc_ids.add(parts[1])
             
             # Build SC to sensors/actuators mapping if scs provided
             sc_to_sensors = {}
@@ -614,68 +625,184 @@ class Visualization:
                         sc_to_sensors[sc.id] = sc.sensors
                     if sc.actuators:
                         sc_to_actuators[sc.id] = sc.actuators
+
+            # Helper: infer which location a sensor/actuator is physically wired to.
+            # - For ETH peripherals, prefer explicit attachment mapping from solver.
+            # - Otherwise fall back to the location of the SC that references it.
+            def _infer_sensor_loc_id(sensor_id):
+                sensor = sensor_dict.get(sensor_id)
+                if sensor is None:
+                    return None
+                if getattr(sensor, 'interface', None) == 'ETH' and eth_sensor_attachments:
+                    return eth_sensor_attachments.get(sensor_id)
+                if getattr(sensor, 'interface', None) in {'CAN', 'LIN', 'FLEXRAY'} and shared_sensor_attachments:
+                    return shared_sensor_attachments.get(sensor_id)
+                if scs is not None:
+                    for sc in scs:
+                        if sc.sensors and sensor_id in sc.sensors:
+                            return assignments.get(sc.id)
+                return None
+
+            def _infer_actuator_loc_id(actuator_id):
+                actuator = actuator_dict.get(actuator_id)
+                if actuator is None:
+                    return None
+                if getattr(actuator, 'interface', None) == 'ETH' and eth_actuator_attachments:
+                    return eth_actuator_attachments.get(actuator_id)
+                if getattr(actuator, 'interface', None) in {'CAN', 'LIN', 'FLEXRAY'} and shared_actuator_attachments:
+                    return shared_actuator_attachments.get(actuator_id)
+                if scs is not None:
+                    for sc in scs:
+                        if sc.actuators and actuator_id in sc.actuators:
+                            return assignments.get(sc.id)
+                return None
             
             # Create sensor/actuator lookup dictionaries
             sensor_dict = {s.id: s for s in sensors}
             actuator_dict = {a.id: a for a in actuators}
             
-            # Draw connections from active locations to their connected sensors/actuators
+            # Draw connections from (active + switch-only) locations to peripherals.
+            # Shared-bus modeling for peripherals: CAN/LIN/FLEXRAY use one trunk per location/interface.
+            # ETH remains direct point-to-point to the attachment/hosting location.
+            draw_loc_ids = set(active_locations.keys()) | set(switch_loc_ids)
             interfaces_drawn = set()
-            for loc_id, sc_ids in active_locations.items():
+            shared_bus_ifaces = {'CAN', 'LIN', 'FLEXRAY'}
+            for loc_id in sorted(draw_loc_ids):
                 if loc_id not in loc_dict:
                     continue
                 
                 loc = loc_dict[loc_id]
                 loc_y = -loc.location.y
-                
-                # Collect all connected sensors and actuators for this location
+
+                # Collect peripherals that are physically wired to this location.
                 connected_sensors = set()
+                for sensor_id in sensor_dict.keys():
+                    if _infer_sensor_loc_id(sensor_id) == loc_id:
+                        connected_sensors.add(sensor_id)
+
                 connected_actuators = set()
-                
-                for sc_id in sc_ids:
-                    if sc_id in sc_to_sensors:
-                        connected_sensors.update(sc_to_sensors[sc_id])
-                    if sc_id in sc_to_actuators:
-                        connected_actuators.update(sc_to_actuators[sc_id])
-                
-                # Draw connections to sensors
+                for actuator_id in actuator_dict.keys():
+                    if _infer_actuator_loc_id(actuator_id) == loc_id:
+                        connected_actuators.add(actuator_id)
+
+                direct_links = []  # (x, y, iface)
+                shared_bus_endpoints = {}  # iface -> list[(x, y)]
+
+                # Gather sensor endpoints
                 for sensor_id in connected_sensors:
                     if sensor_id in sensor_dict:
                         sensor = sensor_dict[sensor_id]
                         sensor_y = -sensor.location.y
-                        
-                        # Get interface color
                         interface = getattr(sensor, 'interface', 'CAN')
-                        line_color = interface_colors.get(interface, '#95A5A6')
-                        
-                        # Draw line with interface type as linestyle
-                        ax.plot([loc.location.x, sensor.location.x], [loc_y, sensor_y],
-                               color=line_color, linewidth=2, alpha=0.6, zorder=3)
-                        
-                        # Add small dot at connection point on location
-                        ax.scatter(loc.location.x, loc_y, s=50, c=line_color, 
-                                  marker='o', zorder=6)
-                
-                # Draw connections to actuators
+                        if interface in shared_bus_ifaces:
+                            shared_bus_endpoints.setdefault(interface, []).append((sensor.location.x, sensor_y))
+                        else:
+                            direct_links.append((sensor.location.x, sensor_y, interface))
+
+                # Gather actuator endpoints
                 for actuator_id in connected_actuators:
                     if actuator_id in actuator_dict:
                         actuator = actuator_dict[actuator_id]
                         actuator_y = -actuator.location.y
-                        
-                        # Get interface color
                         interface = getattr(actuator, 'interface', 'CAN')
-                        line_color = interface_colors.get(interface, '#95A5A6')
-                        
-                        # Draw line with interface type as linestyle
-                        ax.plot([loc.location.x, actuator.location.x], [loc_y, actuator_y],
-                               color=line_color, linewidth=2, alpha=0.6, zorder=3)
-                        
-                        # Add small dot at connection point on location
-                        ax.scatter(loc.location.x, loc_y, s=50, c=line_color, 
-                                  marker='o', zorder=6)
+                        if interface in shared_bus_ifaces:
+                            shared_bus_endpoints.setdefault(interface, []).append((actuator.location.x, actuator_y))
+                        else:
+                            direct_links.append((actuator.location.x, actuator_y, interface))
+
+                # Draw direct (point-to-point) links, e.g., ETH
+                for end_x, end_y, interface in direct_links:
+                    line_color = interface_colors.get(interface, '#95A5A6')
+                    ax.plot([loc.location.x, end_x], [loc_y, end_y],
+                           color=line_color, linewidth=2, alpha=0.6, zorder=3)
+                    ax.scatter(loc.location.x, loc_y, s=50, c=line_color,
+                              marker='o', zorder=6)
+
+                # Draw shared buses (single trunk + peripheral branches)
+                for interface, endpoints in shared_bus_endpoints.items():
+                    if not endpoints:
+                        continue
+
+                    line_color = interface_colors.get(interface, '#95A5A6')
+                    mean_x = sum(p[0] for p in endpoints) / len(endpoints)
+                    mean_y = sum(p[1] for p in endpoints) / len(endpoints)
+
+                    bus_x = 0.5 * (loc.location.x + mean_x)
+                    bus_y = 0.5 * (loc_y + mean_y)
+
+                    # Shared trunk from location to bus hub
+                    ax.plot([loc.location.x, bus_x], [loc_y, bus_y],
+                           color=line_color, linewidth=3.2, alpha=0.8, zorder=3)
+                    ax.scatter(bus_x, bus_y, s=55, c=line_color,
+                              marker='s', edgecolor='black', linewidth=0.6, zorder=6)
+
+                    # Branches from bus hub to all peripherals on that interface
+                    for end_x, end_y in endpoints:
+                        ax.plot([bus_x, end_x], [bus_y, end_y],
+                               color=line_color, linewidth=1.5, linestyle=':', alpha=0.65, zorder=3)
+
+                    # Mark the location interface point
+                    ax.scatter(loc.location.x, loc_y, s=50, c=line_color,
+                              marker='o', zorder=6)
             
-            # Draw ECU-to-ECU backbone connections from comm_matrix
-            if comm_matrix is not None and cable_types is not None and scs is not None:
+            # Draw ECU-to-ECU backbone connections.
+            # Prefer optimized comm_links (from solution) if provided; otherwise fall back to inferring from comm_matrix requirements.
+            if comm_links is not None and locations is not None and cable_types is not None:
+                loc_dict_by_id = {loc.id: loc for loc in locations}
+                # Define "active" as locations that host at least one assigned SC.
+                # (If you later allow switch-only locations, pass that information in and extend this set.)
+                active_loc_ids = set(active_locations.keys()) | set(switch_loc_ids)
+                drawn_connections = set()
+                for link in comm_links:
+                    src_loc_id = link.get('src_loc')
+                    dst_loc_id = link.get('dst_loc')
+                    iface = link.get('iface', 'ETH')
+                    count = int(link.get('count', 1) or 1)
+
+                    if not src_loc_id or not dst_loc_id:
+                        continue
+                    if src_loc_id not in loc_dict_by_id or dst_loc_id not in loc_dict_by_id:
+                        continue
+                    # Avoid drawing links to inactive locations (prevents phantom edges in plots).
+                    if src_loc_id not in active_loc_ids or dst_loc_id not in active_loc_ids:
+                        continue
+
+                    conn_key = tuple(sorted([src_loc_id, dst_loc_id, iface]))
+                    if conn_key in drawn_connections:
+                        continue
+                    drawn_connections.add(conn_key)
+
+                    src_loc = loc_dict_by_id[src_loc_id]
+                    dst_loc = loc_dict_by_id[dst_loc_id]
+
+                    src_y = -src_loc.location.y
+                    dst_y = -dst_loc.location.y
+
+                    linestyle = '--'
+                    linewidth = 2.5 + min(3.0, 0.6 * max(0, count - 1))
+                    if iface == 'ETH':
+                        linestyle = '--'
+                        linewidth = max(linewidth, 3.5)
+                    elif iface == 'CAN':
+                        linestyle = '--'
+                    elif iface == 'FLEXRAY':
+                        linestyle = '--'
+                    elif iface == 'LIN':
+                        linestyle = '--'
+
+                    line_color = interface_colors.get(iface, '#95A5A6')
+                    ax.plot(
+                        [src_loc.location.x, dst_loc.location.x],
+                        [src_y, dst_y],
+                        color=line_color,
+                        linewidth=linewidth,
+                        linestyle=linestyle,
+                        alpha=0.7,
+                        zorder=2,
+                    )
+
+            # Fallback: Draw inferred backbone connections from comm_matrix requirements
+            elif comm_matrix is not None and cable_types is not None and scs is not None:
                 # Create SC to location mapping
                 sc_to_loc = {sc_id: loc_id for sc_id, loc_id in assignments.items()}
                 
@@ -752,18 +879,21 @@ class Visualization:
                            alpha=0.7, zorder=2, label=f'ECU-ECU: {bus_type}' if bus_type not in [c.get('_label') for c in []] else '')
             
             # Plot all locations (active ones with highlight, inactive ones with less emphasis)
+            active_label_done = False
+            inactive_label_done = False
             for loc in locations:
                 y_pos = -loc.location.y
-                is_active = loc.id in active_locations
+                is_active = (loc.id in active_locations) or (loc.id in switch_loc_ids)
                 
                 if is_active:
                     # Active location: brighter, with border
                     ax.scatter(loc.location.x, y_pos, s=400, c='#FFE74C', 
                               marker='s', edgecolor='#FF6B35', linewidth=3, zorder=4,
-                              label='Active Location' if loc.id == list(active_locations.keys())[0] else '')
-                    
-                    # Show number of assigned SCs
-                    num_scs = len(active_locations[loc.id])
+                              label='Active Location' if not active_label_done else '')
+                    active_label_done = True
+
+                    # Show number of assigned SCs (0 for switch-only)
+                    num_scs = len(active_locations.get(loc.id, []))
                     ax.text(loc.location.x, y_pos, f"{loc.id}\n({num_scs})",
                            fontsize=9, ha='center', va='center', fontweight='bold',
                            color='black', zorder=10)
@@ -771,7 +901,8 @@ class Visualization:
                     # Inactive location: grayed out
                     ax.scatter(loc.location.x, y_pos, s=300, c='#D3D3D3',
                               marker='s', edgecolor='gray', linewidth=1.5, zorder=2, alpha=0.5,
-                              label='Inactive Location' if loc == locations[0] else '')
+                              label='Inactive Location' if not inactive_label_done else '')
+                    inactive_label_done = True
                     
                     ax.text(loc.location.x, y_pos, loc.id,
                            fontsize=7, ha='center', va='center', fontweight='bold',
@@ -880,17 +1011,16 @@ class Visualization:
             ])
             # Add interface/bus type legend
             legend_elements.extend([
-                Line2D([0], [0], color='#3498DB', linewidth=3, label='Bus: ETH (Ethernet)'),
-                Line2D([0], [0], color='#E74C3C', linewidth=3, label='Bus: CAN'),
-                Line2D([0], [0], color='#2ECC71', linewidth=3, label='Bus: FLEXRAY'),
-                Line2D([0], [0], color='#F39C12', linewidth=3, label='Bus: LIN'),
+                Line2D([0], [0], color='#3498DB', linewidth=3, label='Bus: ETH (P2P)'),
+                Line2D([0], [0], color='#E74C3C', linewidth=3, label='Bus: CAN (Shared)'),
+                Line2D([0], [0], color='#2ECC71', linewidth=3, label='Bus: FLEXRAY (Shared)'),
+                Line2D([0], [0], color='#F39C12', linewidth=3, label='Bus: LIN (Shared)'),
+                Line2D([0], [0], color='#9B59B6', linewidth=3, label='Bus: UART'),
+                Line2D([0], [0], color='#4ECDC4', linewidth=3, label='Bus: SPI'),
             ])
             # Add ECU-ECU backbone legend
             legend_elements.extend([
-                Line2D([0], [0], color='#3498DB', linewidth=3.5, linestyle='-', label='ECU-ECU: ETH (solid)'),
-                Line2D([0], [0], color='#E74C3C', linewidth=2.5, linestyle='--', label='ECU-ECU: CAN (dashed)'),
-                Line2D([0], [0], color='#2ECC71', linewidth=2.5, linestyle='-.', label='ECU-ECU: FLEXRAY (dash-dot)'),
-                Line2D([0], [0], color='#F39C12', linewidth=2, linestyle=':', label='ECU-ECU: LIN (dotted)'),
+                Line2D([0], [0], color='#3498DB', linewidth=3.5, linestyle='--', label='ECU-ECU: ETH'),
             ])
         elif ecus is not None:
             if assignments is None:
@@ -971,21 +1101,27 @@ class Visualization:
         plt.tight_layout()
         self.save_plot(filename)
 
-    def visualize_solution_architecture(self, solution, scs, locations, filename="solution_architecture.png"):
+    def visualize_solution_architecture(self, solution, scs, locations, partitions_config=None, filename="solution_architecture.png"):
         """
         Display the complete optimization solution architecture:
         - Each location as a container
         - Partitions within each location
         - SWs assigned to each partition
         - HW features and interfaces enabled at each location
+        - Partition utilization percentage
         """
         sc_dict = {s.id: s for s in scs}
         location_dict = {l.id: l for l in locations}
+        cpu_cap = partitions_config.get('cpu_cap', 1) if partitions_config else 1
+        ram_cap = partitions_config.get('ram_cap', 1) if partitions_config else 1
+        rom_cap = partitions_config.get('rom_cap', 1) if partitions_config else 1
         
         assignment = solution['assignment']  # {SC_id: location_id}
         partitions = solution['partitions']  # {SC_id: "LOC0_asil3_p0"}
         hw_features = solution['hw_features']  # ["HW_ACC@LOC0", ...]
         interfaces = solution['interfaces']  # ["ETH@LOC0", ...]
+        eth_sensor_attachments = solution.get('eth_sensor_attachments') or {}
+        eth_actuator_attachments = solution.get('eth_actuator_attachments') or {}
         
         # Group SCs by location and partition
         loc_partition_sws = {}  # {location_id: {partition_name: [SC_ids]}}
@@ -1002,6 +1138,8 @@ class Visualization:
         
         # Group HW features by location
         for hw_feat in hw_features:
+            if '@' not in hw_feat:
+                continue
             hw_name, loc_id = hw_feat.rsplit('@', 1)
             if loc_id not in loc_hw:
                 loc_hw[loc_id] = []
@@ -1009,10 +1147,19 @@ class Visualization:
         
         # Group interfaces by location
         for iface in interfaces:
+            if '@' not in iface:
+                continue
             iface_name, loc_id = iface.rsplit('@', 1)
             if loc_id not in loc_if:
                 loc_if[loc_id] = []
             loc_if[loc_id].append(iface_name)
+
+        # Ensure switch-only and attachment-only active locations also appear in the architecture.
+        switch_loc_ids = set(loc_hw.keys())
+        attachment_loc_ids = set(eth_sensor_attachments.values()) | set(eth_actuator_attachments.values())
+        for loc_id in sorted(switch_loc_ids | attachment_loc_ids):
+            if loc_id not in loc_partition_sws:
+                loc_partition_sws[loc_id] = {}
         
         # Create figure
         fig, ax = plt.subplots(figsize=(18, 12))
@@ -1028,10 +1175,10 @@ class Visualization:
         
         # Render locations and their contents
         num_locs = len(loc_partition_sws)
-        loc_width = 12  # Width of each location box
-        loc_height = 8  # Height of each location box
-        spacing_x = 14
-        spacing_y = 10
+        loc_width = 16  # Increased width
+        loc_height = 20 # Significantly increased height to fit lists
+        spacing_x = 24
+        spacing_y = 25
         
         start_x = 2
         start_y = (num_locs - 1) * spacing_y
@@ -1050,75 +1197,104 @@ class Visualization:
             # Location title
             loc = location_dict.get(loc_id)
             title_text = f"📍 {loc_id}"
-            ax.text(x_pos + loc_width/2, y_pos + loc_height - 0.6, title_text,
-                   fontsize=12, ha='center', va='top', weight='bold')
+            ax.text(x_pos + loc_width/2, y_pos + loc_height - 0.8, title_text,
+                   fontsize=14, ha='center', va='top', weight='bold')
             
             # HW Features section
             hw_text = f"Hardware: {', '.join(loc_hw.get(loc_id, ['None']))}"
-            ax.text(x_pos + 0.3, y_pos + loc_height - 1.2, hw_text,
-                   fontsize=8, ha='left', va='top', style='italic',
+            ax.text(x_pos + 0.5, y_pos + loc_height - 1.8, hw_text,
+                   fontsize=10, ha='left', va='top', style='italic',
                    bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.6))
             
             # Interfaces section
             if_text = f"Interfaces: {', '.join(loc_if.get(loc_id, ['None']))}"
-            ax.text(x_pos + 0.3, y_pos + loc_height - 1.8, if_text,
-                   fontsize=8, ha='left', va='top', style='italic',
+            ax.text(x_pos + 0.5, y_pos + loc_height - 2.8, if_text,
+                   fontsize=10, ha='left', va='top', style='italic',
                    bbox=dict(boxstyle='round', facecolor='lightcyan', alpha=0.6))
             
             # Render partitions within location
-            partition_y = y_pos + 3.8
-            partition_height = 2.8
-            partition_width = (loc_width - 0.6) / max(len(partitions_dict), 1)
+            partition_y_top = y_pos + loc_height - 4.5
+            partition_height = loc_height - 6.0
+            partition_width = (loc_width - 1.0) / max(len(partitions_dict), 1)
+
+            if len(partitions_dict) == 0:
+                ax.text(
+                    x_pos + loc_width / 2,
+                    y_pos + loc_height / 2,
+                    "(no partitions / no SW assignments)",
+                    fontsize=10,
+                    ha='center',
+                    va='center',
+                    color='gray',
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.7, edgecolor='gray'),
+                )
             
             for part_idx, (partition_name, sc_ids) in enumerate(sorted(partitions_dict.items())):
-                part_x = x_pos + 0.3 + part_idx * partition_width
+                part_x = x_pos + 0.5 + part_idx * partition_width
                 
                 # Extract ASIL from partition name (e.g., "LOC0_asil3_p0")
                 asil_level = 'ASIL-' + partition_name.split('asil')[1][0].upper() if 'asil' in partition_name else 'QM'
                 asil_color = asil_colors.get(asil_level, '#E8E8E8')
                 
                 # Partition box
-                part_box = FancyBboxPatch((part_x, partition_y - partition_height), 
-                                         partition_width - 0.1, partition_height,
+                part_box = FancyBboxPatch((part_x, partition_y_top - partition_height), 
+                                         partition_width - 0.2, partition_height,
                                          boxstyle="round,pad=0.1",
                                          edgecolor='darkred', facecolor=asil_color,
                                          linewidth=2, alpha=0.85)
                 ax.add_patch(part_box)
                 
-                # Partition header
-                part_header = f"{asil_level}\n{partition_name.split('_')[-1]}"
-                ax.text(part_x + partition_width/2 - 0.05, partition_y - 0.3, part_header,
-                       fontsize=7, ha='center', va='top', weight='bold')
+                # Calculate Resource utilization
+                total_cpu_used = sum(sc_dict[sc_id].cpu_req for sc_id in sc_ids)
+                total_ram_used = sum(sc_dict[sc_id].ram_req for sc_id in sc_ids)
+                total_rom_used = sum(sc_dict[sc_id].rom_req for sc_id in sc_ids)
                 
-                # SWs in partition
+                cpu_util = (total_cpu_used / cpu_cap) * 100
+                ram_util = (total_ram_used / ram_cap) * 100
+                rom_util = (total_rom_used / rom_cap) * 100
+                
+                # Partition header
+                part_header = f"{asil_level} - {partition_name.split('_')[-1]}"
+                ax.text(part_x + (partition_width-0.2)/2, partition_y_top - 0.5, part_header,
+                       fontsize=10, ha='center', va='top', weight='bold')
+
+                # Utilization text - Repositioned higher, bolder, and larger
+                # Using 1 decimal place to avoid 0% for small components
+                util_text = f"CPU:{cpu_util:.1f}% RAM:{ram_util:.1f}% ROM:{rom_util:.1f}%"
+                ax.text(part_x + (partition_width-0.2)/2, partition_y_top - 1.5, util_text,
+                       fontsize=8, ha='center', va='top', weight='bold', 
+                       color='black', bbox=dict(boxstyle='round,pad=0.1', fc='white', alpha=0.6, ec='none'))
+                
+                # SWs in partition - Pushed down slightly to make room
+                font_size = 7 if len(sc_ids) < 10 else 5
                 sw_list_text = "\n".join(sc_ids)
-                ax.text(part_x + partition_width/2 - 0.05, partition_y - 1.0, sw_list_text,
-                       fontsize=6, ha='center', va='top',
-                       bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+                ax.text(part_x + (partition_width-0.2)/2, partition_y_top - 3.2, sw_list_text,
+                       fontsize=font_size, ha='center', va='top',
+                       bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='gray'))
         
         # Legend
         legend_elements = [
             Line2D([0], [0], marker='s', color='w', label='ASIL-D', 
-                   markerfacecolor='#FF9999', markersize=8),
+                   markerfacecolor='#FF9999', markersize=10),
             Line2D([0], [0], marker='s', color='w', label='ASIL-C', 
-                   markerfacecolor='#FFB3B3', markersize=8),
+                   markerfacecolor='#FFB3B3', markersize=10),
             Line2D([0], [0], marker='s', color='w', label='ASIL-B', 
-                   markerfacecolor='#FFD1D1', markersize=8),
+                   markerfacecolor='#FFD1D1', markersize=10),
             Line2D([0], [0], marker='s', color='w', label='ASIL-A', 
-                   markerfacecolor='#FFE5E5', markersize=8),
+                   markerfacecolor='#FFE5E5', markersize=10),
             Line2D([0], [0], marker='s', color='w', label='QM', 
-                   markerfacecolor='#E8F4E8', markersize=8),
+                   markerfacecolor='#E8F4E8', markersize=10),
         ]
-        ax.legend(handles=legend_elements, loc='upper right', fontsize=9)
+        ax.legend(handles=legend_elements, loc='upper right', fontsize=12)
         
         # Title
         ax.text(0.5, 0.98, 'LEGO Optimization Solution Architecture',
-               transform=ax.transAxes, fontsize=14, ha='center', va='top',
+               transform=ax.transAxes, fontsize=18, ha='center', va='top',
                weight='bold',
                bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.8))
         
-        ax.set_xlim(-1, 20)
-        ax.set_ylim(-2, (num_locs + 1) * spacing_y)
+        ax.set_xlim(-1, 30)
+        ax.set_ylim(-5, (num_locs + 1) * spacing_y)
         ax.axis('off')
         
         plt.tight_layout()

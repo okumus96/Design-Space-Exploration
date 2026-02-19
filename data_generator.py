@@ -100,9 +100,9 @@ class VehicleDataGenerator:
         if not domain_config:
             domain_config = {
                 'cpu_range': [100, 500],
-                'ram_range': [1000, 5000],
-                'rom_range': [5000, 10000],
-                'asil_levels': [3,4],
+                'ram_range': [10, 100],    
+                'rom_range': [100, 1000],
+                'asil_levels': [3, 4],
                 'hw_requirements': {}
             }
         

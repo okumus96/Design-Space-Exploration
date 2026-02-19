@@ -84,13 +84,15 @@ def main(args):
         reporter.display_assignments(solution['assignment'])
 
         print(f"\n   Generating architecture visualization for Solution {solution_idx}...")
-        visualizer.visualize_solution_architecture(solution, scs, locations, 
+        visualizer.visualize_solution_architecture(solution, scs, locations, partitions_config=partitions,
                                                  filename=f"solution_architecture_{solution_idx}.png")
         
         # Generate vehicle layout with active locations and bus connections
         print(f"   Generating vehicle layout for Solution {solution_idx}...")
         visualizer.plot_vehicle_layout_topdown(sensors, actuators, solution['assignment'], locations=locations,
-                                               scs=scs, comm_matrix=comm_matrix, cable_types=cable_types,
+                                               scs=scs, comm_matrix=comm_matrix, cable_types=cable_types, comm_links=solution.get('comm_links'), hw_features=solution.get('hw_features'),
+                                               eth_sensor_attachments=solution.get('eth_sensor_attachments'), eth_actuator_attachments=solution.get('eth_actuator_attachments'),
+                                               shared_sensor_attachments=solution.get('shared_sensor_attachments'), shared_actuator_attachments=solution.get('shared_actuator_attachments'),
                                                filename=f"vehicle_layout_solution_{solution_idx}.png")
     
     print("\n" + "=" * 80)

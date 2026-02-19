@@ -18,7 +18,7 @@ class AssignmentOptimizer:
         print("Initialized AssignmentOptimizerNew with quadratic ECU-ECU costs and linear sensor/actuator costs")
         pass
 
-    def calculate_cable_expressions(self, z, y, scs, locations, sensors, actuators, cable_types, comm_matrix, max_partitions_per_asil_per_loc, feasible_locs_per_sc, comm=None):
+    def calculate_cable_expressions(self, z, y, scs, locations, sensors, actuators, cable_types, comm_matrix, max_partitions_per_asil_per_loc, feasible_locs_per_sc, comm=None, attach_s=None, attach_a=None, shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None):
         """
         Calculate cable cost, distance, and latency as Gurobi linear expressions (NOT constraints).
         Includes: sensor/actuator cables and ECU-ECU/Location communication cables.
@@ -44,6 +44,7 @@ class AssignmentOptimizer:
         latency_terms = []  # List of (variable, latency) tuples
         
         n_sc = len(scs)
+        shared_bus_ifaces = {'CAN', 'LIN', 'FLEXRAY'}
 
         for i in range(n_sc):
             a = scs[i].asil_req
@@ -56,6 +57,13 @@ class AssignmentOptimizer:
                 # Sum sensor cable costs, distances, and latencies
                 for s_id in (sc.sensors or []):
                     sensor = sensor_lookup.get(s_id)
+                    # If ETH attachments are modeled, ETH sensors are wired to their attachment point,
+                    # not directly to the ECU hosting the SWC.
+                    if attach_s is not None and sensor and sensor.interface == "ETH":
+                        continue
+                    # Shared bus interfaces are charged via shared attachment vars (single physical cable).
+                    if shared_attach_s is not None and sensor and sensor.interface in shared_bus_ifaces:
+                        continue
                     if sensor and sensor.location:
                         dist = get_distance(sensor.location, locations[j].location)
                         cable_cost += dist * cost_map.get(sensor.interface, 0.0)
@@ -65,6 +73,12 @@ class AssignmentOptimizer:
                 # Sum actuator cable costs, distances, and latencies
                 for a_id in (sc.actuators or []):
                     actuator = actuator_lookup.get(a_id)
+                    # If ETH attachments are modeled, ETH actuators are wired to their attachment point.
+                    if attach_a is not None and actuator and actuator.interface == "ETH":
+                        continue
+                    # Shared bus interfaces are charged via shared attachment vars (single physical cable).
+                    if shared_attach_a is not None and actuator and actuator.interface in shared_bus_ifaces:
+                        continue
                     if actuator and actuator.location:
                         dist = get_distance(actuator.location, locations[j].location)
                         cable_cost += dist * cost_map.get(actuator.interface, 0.0)
@@ -95,6 +109,63 @@ class AssignmentOptimizer:
                 comm_cost_terms.append((comm_var, cost))
                 comm_distance_terms.append((comm_var, dist))
                 comm_latency_terms.append((comm_var, lat))
+
+        # ETH sensor/actuator attachment cables (only when attachments are modeled)
+        if attach_s:
+            for (si, j), av in attach_s.items():
+                s = sensors[si]
+                if not getattr(s, 'location', None):
+                    continue
+                dist = get_distance(s.location, locations[j].location)
+                iface = getattr(s, 'interface', 'ETH')
+                cable_cost_terms.append((av, dist * cost_map.get(iface, 0.0)))
+                cable_distance_terms.append((av, dist))
+                latency_terms.append((av, dist * latency_map.get(iface, 0.0)))
+
+        if attach_a:
+            for (ai, j), av in attach_a.items():
+                a = actuators[ai]
+                if not getattr(a, 'location', None):
+                    continue
+                dist = get_distance(a.location, locations[j].location)
+                iface = getattr(a, 'interface', 'ETH')
+                cable_cost_terms.append((av, dist * cost_map.get(iface, 0.0)))
+                cable_distance_terms.append((av, dist))
+                latency_terms.append((av, dist * latency_map.get(iface, 0.0)))
+
+        # Shared-bus (CAN/LIN/FLEXRAY) sensor/actuator attachment cables
+        if shared_attach_s:
+            for (si, j), av in shared_attach_s.items():
+                s = sensors[si]
+                if not getattr(s, 'location', None):
+                    continue
+                iface = getattr(s, 'interface', None)
+                if iface not in shared_bus_ifaces:
+                    continue
+                dist = get_distance(s.location, locations[j].location)
+                cable_cost_terms.append((av, dist * cost_map.get(iface, 0.0)))
+                cable_distance_terms.append((av, dist))
+                latency_terms.append((av, dist * latency_map.get(iface, 0.0)))
+
+        if shared_attach_a:
+            for (ai, j), av in shared_attach_a.items():
+                aobj = actuators[ai]
+                if not getattr(aobj, 'location', None):
+                    continue
+                iface = getattr(aobj, 'interface', None)
+                if iface not in shared_bus_ifaces:
+                    continue
+                dist = get_distance(aobj.location, locations[j].location)
+                cable_cost_terms.append((av, dist * cost_map.get(iface, 0.0)))
+                cable_distance_terms.append((av, dist))
+                latency_terms.append((av, dist * latency_map.get(iface, 0.0)))
+
+        # Shared-bus trunk lengths (count shared main segment once per location/interface)
+        if shared_trunk_len:
+            for (j, iface), tvar in shared_trunk_len.items():
+                cable_cost_terms.append((tvar, cost_map.get(iface, 0.0)))
+                cable_distance_terms.append((tvar, 1.0))
+                latency_terms.append((tvar, latency_map.get(iface, 0.0)))
         
         # Create compact linear expressions
         if cable_cost_terms:
@@ -120,7 +191,7 @@ class AssignmentOptimizer:
             
         return cable_cost_expr, cable_distance_expr, latency_expr
     
-    def _create_model_and_variables(self, n_sc, n_locs, scs, locations, unique_asils, all_hw, all_interfaces, infeasible_ij=None, comm_matrix=None):
+    def _create_model_and_variables(self, n_sc, n_locs, scs, locations, unique_asils, all_hw, sensors, actuators, all_interfaces, infeasible_ij=None, comm_matrix=None):
         """
         Create Gurobi model and define all decision variables
         
@@ -180,11 +251,54 @@ class AssignmentOptimizer:
             for h in all_hw:
                 hw_use[j, h] = model.addVar(vtype=GRB.BINARY, name=f"hw_{locations[j].id}_{h}")
         
-        # if_use[j,i_name] = Interface i_name port is open at location j (binary)
+        # if_use[j,i_name] = Number of Interface i_name ports at location j (integer)
         if_use = {}
         for j in range(n_locs):
             for i_name in all_interfaces:
-                if_use[j, i_name] = model.addVar(vtype=GRB.BINARY, name=f"if_{locations[j].id}_{i_name}")
+                if_use[j, i_name] = model.addVar(vtype=GRB.INTEGER, lb=0, name=f"if_{locations[j].id}_{i_name}")
+
+        # Attachment variables for ETH sensors/actuators:
+        # attach_s[s_idx, j] = 1 if ETH sensor s is physically connected to location j.
+        # attach_a[a_idx, j] = 1 if ETH actuator a is physically connected to location j.
+        sensor_id_to_idx = {s.id: si for si, s in enumerate(sensors)}
+        actuator_id_to_idx = {a.id: ai for ai, a in enumerate(actuators)}
+
+        eth_sensor_indices = [si for si, s in enumerate(sensors) if getattr(s, 'interface', None) == 'ETH']
+        eth_actuator_indices = [ai for ai, a in enumerate(actuators) if getattr(a, 'interface', None) == 'ETH']
+
+        attach_s = {}
+        for si in eth_sensor_indices:
+            for j in range(n_locs):
+                attach_s[si, j] = model.addVar(vtype=GRB.BINARY, name=f"attachS_{sensors[si].id}_{locations[j].id}")
+
+        attach_a = {}
+        for ai in eth_actuator_indices:
+            for j in range(n_locs):
+                attach_a[ai, j] = model.addVar(vtype=GRB.BINARY, name=f"attachA_{actuators[ai].id}_{locations[j].id}")
+
+        # Shared-bus peripheral attachment variables (CAN/LIN/FLEXRAY):
+        # shared_attach_s[s_idx, j] = 1 if non-ETH shared-bus sensor s is physically wired to location j.
+        # shared_attach_a[a_idx, j] = 1 if non-ETH shared-bus actuator a is physically wired to location j.
+        shared_bus_ifaces = {'CAN', 'LIN', 'FLEXRAY'}
+        shared_sensor_indices = [si for si, s in enumerate(sensors) if getattr(s, 'interface', None) in shared_bus_ifaces]
+        shared_actuator_indices = [ai for ai, a in enumerate(actuators) if getattr(a, 'interface', None) in shared_bus_ifaces]
+
+        shared_attach_s = {}
+        for si in shared_sensor_indices:
+            for j in range(n_locs):
+                shared_attach_s[si, j] = model.addVar(vtype=GRB.BINARY, name=f"sharedAttachS_{sensors[si].id}_{locations[j].id}")
+
+        shared_attach_a = {}
+        for ai in shared_actuator_indices:
+            for j in range(n_locs):
+                shared_attach_a[ai, j] = model.addVar(vtype=GRB.BINARY, name=f"sharedAttachA_{actuators[ai].id}_{locations[j].id}")
+
+        # Shared-bus trunk length variables:
+        # shared_trunk_len[j, iface] is the main shared segment length at location j for iface.
+        shared_trunk_len = {}
+        for j in range(n_locs):
+            for iface in shared_bus_ifaces:
+                shared_trunk_len[j, iface] = model.addVar(vtype=GRB.CONTINUOUS, lb=0.0, name=f"sharedTrunkLen_{locations[j].id}_{iface}")
         
         # comm[j1,j2,iface] = Number of iface links between location j1 and j2 (integer)
         # Sparse creation: only build comm vars for location pairs that can actually be required by SC comm links.
@@ -208,6 +322,36 @@ class AssignmentOptimizer:
                             continue
                         a, b = (j1, j2) if j1 < j2 else (j2, j1)
                         required_loc_pairs.add((a, b))
+
+            # Also include potential pairs needed by ETH sensor/actuator traffic to avoid missing comm edges.
+            # For each ETH sensor used by an SC, allow the attachment location to connect to any feasible
+            # destination SC location. Similarly for ETH actuators.
+            sensor_lookup = build_sensor_lookup(sensors)
+            actuator_lookup = build_actuator_lookup(actuators)
+            for sc_idx, sc in enumerate(scs):
+                # Sensor -> SC
+                for s_id in (getattr(sc, 'sensors', None) or []):
+                    s_obj = sensor_lookup.get(s_id)
+                    if not s_obj or getattr(s_obj, 'interface', None) != 'ETH':
+                        continue
+                    for j_attach in range(n_locs):
+                        for j_sc in feasible_locs_per_sc[sc_idx]:
+                            if j_attach == j_sc:
+                                continue
+                            a, b = (j_attach, j_sc) if j_attach < j_sc else (j_sc, j_attach)
+                            required_loc_pairs.add((a, b))
+
+                # SC -> Actuator
+                for a_id in (getattr(sc, 'actuators', None) or []):
+                    a_obj = actuator_lookup.get(a_id)
+                    if not a_obj or getattr(a_obj, 'interface', None) != 'ETH':
+                        continue
+                    for j_attach in range(n_locs):
+                        for j_sc in feasible_locs_per_sc[sc_idx]:
+                            if j_attach == j_sc:
+                                continue
+                            a, b = (j_attach, j_sc) if j_attach < j_sc else (j_sc, j_attach)
+                            required_loc_pairs.add((a, b))
         else:
             for j1 in range(n_locs):
                 for j2 in range(j1 + 1, n_locs):
@@ -215,107 +359,131 @@ class AssignmentOptimizer:
 
         comm = {}
         for j1, j2 in sorted(required_loc_pairs):
-            for iface in all_interfaces:
-                comm[j1, j2, iface] = model.addVar(vtype=GRB.INTEGER, lb=0, name=f"comm_{locations[j1].id}_{locations[j2].id}_{iface}")
-        
-        # w[i, k, j1, j2] = 1 if SC i is at j1 AND SC k is at j2 (Linearization variable)
-        # Create w variables for all communicating SC pairs and their feasible locations
-        w = {}
-        comm_req_pairs = set()
-        #if comm_matrix:
-        #    sc_id_to_idx = {sc.id: i for i, sc in enumerate(scs)}
-        #    for link in comm_matrix:
-        #        src_id = link.get('src')
-        #        dst_id = link.get('dst')
-        #        volume = link.get('volume', 0)
-        #        if volume > 0 and src_id in sc_id_to_idx and dst_id in sc_id_to_idx:
-        #            i = sc_id_to_idx[src_id]
-        #            k = sc_id_to_idx[dst_id]
-        #            # Store unique pairs (i, k) 
-        #            comm_req_pairs.add((i, k))
-        
-        feasible_locs_sets = {i: set(feasible_locs_per_sc[i]) for i in range(n_sc)}
-        #for (i, k) in comm_req_pairs:
-            # We need w for both directions if the link is bidirectional in usage check,
-            # but usually we normalize SC pairs. However, traffic aggregation check 
-            # iterates over comm_req_map. 
-            # Strict definition: w corresponds to existence of specific traffic flow segment.
-            
-            # Iterate feasible locations
-        #    for j1 in feasible_locs_sets[i]:
-        #        for j2 in feasible_locs_sets[k]:
-        #            if j1 == j2: continue # Internal comms usually don't use network cables
-                    
-                    # Only create if this location pair connects via backbone
-                    # (j1, j2) or (j2, j1) must be in required_loc_pairs
-        #            pair = (j1, j2) if j1 < j2 else (j2, j1)
-        #            if pair in required_loc_pairs:
-        #                 w[i, k, j1, j2] = model.addVar(
-        #                     vtype=GRB.BINARY, 
-        #                     name=f"w_{scs[i].id}_{scs[k].id}_{locations[j1].id}_{locations[j2].id}"
-        #                 )
-        #NEW
-        # Traffic flow.
+            #for iface in all_interfaces:
+            #    comm[j1, j2, iface] = model.addVar(vtype=GRB.INTEGER, lb=0, name=f"comm_{locations[j1].id}_{locations[j2].id}_{iface}")
+            # We assume all communication uses the same interface type for simplicity in this model (e.g., Ethernet)
+            comm[j1, j2, "ETH"] = model.addVar(vtype=GRB.INTEGER, lb=0, name=f"comm_{locations[j1].id}_{locations[j2].id}_ETH")
+
+        # --- TRAFFIC FLOW GENERATION ---
         traffic_flows = []
-        sc_id_map = {sc.id: i for i, sc in enumerate(scs)}
         t_idx = 0
+        
+        # 1. SC-to-SC Flows (Mevcut olan)
+        sc_id_map = {sc.id: i for i, sc in enumerate(scs)}
         if comm_matrix:
             for link in comm_matrix:
                 src_id = link.get('src')
                 dst_id = link.get('dst')
                 vol = link.get('volume', 0)
-                # Sadece hacmi olan ve gecerli linkleri al
                 if vol > 0 and src_id in sc_id_map and dst_id in sc_id_map:
                     traffic_flows.append({
                         'id': t_idx,
-                        'src_idx': sc_id_map[src_id],
-                        'dst_idx': sc_id_map[dst_id],
+                        'type': 'SC_SC',  # Tipini belirtiyoruz
+                        'src_idx': sc_id_map[src_id], # Kaynak SC index
+                        'dst_idx': sc_id_map[dst_id], # Hedef SC index
                         'volume': vol
                     })
                     t_idx += 1
 
-        # Flow 
+        # 2. Sensor-to-SC Flows (ETH only)
+        # ETH sensors can attach to a SWITCH or ECU node; their data is then routed over the backbone
+        # to the destination SWC location.
+        sensor_lookup = build_sensor_lookup(sensors)
+        for dst_sc_idx, sc in enumerate(scs):
+            for s_id in (getattr(sc, 'sensors', None) or []):
+                s_obj = sensor_lookup.get(s_id)
+                if not s_obj or getattr(s_obj, 'interface', None) != 'ETH':
+                    continue
+                vol = getattr(s_obj, 'volume', 0) or 0
+                if vol <= 0:
+                    continue
+                s_idx = sensor_id_to_idx.get(s_id)
+                if s_idx is None:
+                    continue
+                traffic_flows.append({
+                    'id': t_idx,
+                    'type': 'SENS_SC',
+                    'sensor_idx': s_idx,
+                    'dst_idx': dst_sc_idx,
+                    'volume': vol,
+                })
+                t_idx += 1
+
+        # 3. SC-to-Actuator Flows (ETH only)
+        actuator_lookup = build_actuator_lookup(actuators)
+        for src_sc_idx, sc in enumerate(scs):
+            for a_id in (getattr(sc, 'actuators', None) or []):
+                a_obj = actuator_lookup.get(a_id)
+                if not a_obj or getattr(a_obj, 'interface', None) != 'ETH':
+                    continue
+                vol = getattr(a_obj, 'volume', 0) or 0
+                if vol <= 0:
+                    continue
+                a_idx = actuator_id_to_idx.get(a_id)
+                if a_idx is None:
+                    continue
+                traffic_flows.append({
+                    'id': t_idx,
+                    'type': 'SC_ACT',
+                    'src_idx': src_sc_idx,
+                    'act_idx': a_idx,
+                    'volume': vol,
+                })
+                t_idx += 1
+
+        # Create flow
         flow = {}
         for tr in traffic_flows:
             t = tr['id']
-            for u in range(n_locs):
-                for v in range(n_locs):
-                    if u == v: continue
-                    flow[t, u, v] = model.addVar(vtype=GRB.CONTINUOUS, lb=0.0, ub=1.0, name=f"flow_{t}_{u}_{v}")
+            for (j1, j2, iface) in comm.keys():
+                 # Directed flow variables
+                 flow[t, j1, j2] = model.addVar(vtype=GRB.BINARY, name=f"f_{t}_{j1}_{j2}")
+                 flow[t, j2, j1] = model.addVar(vtype=GRB.BINARY, name=f"f_{t}_{j2}_{j1}")
 
-        print(f"\nVariables created:")
-        print(f"  y: {len(y)} (partitions)")
-        print(f"  z: {len(z)} (SC-to-partition)")
-        print(f"  hw_use: {len(hw_use)} (HW selection)")
-        print(f"  if_use: {len(if_use)} (Interface selection)")
-        print(f"  comm: {len(comm)} (ECU-to-ECU communication)")
-        print(f"  w: {len(w)} (Linearization vars)")
-        print(f"  traffic_flows: {len(traffic_flows)} (Defined communication flows)")
-        print(f"  flow: {len(flow)} (Traffic flow)")
+
         var_stats = {
             'y': len(y),
             'z': len(z),
             'hw_use': len(hw_use),
             'if_use': len(if_use),
+            'attach_s': len(attach_s),
+            'attach_a': len(attach_a),
+            'shared_attach_s': len(shared_attach_s),
+            'shared_attach_a': len(shared_attach_a),
+            'shared_trunk_len': len(shared_trunk_len),
             'comm': len(comm),
             'comm_loc_pairs': len(required_loc_pairs),
-            'w': len(w),
             'traffic_flows': len(traffic_flows),
-            'flow': len(flow),
+            'flow': len(flow)
         }
-        var_stats['total'] = var_stats['y'] + var_stats['z'] + var_stats['hw_use'] + var_stats['if_use'] + var_stats['comm'] + var_stats['w'] + var_stats['traffic_flows'] + var_stats['flow']
+        var_stats['total'] = (
+            var_stats['y']
+            + var_stats['z']
+            + var_stats['hw_use']
+            + var_stats['if_use']
+            + var_stats['attach_s']
+            + var_stats['attach_a']
+            + var_stats['shared_attach_s']
+            + var_stats['shared_attach_a']
+            + var_stats['shared_trunk_len']
+            + var_stats['comm']
+            + var_stats['traffic_flows']
+            + var_stats['flow']
+        )
 
-        return model, y, z, hw_use, if_use, comm, w, traffic_flows, flow, max_partitions_per_asil_per_loc, feasible_locs_per_sc, feasible_scs_per_loc, var_stats
+        return model, y, z, hw_use, if_use, attach_s, attach_a, shared_attach_s, shared_attach_a, shared_trunk_len, comm, traffic_flows, flow, max_partitions_per_asil_per_loc, feasible_locs_per_sc, feasible_scs_per_loc, var_stats
 
-    def _add_constraints(self, model, y, z, hw_use, if_use, comm, w, traffic_flows, flow, scs, locations, sensors, actuators, 
+    def _add_constraints(self, model, y, z, hw_use, if_use, attach_s, attach_a, shared_attach_s, shared_attach_a, shared_trunk_len, comm, traffic_flows, flow, scs, locations, sensors, actuators, 
                               cable_types, comm_matrix, partitions, unique_asils, max_partitions_per_asil_per_loc,
                               feasible_locs_per_sc, feasible_scs_per_loc, enable_comm_bw_constraints=True,
                               comm_bw_big_m=None):
         """
-        Add all LEGO constraints to the optimization model
+        Add all constraints to the optimization model
         """
         n_sc = len(scs)
         n_locs = len(locations)
+        all_interfaces = list(cable_types.keys())
+        all_hw = sorted(list(set(h for (j, h) in hw_use.keys())))
         
         print(f"\nAdding constraints...")
 
@@ -329,6 +497,9 @@ class AssignmentOptimizer:
             'c5_redundancy': 0,
             'c8_loc_loc_latency': 0,
             'c9_if_activation': 0,
+            'c9_attach': 0,
+            'c9_shared_attach': 0,
+            'c9_shared_trunk': 0,
             'c10_network_load': 0,
             'c10_linearization': 0,
         }
@@ -384,15 +555,36 @@ class AssignmentOptimizer:
         for j in range(n_locs):
             for a in unique_asils:
                 for p in range(max_partitions_per_asil_per_loc):
+                    # CPU Capacity
                     sc_cpu_demand = gp.quicksum(
                         z[i, j, a, p] * scs[i].cpu_req
                         for i in feasible_scs_per_loc[j] if scs[i].asil_req == a and (i, j, a, p) in z
                     )
                     model.addConstr(
                         sc_cpu_demand <= y[j, a, p] * partitions.get('cpu_cap', float('inf')),
-                        name=f"capacity_{locations[j].id}_asil{a}_p{p}"
+                        name=f"cpu_capacity_{locations[j].id}_asil{a}_p{p}"
                     )
-                    cstats['c2_capacity'] += 1
+                    
+                    # RAM Capacity
+                    sc_ram_demand = gp.quicksum(
+                        z[i, j, a, p] * scs[i].ram_req
+                        for i in feasible_scs_per_loc[j] if scs[i].asil_req == a and (i, j, a, p) in z
+                    )
+                    model.addConstr(
+                        sc_ram_demand <= y[j, a, p] * partitions.get('ram_cap', float('inf')),
+                        name=f"ram_capacity_{locations[j].id}_asil{a}_p{p}"
+                    )
+                    
+                    # ROM Capacity
+                    sc_rom_demand = gp.quicksum(
+                        z[i, j, a, p] * scs[i].rom_req
+                        for i in feasible_scs_per_loc[j] if scs[i].asil_req == a and (i, j, a, p) in z
+                    )
+                    model.addConstr(
+                        sc_rom_demand <= y[j, a, p] * partitions.get('rom_cap', float('inf')),
+                        name=f"rom_capacity_{locations[j].id}_asil{a}_p{p}"
+                    )
+                    cstats['c2_capacity'] += 3
         
         # Constraint 3: HW feature required
         for i in range(n_sc):
@@ -404,15 +596,93 @@ class AssignmentOptimizer:
                     )
                     cstats['c3_hw_required'] += 1
         
-        # Constraint 4: Interface required
-        for i in range(n_sc):
-            for i_name in (scs[i].interface_required or []):
-                for j in feasible_locs_per_sc[i]:
+        # Constraint 4: Interface Port Counting and Switch Requirement
+        # Total ports = Sum of ports required by SCs (sensors/actuators) + Backbone connections
+        s_lookup = build_sensor_lookup(sensors)
+        a_lookup = build_actuator_lookup(actuators)
+        shared_bus_ifaces = {'CAN', 'LIN', 'FLEXRAY'}
+        
+        for j in range(n_locs):
+            for i_name in all_interfaces:
+                comm_port_demand = gp.LinExpr()
+                for (j1, j2, iface), comm_var in comm.items():
+                    if (j1 == j) and (iface == i_name):
+                        comm_port_demand.add(comm_var, 1)
+                    elif (j2 == j) and (iface == i_name):
+                        comm_port_demand.add(comm_var, 1)
+
+                # 4a. Shared-bus interfaces (CAN/LIN/FLEXRAY):
+                # A location needs only one interface endpoint if at least one assigned SC at this
+                # location uses a peripheral on that bus.
+                if i_name in shared_bus_ifaces:
+                    for i in feasible_scs_per_loc[j]:
+                        sc = scs[i]
+                        uses_iface = any(
+                            s_lookup.get(s_id) and s_lookup.get(s_id).interface == i_name
+                            for s_id in (sc.sensors or [])
+                        ) or any(
+                            a_lookup.get(a_id) and a_lookup.get(a_id).interface == i_name
+                            for a_id in (sc.actuators or [])
+                        )
+                        if uses_iface:
+                            model.addConstr(
+                                if_use[j, i_name] >= x_expr(i, j),
+                                name=f"shared_bus_if_use_{locations[j].id}_{i_name}_{sc.id}"
+                            )
+
                     model.addConstr(
-                        x_expr(i, j) <= if_use[j, i_name],
-                        name=f"if_required_{scs[i].id}_{i_name}_{locations[j].id}"
+                        if_use[j, i_name] >= comm_port_demand,
+                        name=f"shared_bus_comm_port_count_{locations[j].id}_{i_name}"
                     )
-                    cstats['c4_if_required'] += 1
+
+                else:
+                    # 4b. Point-to-point style counting (ETH and other non-shared interfaces)
+                    sc_port_demand = gp.LinExpr()
+
+                    for i in feasible_scs_per_loc[j]:
+                        sc = scs[i]
+                        num_sensors_if = sum(
+                            1
+                            for s_id in (sc.sensors or [])
+                            if s_lookup.get(s_id)
+                            and s_lookup.get(s_id).interface == i_name
+                        )
+                        num_actuators_if = sum(
+                            1
+                            for a_id in (sc.actuators or [])
+                            if a_lookup.get(a_id)
+                            and a_lookup.get(a_id).interface == i_name
+                        )
+
+                        if num_sensors_if + num_actuators_if > 0:
+                            sc_port_demand.add(x_expr(i, j), num_sensors_if + num_actuators_if)
+
+                    # ETH peripherals connect to an attachment point (SWITCH or ECU node) via attach vars.
+                    if i_name == 'ETH':
+                        for (si, jj), av in (attach_s or {}).items():
+                            if jj == j:
+                                sc_port_demand.add(av, 1.0)
+                        for (ai, jj), av in (attach_a or {}).items():
+                            if jj == j:
+                                sc_port_demand.add(av, 1.0)
+
+                    # Total ports at location j for interface i_name
+                    # Special case (ETH): if a SWITCH is installed at this location, it provides a limited
+                    # number of physical ETH ports (capacity). Any remaining demand must be covered by
+                    # explicit ETH ports (if_use), which can represent additional PHY/NIC ports.
+                    if i_name == 'ETH' and 'SWITCH' in all_hw:
+                        SWITCH_ETH_PORTS = 16
+                        model.addConstr(
+                            if_use[j, i_name] + SWITCH_ETH_PORTS * hw_use[j, 'SWITCH'] >= sc_port_demand + comm_port_demand,
+                            name=f"port_count_{locations[j].id}_{i_name}_switch_covers"
+                        )
+                    else:
+                        model.addConstr(
+                            if_use[j, i_name] >= sc_port_demand + comm_port_demand,
+                            name=f"port_count_{locations[j].id}_{i_name}"
+                        )
+
+                cstats['c4_if_required'] += 1
         
         # Constraint 5: Redundancy Constraints
         sc_id_to_idx = {sc.id: i for i, sc in enumerate(scs)}
@@ -478,180 +748,441 @@ class AssignmentOptimizer:
                             )
                             cstats['c8_loc_loc_latency'] += 1
         
-        # Constraint 9: ECU-to-ECU Communication - Interface Activation (Big-M)
-        # If comm[j1,j2,iface] > 0, then if_use[j1,iface]=1 and if_use[j2,iface]=1
+        # Constraint 9a: ECU-to-ECU Communication - Endpoint Activation (Big-M)
+        # A backbone link can only touch an "active" node. This prevents the optimizer from
+        # opening comm links to completely unused locations.
+        #
+        # Here, "active" means:
+        # - at least one open partition (y=1) OR
+        # - a dedicated SWITCH placed at that location (switch-only network node)
+        #
+        # Note: This is grouped near interface-activation constraints because all of these
+        # constraints directly gate the same decision variable family: comm[j1,j2,*].
         M = 1000  # Big-M value
         all_interfaces = list(cable_types.keys())
+
+        # Build an "active node" expression per location.
+        if 'SWITCH' in all_hw:
+            loc_active = {
+                j: gp.quicksum(y[j, a, p] for a in unique_asils for p in range(max_partitions_per_asil_per_loc)) + hw_use[j, 'SWITCH']
+                for j in range(n_locs)
+            }
+        else:
+            loc_active = {
+                j: gp.quicksum(y[j, a, p] for a in unique_asils for p in range(max_partitions_per_asil_per_loc))
+                for j in range(n_locs)
+            }
+
+        # Constraint 9-ATT: ETH sensor/actuator attachments must connect to an active node,
+        # and must respect peripheral max-latency on the physical cable to that attachment point.
+        # (We do not model end-to-end network latency here; this only constrains the local cable.)
+        latency_map = build_latency_map(cable_types)
+        if attach_s:
+            for (si, j), av in attach_s.items():
+                model.addConstr(av <= loc_active[j], name=f"attachS_active_{sensors[si].id}_{locations[j].id}")
+                cstats['c9_attach'] += 1
+                max_lat = getattr(sensors[si], 'max_latency', None)
+                if max_lat is not None and getattr(sensors[si], 'location', None) is not None:
+                    dist = get_distance(sensors[si].location, locations[j].location)
+                    lat = dist * latency_map.get('ETH', 0.0)
+                    if lat > max_lat:
+                        model.addConstr(av == 0, name=f"attachS_lat_infeas_{sensors[si].id}_{locations[j].id}")
+                        cstats['c9_attach'] += 1
+
+            for si in {k[0] for k in attach_s.keys()}:
+                model.addConstr(
+                    gp.quicksum(attach_s[si, j] for j in range(n_locs) if (si, j) in attach_s) == 1,
+                    name=f"attachS_one_{sensors[si].id}"
+                )
+                cstats['c9_attach'] += 1
+
+        if attach_a:
+            for (ai, j), av in attach_a.items():
+                model.addConstr(av <= loc_active[j], name=f"attachA_active_{actuators[ai].id}_{locations[j].id}")
+                cstats['c9_attach'] += 1
+                max_lat = getattr(actuators[ai], 'max_latency', None)
+                if max_lat is not None and getattr(actuators[ai], 'location', None) is not None:
+                    dist = get_distance(actuators[ai].location, locations[j].location)
+                    lat = dist * latency_map.get('ETH', 0.0)
+                    if lat > max_lat:
+                        model.addConstr(av == 0, name=f"attachA_lat_infeas_{actuators[ai].id}_{locations[j].id}")
+                        cstats['c9_attach'] += 1
+
+            for ai in {k[0] for k in attach_a.keys()}:
+                model.addConstr(
+                    gp.quicksum(attach_a[ai, j] for j in range(n_locs) if (ai, j) in attach_a) == 1,
+                    name=f"attachA_one_{actuators[ai].id}"
+                )
+                cstats['c9_attach'] += 1
+
+        # Constraint 9-SHARED-ATT: CAN/LIN/FLEXRAY peripheral attachments
+        # - Must connect to an active location
+        # - Must satisfy local max-latency for its own interface
+        # - A peripheral is physically attached to at most one location
+        shared_bus_ifaces = {'CAN', 'LIN', 'FLEXRAY'}
+        if shared_attach_s:
+            for (si, j), av in shared_attach_s.items():
+                iface = getattr(sensors[si], 'interface', None)
+                if iface not in shared_bus_ifaces:
+                    model.addConstr(av == 0, name=f"sharedAttachS_iface_inactive_{sensors[si].id}_{locations[j].id}")
+                    cstats['c9_shared_attach'] += 1
+                    continue
+                model.addConstr(av <= loc_active[j], name=f"sharedAttachS_active_{sensors[si].id}_{locations[j].id}")
+                cstats['c9_shared_attach'] += 1
+                max_lat = getattr(sensors[si], 'max_latency', None)
+                if max_lat is not None and getattr(sensors[si], 'location', None) is not None:
+                    dist = get_distance(sensors[si].location, locations[j].location)
+                    lat = dist * latency_map.get(iface, 0.0)
+                    if lat > max_lat:
+                        model.addConstr(av == 0, name=f"sharedAttachS_lat_infeas_{sensors[si].id}_{locations[j].id}")
+                        cstats['c9_shared_attach'] += 1
+
+            for si in {k[0] for k in shared_attach_s.keys()}:
+                model.addConstr(
+                    gp.quicksum(shared_attach_s[si, j] for j in range(n_locs) if (si, j) in shared_attach_s) <= 1,
+                    name=f"sharedAttachS_one_{sensors[si].id}"
+                )
+                cstats['c9_shared_attach'] += 1
+
+        if shared_attach_a:
+            for (ai, j), av in shared_attach_a.items():
+                iface = getattr(actuators[ai], 'interface', None)
+                if iface not in shared_bus_ifaces:
+                    model.addConstr(av == 0, name=f"sharedAttachA_iface_inactive_{actuators[ai].id}_{locations[j].id}")
+                    cstats['c9_shared_attach'] += 1
+                    continue
+                model.addConstr(av <= loc_active[j], name=f"sharedAttachA_active_{actuators[ai].id}_{locations[j].id}")
+                cstats['c9_shared_attach'] += 1
+                max_lat = getattr(actuators[ai], 'max_latency', None)
+                if max_lat is not None and getattr(actuators[ai], 'location', None) is not None:
+                    dist = get_distance(actuators[ai].location, locations[j].location)
+                    lat = dist * latency_map.get(iface, 0.0)
+                    if lat > max_lat:
+                        model.addConstr(av == 0, name=f"sharedAttachA_lat_infeas_{actuators[ai].id}_{locations[j].id}")
+                        cstats['c9_shared_attach'] += 1
+
+            for ai in {k[0] for k in shared_attach_a.keys()}:
+                model.addConstr(
+                    gp.quicksum(shared_attach_a[ai, j] for j in range(n_locs) if (ai, j) in shared_attach_a) <= 1,
+                    name=f"sharedAttachA_one_{actuators[ai].id}"
+                )
+                cstats['c9_shared_attach'] += 1
+
+        # Link shared peripheral attachments to SC placements:
+        # if SC i uses a shared-bus peripheral and is placed at location j, that peripheral must be attached at j.
+        sensor_id_to_idx = {s.id: si for si, s in enumerate(sensors)}
+        actuator_id_to_idx = {a.id: ai for ai, a in enumerate(actuators)}
+
+        for i in range(n_sc):
+            sc = scs[i]
+            for s_id in (getattr(sc, 'sensors', None) or []):
+                si = sensor_id_to_idx.get(s_id)
+                if si is None:
+                    continue
+                iface = getattr(sensors[si], 'interface', None)
+                if iface not in shared_bus_ifaces:
+                    continue
+                for j in feasible_locs_per_sc[i]:
+                    if (si, j) in shared_attach_s:
+                        model.addConstr(
+                            x_expr(i, j) <= shared_attach_s[si, j],
+                            name=f"sharedAttachS_link_{sc.id}_{sensors[si].id}_{locations[j].id}"
+                        )
+                        cstats['c9_shared_attach'] += 1
+
+            for a_id in (getattr(sc, 'actuators', None) or []):
+                ai = actuator_id_to_idx.get(a_id)
+                if ai is None:
+                    continue
+                iface = getattr(actuators[ai], 'interface', None)
+                if iface not in shared_bus_ifaces:
+                    continue
+                for j in feasible_locs_per_sc[i]:
+                    if (ai, j) in shared_attach_a:
+                        model.addConstr(
+                            x_expr(i, j) <= shared_attach_a[ai, j],
+                            name=f"sharedAttachA_link_{sc.id}_{actuators[ai].id}_{locations[j].id}"
+                        )
+                        cstats['c9_shared_attach'] += 1
+
+        # Constraint 9-SHARED-TRUNK:
+        # shared_trunk_len[j, iface] is at least the farthest attached peripheral distance
+        # for that location/interface, so the common trunk segment is counted once.
+        if shared_trunk_len:
+            for (j, iface), trunk_var in shared_trunk_len.items():
+                if iface not in shared_bus_ifaces:
+                    model.addConstr(trunk_var == 0.0, name=f"sharedTrunk_iface_zero_{locations[j].id}_{iface}")
+                    cstats['c9_shared_trunk'] += 1
+                    continue
+
+                has_endpoint_expr = gp.LinExpr()
+
+                if shared_attach_s:
+                    for (si, jj), av in shared_attach_s.items():
+                        if jj != j:
+                            continue
+                        s_iface = getattr(sensors[si], 'interface', None)
+                        if s_iface != iface:
+                            continue
+                        dist = get_distance(sensors[si].location, locations[j].location) if getattr(sensors[si], 'location', None) is not None else 0.0
+                        model.addConstr(
+                            trunk_var >= dist * av,
+                            name=f"sharedTrunk_lb_s_{locations[j].id}_{iface}_{sensors[si].id}"
+                        )
+                        cstats['c9_shared_trunk'] += 1
+                        has_endpoint_expr.add(av, 1.0)
+
+                if shared_attach_a:
+                    for (ai, jj), av in shared_attach_a.items():
+                        if jj != j:
+                            continue
+                        a_iface = getattr(actuators[ai], 'interface', None)
+                        if a_iface != iface:
+                            continue
+                        dist = get_distance(actuators[ai].location, locations[j].location) if getattr(actuators[ai], 'location', None) is not None else 0.0
+                        model.addConstr(
+                            trunk_var >= dist * av,
+                            name=f"sharedTrunk_lb_a_{locations[j].id}_{iface}_{actuators[ai].id}"
+                        )
+                        cstats['c9_shared_trunk'] += 1
+                        has_endpoint_expr.add(av, 1.0)
+
+                # If no shared endpoint is attached at this location/interface, trunk must be zero.
+                # M is bounded by max possible distance in the vehicle envelope for this location.
+                max_dist_loc = 0.0
+                for s in sensors:
+                    if getattr(s, 'interface', None) == iface and getattr(s, 'location', None) is not None:
+                        max_dist_loc = max(max_dist_loc, get_distance(s.location, locations[j].location))
+                for a in actuators:
+                    if getattr(a, 'interface', None) == iface and getattr(a, 'location', None) is not None:
+                        max_dist_loc = max(max_dist_loc, get_distance(a.location, locations[j].location))
+
+                model.addConstr(
+                    trunk_var <= max_dist_loc * has_endpoint_expr,
+                    name=f"sharedTrunk_zero_if_no_ep_{locations[j].id}_{iface}"
+                )
+                cstats['c9_shared_trunk'] += 1
+            
         for (j1, j2, iface), comm_var in comm.items():
             model.addConstr(
-                comm_var <= M * if_use[j1, iface],
-                name=f"if_act_j1_{locations[j1].id}_{locations[j2].id}_{iface}"
+                comm_var <= M * loc_active[j1],
+                name=f"comm_active_j1_{locations[j1].id}_{locations[j2].id}_{iface}"
             )
             cstats['c9_if_activation'] += 1
             model.addConstr(
-                comm_var <= M * if_use[j2, iface],
-                name=f"if_act_j2_{locations[j1].id}_{locations[j2].id}_{iface}"
+                comm_var <= M * loc_active[j2],
+                name=f"comm_active_j2_{locations[j1].id}_{locations[j2].id}_{iface}"
             )
             cstats['c9_if_activation'] += 1
+
+            # Constraint 9b: ECU-to-ECU Communication - Interface Activation (Big-M)
+            # If comm[j1,j2,iface] > 0, then the endpoint must provide that interface.
+            # Interface activation: for ETH, allow either explicit ETH ports OR a SWITCH at the endpoint.
+            if iface == 'ETH' and 'SWITCH' in all_hw:
+                model.addConstr(
+                    comm_var <= M * (if_use[j1, iface] + hw_use[j1, 'SWITCH']),
+                    name=f"if_act_j1_{locations[j1].id}_{locations[j2].id}_{iface}_or_switch"
+                )
+                cstats['c9_if_activation'] += 1
+                model.addConstr(
+                    comm_var <= M * (if_use[j2, iface] + hw_use[j2, 'SWITCH']),
+                    name=f"if_act_j2_{locations[j1].id}_{locations[j2].id}_{iface}_or_switch"
+                )
+                cstats['c9_if_activation'] += 1
+            else:
+                model.addConstr(
+                    comm_var <= M * if_use[j1, iface],
+                    name=f"if_act_j1_{locations[j1].id}_{locations[j2].id}_{iface}"
+                )
+                cstats['c9_if_activation'] += 1
+                model.addConstr(
+                    comm_var <= M * if_use[j2, iface],
+                    name=f"if_act_j2_{locations[j1].id}_{locations[j2].id}_{iface}"
+                )
+                cstats['c9_if_activation'] += 1
+
+        # Constraint 9c: Switch-only node must have meaningful connectivity
+        # If a location has a SWITCH but no open partitions, it should act as a real
+        # network junction (not a dangling node). We approximate node degree by the
+        # total number of incident comm links.
+        #
+        # Enforced logic (without introducing extra binaries):
+        #   if hw_use[j,'SWITCH']=1 and sum_p,a y[j,a,p]=0  => incident_comm(j) >= 2
+        #   otherwise (if any partition is open), the constraint becomes non-binding.
+        if 'SWITCH' in all_hw:
+            for j in range(n_locs):
+                part_sum_j = gp.quicksum(
+                    y[j, a, p]
+                    for a in unique_asils
+                    for p in range(max_partitions_per_asil_per_loc)
+                )
+                incident_comm_j = gp.LinExpr()
+                for (j1, j2, _iface), comm_var in comm.items():
+                    if j1 == j or j2 == j:
+                        incident_comm_j.add(comm_var, 1.0)
+
+                # incident_comm_j >= 2 when switch-only; relaxed when part_sum_j >= 1
+                model.addConstr(
+                    incident_comm_j >= 2 * hw_use[j, 'SWITCH'] - 2 * part_sum_j,
+                    name=f"switch_only_degree_ge2_{locations[j].id}"
+                )
         
-        # Constraint 10: Aggregated Traffic Capacity (Network Synthesis) - Linearized
-        # To avoid Quadratic Constraints, we linearize the product x_expr(i, j1) * x_expr(k, j2)
-        # We use the pre-created auxiliary variable w[i, k, j1, j2] = 1 iff SC i at j1 AND SC k at j2
+
         
-        cstats['c10_network_load'] = 0
-        cstats['c10_linearization'] = 0
-
-        if enable_comm_bw_constraints and comm_matrix:
-            print("  Building network traffic aggregation constraints (Linearized)...")
-            
-            # 1. Group SC communication by SC pairs
-            sc_id_to_idx = {sc.id: i for i, sc in enumerate(scs)}
-            comm_req_map = {} 
-            for link in comm_matrix:
-                src_id = link.get('src')
-                dst_id = link.get('dst')
-                volume = link.get('volume', 0)
-                if volume > 0 and src_id in sc_id_to_idx and dst_id in sc_id_to_idx:
-                    src_idx = sc_id_to_idx[src_id]
-                    dst_idx = sc_id_to_idx[dst_id]
-                    i_min, i_max = (src_idx, dst_idx) if src_idx < dst_idx else (dst_idx, src_idx)
-                    comm_req_map[(i_min, i_max)] = comm_req_map.get((i_min, i_max), 0) + volume
-            
-            # Precompute feasible location sets for faster lookup
-            feasible_locs_sets = {i: set(feasible_locs_per_sc[i]) for i in range(n_sc)}
-
-            # Get all unique location pairs that have potential cables
-            loc_pairs = set()
-            for (j1, j2, iface) in comm.keys():
-                loc_pairs.add((j1, j2))
-
-            # 1. Add Linearization Constraints for all valid w variables
-            # These are independent of traffic volume or cable capacity
-            for (i, k, j1, j2), w_var in w.items():
-                x_i_j1 = x_expr(i, j1)
-                x_k_j2 = x_expr(k, j2)
-                
-                # McCormick envelopes
-                model.addConstr(w_var <= x_i_j1, name=f"lin_w_leq_i_{i}_{k}_{j1}_{j2}")
-                model.addConstr(w_var <= x_k_j2, name=f"lin_w_leq_k_{i}_{k}_{j1}_{j2}")
-                model.addConstr(w_var >= x_i_j1 + x_k_j2 - 1, name=f"lin_w_geq_{i}_{k}_{j1}_{j2}")
-                cstats['c10_linearization'] += 3
-
-            # 2. Add Traffic Capacity Constraints per link
-            for (j1, j2) in sorted(loc_pairs):
-                # Left Side: Total Traffic Demand between j1 and j2
-                traffic_expr = gp.LinExpr()
-                has_traffic = False
-
-                # Sum traffic for all SC pairs (i, k) that *could* result in traffic on this link
-                for (i, k), volume in comm_req_map.items():
-                    # Check forward direction: i->j1, k->j2
-                    if (i, k, j1, j2) in w:
-                         traffic_expr.add(w[i, k, j1, j2], volume)
-                         has_traffic = True
-                    
-                    # Check reverse direction: k->j1, i->j2 (assuming full-duplex or shared medium capacity)
-                    if (k, i, j1, j2) in w:
-                         traffic_expr.add(w[k, i, j1, j2], volume)
-                         has_traffic = True
-
-                # Right Side: Total Physical Capacity provided by cables (sum of capacity of all cables)
-                capacity_expr = gp.LinExpr()
-                has_cables = False
-                for iface in all_interfaces:
-                    if (j1, j2, iface) in comm:
-                         capacity_expr.add(comm[j1, j2, iface], cable_types[iface].capacity)
-                         has_cables = True
-                
-                # Add constraint only if there is potential traffic and potential cables
-                if has_traffic and has_cables:
-                    model.addConstr(
-                        traffic_expr <= capacity_expr,
-                        name=f"c10_traffic_agg_{locations[j1].id}_{locations[j2].id}"
-                    )
-                    cstats['c10_network_load'] += 1
-        
-        # ETH network model constraints
-        ##NEW
-        # Her bir trafik akisi (t) ve her bir lokasyon (j) icin:
+        # C-NET-1: (Flow Conservation)
         for tr in traffic_flows:
-            t_id = tr['id']
-            src_idx = tr['src_idx']
-            dst_idx = tr['dst_idx']
+            t = tr['id']
+            t_type = tr['type']
             
             for j in range(n_locs):
-                # 1. Bu lokasyona GIREN toplam trafik (baska lokasyonlardan)
-                flow_in = gp.quicksum(flow[t_id, k, j] for k in range(n_locs) if k != j)
+                # Incoming and outgoing flows (same)
+                f_in = gp.quicksum(flow[t, k, j] for k in range(n_locs) if (t, k, j) in flow)
+                f_out = gp.quicksum(flow[t, j, k] for k in range(n_locs) if (t, j, k) in flow)
                 
-                # 2. Bu lokasyondan CIKAN toplam trafik (baska lokasyonlara)
-                flow_out = gp.quicksum(flow[t_id, j, k] for k in range(n_locs) if k != j)
+                # --- SOURCE LOGIC ---
+                is_src = 0
+                if t_type == 'SC_SC':
+                    src_i = tr['src_idx']
+                    # Is the source SC at this location 'j'?
+                    is_src = gp.quicksum(z[src_i, j, scs[src_i].asil_req, p] for p in range(max_partitions_per_asil_per_loc) if (src_i, j, scs[src_i].asil_req, p) in z)
+                elif t_type == 'SENS_SC':
+                    # ETH sensor source is its attachment location
+                    s_idx = tr.get('sensor_idx')
+                    if s_idx is not None and attach_s and (s_idx, j) in attach_s:
+                        is_src = attach_s[s_idx, j]
+                elif t_type == 'SC_ACT':
+                    src_i = tr.get('src_idx')
+                    if src_i is not None:
+                        is_src = gp.quicksum(z[src_i, j, scs[src_i].asil_req, p] for p in range(max_partitions_per_asil_per_loc) if (src_i, j, scs[src_i].asil_req, p) in z)
                 
-                # 3. Bu lokasyon bu trafigin KAYNAGI mi? (SC i burada mi?)
-                # (Tum partition ve asil olasiliklarini topluyoruz, sonuc 0 veya 1 olur)
-                is_source = gp.quicksum(z[src_idx, j, a, p] 
-                                    for a in unique_asils 
-                                    for p in range(max_partitions_per_asil_per_loc)
-                                    if (src_idx, j, a, p) in z)
-                
-                # 4. Bu lokasyon bu trafigin HEDEFI mi? (SC k burada mi?)
-                is_dest = gp.quicksum(z[dst_idx, j, a, p] 
-                                    for a in unique_asils 
-                                    for p in range(max_partitions_per_asil_per_loc)
-                                    if (dst_idx, j, a, p) in z)
-                
-                # DENKLEM: Giren + Uretilen = Cikan + Tuketinlen
-                # Matematiksel olarak: Flow_Out - Flow_In = Source - Dest
-                model.addConstr(flow_out - flow_in == is_source - is_dest, 
-                                name=f"flow_conserv_{t_id}_{locations[j].id}")
-                
-        for (u, v, iface), comm_var in comm.items():
-            # Sadece ETH kablolarini network routing icin kullaniyoruz
-            if "ETH" not in iface: 
-                continue
+                # --- DESTINATION LOGIC ---
+                is_dest = 0
+                if t_type == 'SC_SC':
+                    dst_i = tr['dst_idx']
+                    # Is the destination SC at this location 'j'?
+                    is_dest = gp.quicksum(z[dst_i, j, scs[dst_i].asil_req, p] for p in range(max_partitions_per_asil_per_loc) if (dst_i, j, scs[dst_i].asil_req, p) in z)
+                elif t_type == 'SENS_SC':
+                    dst_i = tr.get('dst_idx')
+                    if dst_i is not None:
+                        is_dest = gp.quicksum(z[dst_i, j, scs[dst_i].asil_req, p] for p in range(max_partitions_per_asil_per_loc) if (dst_i, j, scs[dst_i].asil_req, p) in z)
+                elif t_type == 'SC_ACT':
+                    a_idx = tr.get('act_idx')
+                    if a_idx is not None and attach_a and (a_idx, j) in attach_a:
+                        is_dest = attach_a[a_idx, j]
 
-            # u -> v yonundeki trafik toplami
-            traffic_u_v = gp.LinExpr()
+                # EQUATION: Flow_Out - Flow_In = Source - Dest
+                model.addConstr(f_out - f_in == is_src - is_dest, name=f"flow_bal_{t}_{j}")
+
+        # C-NET-1b: Simple-path enforcement (avoid cycles/branching)
+        # Without this, the binary flow model can create extra cyclic flow that has no objective penalty,
+        # which then (via C-NET-3) can force SWITCH selection even when a direct link exists.
+        # We enforce for each SC_SC traffic:
+        # - Source node has no incoming flow
+        # - Destination node has no outgoing flow
+        # - Intermediate nodes have in-degree <= 1 and out-degree <= 1
+        deg_M = n_locs  # big-M for degree constraints
+        for tr in traffic_flows:
+            if tr.get('type') not in ('SC_SC', 'SENS_SC', 'SC_ACT'):
+                continue
+            t = tr['id']
+            for j in range(n_locs):
+                f_in = gp.quicksum(flow[t, k, j] for k in range(n_locs) if (t, k, j) in flow)
+                f_out = gp.quicksum(flow[t, j, k] for k in range(n_locs) if (t, j, k) in flow)
+
+                if tr.get('type') == 'SC_SC':
+                    src_i = tr['src_idx']
+                    dst_i = tr['dst_idx']
+                    is_src = gp.quicksum(
+                        z[src_i, j, scs[src_i].asil_req, p]
+                        for p in range(max_partitions_per_asil_per_loc)
+                        if (src_i, j, scs[src_i].asil_req, p) in z
+                    )
+                    is_dest = gp.quicksum(
+                        z[dst_i, j, scs[dst_i].asil_req, p]
+                        for p in range(max_partitions_per_asil_per_loc)
+                        if (dst_i, j, scs[dst_i].asil_req, p) in z
+                    )
+                elif tr.get('type') == 'SENS_SC':
+                    s_idx = tr.get('sensor_idx')
+                    dst_i = tr.get('dst_idx')
+                    is_src = attach_s[s_idx, j] if (attach_s and s_idx is not None and (s_idx, j) in attach_s) else 0
+                    is_dest = gp.quicksum(
+                        z[dst_i, j, scs[dst_i].asil_req, p]
+                        for p in range(max_partitions_per_asil_per_loc)
+                        if (dst_i, j, scs[dst_i].asil_req, p) in z
+                    ) if dst_i is not None else 0
+                else:  # SC_ACT
+                    src_i = tr.get('src_idx')
+                    a_idx = tr.get('act_idx')
+                    is_src = gp.quicksum(
+                        z[src_i, j, scs[src_i].asil_req, p]
+                        for p in range(max_partitions_per_asil_per_loc)
+                        if (src_i, j, scs[src_i].asil_req, p) in z
+                    ) if src_i is not None else 0
+                    is_dest = attach_a[a_idx, j] if (attach_a and a_idx is not None and (a_idx, j) in attach_a) else 0
+
+                # Source cannot have incoming
+                model.addConstr(f_in <= deg_M * (1 - is_src), name=f"path_no_in_src_{t}_{j}")
+                # Destination cannot have outgoing
+                model.addConstr(f_out <= deg_M * (1 - is_dest), name=f"path_no_out_dest_{t}_{j}")
+
+                # Intermediate degree limits
+                model.addConstr(f_out <= 1 + (deg_M - 1) * is_src, name=f"path_out_deg_{t}_{j}")
+                model.addConstr(f_in <= 1 + (deg_M - 1) * is_dest, name=f"path_in_deg_{t}_{j}")
+
+        # C-NET-2: Capacity & Linking
+        # If there is flow -> Comm (Cable) must exist
+        for (u, v, iface), comm_var in comm.items():
+            if iface != "ETH": continue
             
-            # v -> u yonundeki trafik toplami (Ethernet Full Duplex oldugu icin ayri ayri kontrol ediyoruz)
-            traffic_v_u = gp.LinExpr()
+            # u->v direction
+            load_uv = gp.LinExpr()
+            # v->u direction
+            load_vu = gp.LinExpr()
             
             for tr in traffic_flows:
-                t_id = tr['id']
+                t = tr['id']
                 vol = tr['volume']
-                
-                # Eger bu flow degiskeni tanimliysa toplama ekle
-                if (t_id, u, v) in flow:
-                    traffic_u_v += flow[t_id, u, v] * vol
-                    
-                if (t_id, v, u) in flow:
-                    traffic_v_u += flow[t_id, v, u] * vol
-                    
-            # KISIT 1: u->v trafigi kapasiteye sigmali
-            model.addConstr(traffic_u_v <= cable_types[iface].capacity * comm_var, 
-                            name=f"cap_uv_{u}_{v}")
-                            
-            # KISIT 2: v->u trafigi kapasiteye sigmali
-            model.addConstr(traffic_v_u <= cable_types[iface].capacity * comm_var, 
-                            name=f"cap_vu_{u}_{v}")
+                if (t, u, v) in flow: load_uv += flow[t, u, v] * vol
+                if (t, v, u) in flow: load_vu += flow[t, v, u] * vol
             
+            # If Ethernet is Full Duplex, handle separately; otherwise, total control is sufficient.
+            # For simplicity, we link both directions to the cable capacity:
+            model.addConstr(load_uv <= cable_types.get('ETH', None).capacity * comm_var, name=f"cap_uv_{u}_{v}")
+            model.addConstr(load_vu <= cable_types.get('ETH', None).capacity * comm_var, name=f"cap_vu_{u}_{v}")
+
+        # C-NET-3: Switch Permission (Hop Logic)
+        # If you are not the source but are sending data out, Switch HW is required.
         for tr in traffic_flows:
-            t_id = tr['id']
-            src_idx = tr['src_idx']
+            t = tr['id']
             
             for j in range(n_locs):
-                # Bu lokasyondan DISARI cikan trafik miktari (0 ile 1 arasi)
-                flow_out_sum = gp.quicksum(flow[t_id, j, k] for k in range(n_locs) if k != j)
+                f_out_sum = gp.quicksum(flow[t, j, k] for k in range(n_locs) if (t, j, k) in flow)
+
+                # Determine whether node j is the SOURCE of this traffic flow
+                is_src = 0
+                if tr.get('type') == 'SC_SC':
+                    src_i = tr['src_idx']
+                    is_src = gp.quicksum(
+                        z[src_i, j, scs[src_i].asil_req, p]
+                        for p in range(max_partitions_per_asil_per_loc)
+                        if (src_i, j, scs[src_i].asil_req, p) in z
+                    )
+                elif tr.get('type') == 'SENS_SC':
+                    s_idx = tr.get('sensor_idx')
+                    if s_idx is not None and attach_s and (s_idx, j) in attach_s:
+                        is_src = attach_s[s_idx, j]
+                elif tr.get('type') == 'SC_ACT':
+                    src_i = tr.get('src_idx')
+                    if src_i is not None:
+                        is_src = gp.quicksum(
+                            z[src_i, j, scs[src_i].asil_req, p]
+                            for p in range(max_partitions_per_asil_per_loc)
+                            if (src_i, j, scs[src_i].asil_req, p) in z
+                        )
                 
-                # Bu lokasyon KAYNAK mi?
-                is_source = gp.quicksum(z[src_idx, j, a, p] 
-                                    for a in unique_asils 
-                                    for p in range(max_partitions_per_asil_per_loc)
-                                    if (src_idx, j, a, p) in z)
-                
-                # KISIT: Disari trafik cikabilmesi icin YA kaynak olmali YA DA switch olmali.
-                # Flow_Out (max 1) <= Source (0/1) + Switch (0/1)
-                model.addConstr(flow_out_sum <= is_source + hw_use[j, "SWITCH"], 
-                                name=f"switch_perm_{t_id}_{locations[j].id}")
+                # Flow_Out <= Is_Source + Has_Switch
+                model.addConstr(f_out_sum <= is_src + hw_use[j, 'SWITCH'], name=f"sw_rule_{t}_{j}")
 
 
         cstats['total'] = sum(v for k, v in cstats.items() if k != 'total')
@@ -660,7 +1191,7 @@ class AssignmentOptimizer:
     def _build_objective_function(self, model, y, z, hw_use, if_use, comm, scs, locations, sensors, actuators, 
                                   cable_types, comm_matrix, partitions, hardwares, interfaces,
                                   n_locs, unique_asils, all_hw, all_interfaces, max_partitions_per_asil_per_loc,
-                                  feasible_locs_per_sc):
+                                  feasible_locs_per_sc, attach_s=None, attach_a=None, shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None):
         """
         Build and set the objective function for the optimization model
         
@@ -693,7 +1224,9 @@ class AssignmentOptimizer:
         # Cable cost (sensor/actuator cables + ECU-to-ECU communication backbone)
         cable_cost_expr, _, _ = self.calculate_cable_expressions(
             z, {}, scs, locations, sensors, actuators, cable_types, comm_matrix, max_partitions_per_asil_per_loc,
-            feasible_locs_per_sc, comm=comm
+            feasible_locs_per_sc, comm=comm, attach_s=attach_s, attach_a=attach_a,
+            shared_attach_s=shared_attach_s, shared_attach_a=shared_attach_a,
+            shared_trunk_len=shared_trunk_len
         )
         
         # Total cost
@@ -748,13 +1281,13 @@ class AssignmentOptimizer:
             print(f"  Precomputed infeasible SC-location pairs (latency): {len(infeasible_ij)}")
 
         # ======================= CREATE MODEL & VARIABLES =======================
-        model, y, z, hw_use, if_use, comm, w, traffic_flows, flow, max_partitions_per_asil_per_loc, feasible_locs_per_sc, feasible_scs_per_loc, var_stats = self._create_model_and_variables(
-            n_sc, n_locs, scs, locations, unique_asils, all_hw, all_interfaces, infeasible_ij=infeasible_ij, comm_matrix=comm_matrix
+        model, y, z, hw_use, if_use, attach_s, attach_a, shared_attach_s, shared_attach_a, shared_trunk_len, comm, traffic_flows, flows ,max_partitions_per_asil_per_loc, feasible_locs_per_sc, feasible_scs_per_loc, var_stats = self._create_model_and_variables(
+            n_sc, n_locs, scs, locations, unique_asils, all_hw, sensors, actuators, all_interfaces, infeasible_ij=infeasible_ij, comm_matrix=comm_matrix
         )
         
         # ======================= ADD CONSTRAINTS =======================
         model, cstats = self._add_constraints(
-            model, y, z, hw_use, if_use, comm, w, traffic_flows, flow, scs, locations, sensors, actuators,
+            model, y, z, hw_use, if_use, attach_s, attach_a, shared_attach_s, shared_attach_a, shared_trunk_len, comm, traffic_flows, flows, scs, locations, sensors, actuators,
             cable_types, comm_matrix, partitions, unique_asils, max_partitions_per_asil_per_loc,
             feasible_locs_per_sc, feasible_scs_per_loc,
             enable_comm_bw_constraints=enable_comm_bw_constraints,
@@ -767,8 +1300,14 @@ class AssignmentOptimizer:
         print(f"  z: {var_stats['z']}")
         print(f"  hw_use: {var_stats['hw_use']}")
         print(f"  if_use: {var_stats['if_use']}")
+        print(f"  attach_s: {var_stats.get('attach_s', 0)}")
+        print(f"  attach_a: {var_stats.get('attach_a', 0)}")
+        print(f"  shared_attach_s: {var_stats.get('shared_attach_s', 0)}")
+        print(f"  shared_attach_a: {var_stats.get('shared_attach_a', 0)}")
+        print(f"  shared_trunk_len: {var_stats.get('shared_trunk_len', 0)}")
         print(f"  comm: {var_stats['comm']} ({(100.0 * var_stats['comm'] / max(1, var_stats['total'])):.1f}%)")
-        print(f"  w (linearization): {var_stats['w']}")
+        print(f"  traffic_flows: {var_stats['traffic_flows']}")
+        print(f"  flow: {var_stats['flow']}")
         print(f"  comm_loc_pairs: {var_stats['comm_loc_pairs']}")
 
         print("\n[DEBUG] Constraint breakdown:")
@@ -782,15 +1321,19 @@ class AssignmentOptimizer:
         print(f"  c5_redundancy: {cstats['c5_redundancy']}")
         print(f"  c8_loc_loc_latency: {cstats['c8_loc_loc_latency']}")
         print(f"  c9_if_activation: {cstats['c9_if_activation']}")
-        print(f"  c10_network_load: {cstats['c10_network_load']} ({(100.0 * cstats['c10_network_load'] / max(1, cstats['total'])):.1f}%)")
-        print(f"  c10_linearization: {cstats['c10_linearization']} ({(100.0 * cstats['c10_linearization'] / max(1, cstats['total'])):.1f}%)")
+        print(f"  c9_attach: {cstats.get('c9_attach', 0)}")
+        print(f"  c9_shared_attach: {cstats.get('c9_shared_attach', 0)}")
+        print(f"  c9_shared_trunk: {cstats.get('c9_shared_trunk', 0)}")
+
         
         # ======================= BUILD OBJECTIVE =======================
         model = self._build_objective_function(
             model, y, z, hw_use, if_use, comm, scs, locations, sensors, actuators,
             cable_types, comm_matrix, partitions, hardwares, interfaces,
             n_locs, unique_asils, all_hw, all_interfaces, max_partitions_per_asil_per_loc,
-            feasible_locs_per_sc
+            feasible_locs_per_sc, attach_s=attach_s, attach_a=attach_a,
+            shared_attach_s=shared_attach_s, shared_attach_a=shared_attach_a,
+            shared_trunk_len=shared_trunk_len
         )
 
         model.update()
@@ -808,8 +1351,11 @@ class AssignmentOptimizer:
             print(f"\n✓ Optimal solution found!")
             # Extract and return formatted solution
             formatted_solution = extract_solution(
-                y, z, hw_use, if_use, comm, w, scs, locations, sensors, actuators,
-                cable_types, partitions, hardwares, interfaces, comm_matrix=comm_matrix
+                y, z, hw_use, if_use, comm, scs, locations, sensors, actuators,
+                cable_types, partitions, hardwares, interfaces, comm_matrix=comm_matrix,
+                traffic_flows=traffic_flows, flow=flows, attach_s=attach_s, attach_a=attach_a,
+                shared_attach_s=shared_attach_s, shared_attach_a=shared_attach_a,
+                shared_trunk_len=shared_trunk_len
             )
             return formatted_solution
         else:

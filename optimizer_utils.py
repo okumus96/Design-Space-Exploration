@@ -5,6 +5,8 @@ This module contains helper functions used by the optimizer module,
 including geometry distance calculations and lookup dictionary builders.
 """
 
+from collections import deque
+
 
 def get_distance(loc1, loc2):
     """
@@ -115,6 +117,10 @@ def precompute_latency_infeasible_pairs(scs, locations, sensors, actuators, cabl
             sensor = sensor_lookup.get(s_id)
             if not sensor or not getattr(sensor, 'max_latency', None):
                 continue
+            # ETH sensors may attach to a switch/ECU node; do not preclude SWC placement based on
+            # direct sensor->ECU wiring latency in that case.
+            if getattr(sensor, 'interface', None) == 'ETH':
+                continue
             if not getattr(sensor, 'location', None):
                 continue
             for j in range(n_locs):
@@ -129,6 +135,8 @@ def precompute_latency_infeasible_pairs(scs, locations, sensors, actuators, cabl
         for a_id in getattr(scs[i], 'actuators', []) or []:
             actuator = actuator_lookup.get(a_id)
             if not actuator or not getattr(actuator, 'max_latency', None):
+                continue
+            if getattr(actuator, 'interface', None) == 'ETH':
                 continue
             if not getattr(actuator, 'location', None):
                 continue
@@ -147,7 +155,7 @@ def precompute_latency_infeasible_pairs(scs, locations, sensors, actuators, cabl
 # COST CALCULATION UTILITIES
 # ============================================================================
 
-def calculate_sensor_actuator_cable_costs(z, scs, locations, sensors, actuators, cable_types):
+def calculate_sensor_actuator_cable_costs(z, scs, locations, sensors, actuators, cable_types, attach_s=None, attach_a=None, shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None):
     """
     Calculate total cable costs and distances for sensor/actuator connections.
     
@@ -174,6 +182,8 @@ def calculate_sensor_actuator_cable_costs(z, scs, locations, sensors, actuators,
     sensor_lookup = build_sensor_lookup(sensors)
     actuator_lookup = build_actuator_lookup(actuators)
     
+    shared_bus_ifaces = {'CAN', 'LIN', 'FLEXRAY'}
+
     for (i, j, a, p), var in z.items():
         if var.X > 0.5:
             sc = scs[i]
@@ -182,6 +192,10 @@ def calculate_sensor_actuator_cable_costs(z, scs, locations, sensors, actuators,
             for s_id in (sc.sensors or []):
                 sensor = sensor_lookup.get(s_id)
                 if sensor and sensor.location:
+                    if attach_s is not None and getattr(sensor, 'interface', None) == 'ETH':
+                        continue
+                    if shared_attach_s is not None and getattr(sensor, 'interface', None) in shared_bus_ifaces:
+                        continue
                     dist = get_distance(sensor.location, locations[j].location)
                     cable_length += dist
                     cable_cost += dist * cost_map.get(sensor.interface, 0.0)
@@ -190,9 +204,70 @@ def calculate_sensor_actuator_cable_costs(z, scs, locations, sensors, actuators,
             for a_id in (sc.actuators or []):
                 actuator = actuator_lookup.get(a_id)
                 if actuator and actuator.location:
+                    if attach_a is not None and getattr(actuator, 'interface', None) == 'ETH':
+                        continue
+                    if shared_attach_a is not None and getattr(actuator, 'interface', None) in shared_bus_ifaces:
+                        continue
                     dist = get_distance(actuator.location, locations[j].location)
                     cable_length += dist
                     cable_cost += dist * cost_map.get(actuator.interface, 0.0)
+
+    # ETH attachment cables
+    if attach_s:
+        for (si, j), av in attach_s.items():
+            if av.X > 0.5:
+                s = sensors[si]
+                if not getattr(s, 'location', None):
+                    continue
+                dist = get_distance(s.location, locations[j].location)
+                cable_length += dist
+                cable_cost += dist * cost_map.get(getattr(s, 'interface', 'ETH'), 0.0)
+
+    if attach_a:
+        for (ai, j), av in attach_a.items():
+            if av.X > 0.5:
+                aobj = actuators[ai]
+                if not getattr(aobj, 'location', None):
+                    continue
+                dist = get_distance(aobj.location, locations[j].location)
+                cable_length += dist
+                cable_cost += dist * cost_map.get(getattr(aobj, 'interface', 'ETH'), 0.0)
+
+    # Shared-bus attachments (CAN/LIN/FLEXRAY)
+    if shared_attach_s:
+        for (si, j), av in shared_attach_s.items():
+            if av.X > 0.5:
+                s = sensors[si]
+                if not getattr(s, 'location', None):
+                    continue
+                iface = getattr(s, 'interface', None)
+                if iface not in shared_bus_ifaces:
+                    continue
+                dist = get_distance(s.location, locations[j].location)
+                cable_length += dist
+                cable_cost += dist * cost_map.get(iface, 0.0)
+
+    if shared_attach_a:
+        for (ai, j), av in shared_attach_a.items():
+            if av.X > 0.5:
+                aobj = actuators[ai]
+                if not getattr(aobj, 'location', None):
+                    continue
+                iface = getattr(aobj, 'interface', None)
+                if iface not in shared_bus_ifaces:
+                    continue
+                dist = get_distance(aobj.location, locations[j].location)
+                cable_length += dist
+                cable_cost += dist * cost_map.get(iface, 0.0)
+
+    # Shared trunk length contribution (one main segment per location/interface)
+    if shared_trunk_len:
+        for (_j, iface), tv in shared_trunk_len.items():
+            trunk_len = float(getattr(tv, 'X', 0.0) or 0.0)
+            if trunk_len <= 1e-9:
+                continue
+            cable_length += trunk_len
+            cable_cost += trunk_len * cost_map.get(iface, 0.0)
     
     return cable_length, cable_cost
 
@@ -242,7 +317,7 @@ def calculate_hardware_cost(hw_use, hardwares, locations):
 
 def calculate_interface_cost(if_use, interfaces, locations):
     """
-    Calculate total interface cost based on opened interfaces at locations.
+    Calculate total interface cost based on number of ports at locations.
     
     Args:
         if_use: Dict of if_use variables with keys (location_idx, interface_name)
@@ -252,14 +327,16 @@ def calculate_interface_cost(if_use, interfaces, locations):
     Returns:
         tuple: (if_cost, if_opened list)
             - if_cost: Total interface cost (float)
-            - if_opened: List of opened interfaces with format "INTERFACE_NAME@LOCATION_ID"
+            - if_opened: List of opened interfaces with count, e.g., "3xETH@LOCATION_ID"
     """
     if_opened = []
+    if_cost = 0.0
     for (j, i_name), var in if_use.items():
-        if var.X > 0.5:
-            if_opened.append(f"{i_name}@{locations[j].id}")
+        if var.X > 0.1:  # Use a small epsilon for integer variables
+            count = int(round(var.X))
+            if_opened.append(f"{count}x{i_name}@{locations[j].id}")
+            if_cost += count * interfaces[i_name].port_cost
     
-    if_cost = sum(interfaces[iface_name.split('@')[0]].port_cost for iface_name in if_opened)
     return if_cost, if_opened
 
 
@@ -289,12 +366,28 @@ def calculate_communication_cost(comm, locations, cable_types):
     return comm_cost
 
 
+def extract_communication_links(comm, locations, min_link_value=0.5):
+    """Extract opened ECU-to-ECU links from solved comm variables."""
+    links = []
+    for (j1, j2, iface), var in comm.items():
+        if var.X > min_link_value:
+            links.append({
+                'src_loc': locations[j1].id,
+                'dst_loc': locations[j2].id,
+                'iface': iface,
+                'count': int(round(var.X)),
+            })
+    return links
+
+
 
 # ============================================================================
 # SOLUTION EXTRACTION AND FORMATTING
 # ============================================================================
-def extract_solution(y, z, hw_use, if_use, comm, w, scs, locations, sensors, actuators,
-                     cable_types, partitions, hardwares, interfaces, comm_matrix=None):
+def extract_solution(y, z, hw_use, if_use, comm, scs, locations, sensors, actuators,
+                     cable_types, partitions, hardwares, interfaces, comm_matrix=None,
+                     traffic_flows=None, flow=None, attach_s=None, attach_a=None,
+                     shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None):
         """
         Extract formatted solution dict from raw Gurobi model variables.
         
@@ -307,7 +400,6 @@ def extract_solution(y, z, hw_use, if_use, comm, w, scs, locations, sensors, act
             hw_use: Dict of hardware opening variables
             if_use: Dict of interface opening variables
             comm: Dict of communication backbone variables
-            w: Dict of traffic flow variables
             scs: List of software component objects
             locations: List of location/ECU objects
             sensors: List of sensor objects
@@ -379,26 +471,292 @@ def extract_solution(y, z, hw_use, if_use, comm, w, scs, locations, sensors, act
         num_locations_used = len(locs_used)
         
         # Calculate cable costs and distances
-        cable_length, cable_cost = calculate_sensor_actuator_cable_costs(z, scs, locations, sensors, actuators, cable_types)
+        cable_length, cable_cost = calculate_sensor_actuator_cable_costs(
+            z, scs, locations, sensors, actuators, cable_types,
+            attach_s=attach_s, attach_a=attach_a,
+            shared_attach_s=shared_attach_s, shared_attach_a=shared_attach_a,
+            shared_trunk_len=shared_trunk_len
+        )
         
         # Calculate partition and communication costs
         partition_cost = calculate_partition_cost(y, partitions)
         comm_cost = calculate_communication_cost(comm, locations, cable_types)
-        
-        # DEBUG: Print traffic flow information
-        print(f"\n[DEBUG] Traffic Flow Routing Analysis:")
-        if w:
-            multi_hop_traffic = 0
-            for key, var in w.items():
-                if var.X > 0.5:
-                    multi_hop_traffic += 1
-            if multi_hop_traffic > 0:
-                print(f"  Multi-hop traffic found: {multi_hop_traffic} paths need routing through intermediate nodes")
+        comm_links = extract_communication_links(comm, locations)
+
+        # DEBUG: ETH peripheral attachments
+        if attach_s:
+            attached = []
+            for (si, j), av in attach_s.items():
+                if av.X > 0.5:
+                    attached.append((sensors[si].id, locations[j].id))
+            print("\n[DEBUG] ETH Sensor Attachments:")
+            if not attached:
+                print("  None")
             else:
-                print(f"  NO multi-hop traffic detected - all traffic is direct (P2P)")
-                print(f"  Reason: Source and destination nodes are always direct, no intermediate hops needed")
+                print(f"  Total: {len(attached)}")
+                for sid, lid in attached[:20]:
+                    print(f"  {sid} -> {lid}")
+                if len(attached) > 20:
+                    print(f"  ... ({len(attached) - 20} more)")
+
+        if attach_a:
+            attached = []
+            for (ai, j), av in attach_a.items():
+                if av.X > 0.5:
+                    attached.append((actuators[ai].id, locations[j].id))
+            print("\n[DEBUG] ETH Actuator Attachments:")
+            if not attached:
+                print("  None")
+            else:
+                print(f"  Total: {len(attached)}")
+                for aid, lid in attached[:20]:
+                    print(f"  {aid} -> {lid}")
+                if len(attached) > 20:
+                    print(f"  ... ({len(attached) - 20} more)")
+
+        # DEBUG: Selected backbone links (comm)
+        print(f"\n[DEBUG] Selected Backbone Links (comm):")
+        if not comm_links:
+            print("  No backbone links opened")
+        else:
+            # Stable sort by iface then endpoints
+            def _lk_sort_key(lk):
+                a, b = (lk['src_loc'], lk['dst_loc']) if lk['src_loc'] <= lk['dst_loc'] else (lk['dst_loc'], lk['src_loc'])
+                return (lk.get('iface', ''), a, b)
+
+            for lk in sorted(comm_links, key=_lk_sort_key):
+                src_id = lk['src_loc']
+                dst_id = lk['dst_loc']
+                iface = lk.get('iface', '?')
+                count = lk.get('count', 0)
+                # Find indices for distance (safe fallback if ids are unexpected)
+                src_idx = next((ii for ii, loc in enumerate(locations) if loc.id == src_id), None)
+                dst_idx = next((ii for ii, loc in enumerate(locations) if loc.id == dst_id), None)
+                if src_idx is not None and dst_idx is not None:
+                    dist = get_distance(locations[src_idx].location, locations[dst_idx].location)
+                    cpm = cable_types.get(iface).cost_per_meter if cable_types.get(iface) else 0.0
+                    print(f"  {src_id} <-> {dst_id} iface={iface} count={count} dist={dist:.2f} cost/link={dist * cpm:.2f}")
+                else:
+                    print(f"  {src_id} <-> {dst_id} iface={iface} count={count}")
+
+        # DEBUG: Traffic flow routing analysis (multi-hop detection)
+        print(f"\n[DEBUG] Traffic Flow Routing Analysis:")
+        if not traffic_flows or not flow:
+            print("  Routing analysis unavailable (flow variables not provided to extract_solution)")
+        else:
+            # Map SC index -> location index for quick lookup
+            sc_idx_to_loc = {}
+            for (i, j, _a, _p), var in z.items():
+                if var.X > 0.5:
+                    sc_idx_to_loc[i] = j
+
+            # Map location index -> has SWITCH
+            loc_has_switch = {j: False for j in range(len(locations))}
+            for (j, h), var in hw_use.items():
+                if h == 'SWITCH' and var.X > 0.5:
+                    loc_has_switch[j] = True
+
+            # Build adjacency per traffic id once (only active arcs)
+            adj_by_t = {tr['id']: {j: [] for j in range(len(locations))} for tr in traffic_flows if 'id' in tr}
+            for (tt, u, v), fvar in flow.items():
+                if fvar.X <= 0.5:
+                    continue
+                if tt not in adj_by_t:
+                    continue
+                adj_by_t[tt][u].append(v)
+
+            def _shortest_path_nodes(adj, src, dst):
+                if src == dst:
+                    return [src]
+                q = deque([src])
+                prev = {src: None}
+                while q:
+                    u = q.popleft()
+                    for v in adj.get(u, []):
+                        if v in prev:
+                            continue
+                        prev[v] = u
+                        if v == dst:
+                            q.clear()
+                            break
+                        q.append(v)
+                if dst not in prev:
+                    return None
+                # reconstruct
+                path = []
+                cur = dst
+                while cur is not None:
+                    path.append(cur)
+                    cur = prev[cur]
+                path.reverse()
+                return path
+
+            # Detailed per-traffic routing table (SC_SC + ETH sensor/actuator)
+            print("  Traffic routes (only DIFFERENT_LOC):")
+
+            total = 0
+            different_loc = 0
+            multi_hop = 0
+            missing_paths = 0
+            transit_nodes = set()
+            transit_switch_nodes = set()
+
+            # Optional edge-load summary (directed) for quick sanity checks
+            edge_load = {}  # (u,v) -> total volume
+
+            # Helpers to resolve peripheral attachment locations
+            def _sensor_attach_loc(si):
+                if not attach_s:
+                    return None
+                for j in range(len(locations)):
+                    v = attach_s.get((si, j))
+                    if v is not None and v.X > 0.5:
+                        return j
+                return None
+
+            def _act_attach_loc(ai):
+                if not attach_a:
+                    return None
+                for j in range(len(locations)):
+                    v = attach_a.get((ai, j))
+                    if v is not None and v.X > 0.5:
+                        return j
+                return None
+
+            for tr in traffic_flows:
+                if tr.get('type') not in ('SC_SC', 'SENS_SC', 'SC_ACT'):
+                    continue
+                total += 1
+
+                t_id = tr.get('id')
+                vol = tr.get('volume', 0)
+                if t_id is None:
+                    continue
+
+                ttype = tr.get('type')
+                src_loc = None
+                dst_loc = None
+                label = None
+
+                if ttype == 'SC_SC':
+                    src_i = tr.get('src_idx')
+                    dst_i = tr.get('dst_idx')
+                    if src_i is None or dst_i is None:
+                        continue
+                    src_loc = sc_idx_to_loc.get(src_i)
+                    dst_loc = sc_idx_to_loc.get(dst_i)
+                    if src_loc is None or dst_loc is None:
+                        continue
+                    label = f"SC_SC {scs[src_i].id}@{locations[src_loc].id} -> {scs[dst_i].id}@{locations[dst_loc].id}"
+
+                elif ttype == 'SENS_SC':
+                    si = tr.get('sensor_idx')
+                    dst_i = tr.get('dst_idx')
+                    if si is None or dst_i is None:
+                        continue
+                    src_loc = _sensor_attach_loc(si)
+                    dst_loc = sc_idx_to_loc.get(dst_i)
+                    if src_loc is None or dst_loc is None:
+                        continue
+                    label = f"SENS_SC {sensors[si].id}@{locations[src_loc].id} -> {scs[dst_i].id}@{locations[dst_loc].id}"
+
+                else:  # SC_ACT
+                    src_i = tr.get('src_idx')
+                    ai = tr.get('act_idx')
+                    if src_i is None or ai is None:
+                        continue
+                    src_loc = sc_idx_to_loc.get(src_i)
+                    dst_loc = _act_attach_loc(ai)
+                    if src_loc is None or dst_loc is None:
+                        continue
+                    label = f"SC_ACT {scs[src_i].id}@{locations[src_loc].id} -> {actuators[ai].id}@{locations[dst_loc].id}"
+
+                if src_loc == dst_loc:
+                    continue
+
+                different_loc += 1
+                adj = adj_by_t.get(t_id)
+                path = _shortest_path_nodes(adj, src_loc, dst_loc) if adj else None
+                if not path:
+                    missing_paths += 1
+                    print(
+                        f"    t={t_id} {label} vol={vol} iface=ETH path=UNREACHABLE"
+                    )
+                    continue
+
+                # Accumulate edge loads along the chosen path
+                for u, v in zip(path, path[1:]):
+                    edge_load[(u, v)] = edge_load.get((u, v), 0) + vol
+
+                is_multihop = len(path) > 2
+                if is_multihop:
+                    multi_hop += 1
+                    for mid in path[1:-1]:
+                        transit_nodes.add(mid)
+                        if loc_has_switch.get(mid, False):
+                            transit_switch_nodes.add(mid)
+
+                path_ids = [locations[j].id for j in path]
+                via = []
+                for mid in path[1:-1]:
+                    if loc_has_switch.get(mid, False):
+                        via.append(f"SWITCH@{locations[mid].id}")
+                via_txt = (" via " + ", ".join(via)) if via else ""
+
+                print(
+                    f"    t={t_id} {label} vol={vol} iface=ETH path={' -> '.join(path_ids)}{via_txt}"
+                )
+
+            # Summary
+            if different_loc == 0:
+                print("  No modeled traffics across different locations")
+            else:
+                if multi_hop == 0:
+                    print(f"  Summary: multi-hop=0 / different_loc={different_loc} (total traffics={total})")
+                else:
+                    print(f"  Summary: multi-hop={multi_hop} / different_loc={different_loc} (total traffics={total})")
+                    if transit_nodes:
+                        transit_ids = [locations[j].id for j in sorted(transit_nodes)]
+                        print(f"  Transit nodes used: {transit_ids}")
+                    if transit_switch_nodes:
+                        transit_switch_ids = [locations[j].id for j in sorted(transit_switch_nodes)]
+                        print(f"  Transit SWITCH nodes: {transit_switch_ids}")
+
+                if missing_paths > 0:
+                    print(f"  WARNING: {missing_paths} different-loc traffics had no reachable path in flow vars")
+
+            # Edge load summary (print only if multi-hop or if links exist)
+            if comm_links and edge_load:
+                print("  Directed edge load summary (vol units):")
+                # Sort by descending load
+                for (u, v), load in sorted(edge_load.items(), key=lambda kv: (-kv[1], locations[kv[0][0]].id, locations[kv[0][1]].id))[:25]:
+                    print(f"    {locations[u].id} -> {locations[v].id}: load={load}")
         
         total_cost = partition_cost + hw_cost + if_cost + cable_cost + comm_cost
+
+        eth_sensor_attachments = {}
+        if attach_s:
+            for (si, j), av in attach_s.items():
+                if av.X > 0.5:
+                    eth_sensor_attachments[sensors[si].id] = locations[j].id
+
+        eth_actuator_attachments = {}
+        if attach_a:
+            for (ai, j), av in attach_a.items():
+                if av.X > 0.5:
+                    eth_actuator_attachments[actuators[ai].id] = locations[j].id
+
+        shared_sensor_attachments = {}
+        if shared_attach_s:
+            for (si, j), av in shared_attach_s.items():
+                if av.X > 0.5:
+                    shared_sensor_attachments[sensors[si].id] = locations[j].id
+
+        shared_actuator_attachments = {}
+        if shared_attach_a:
+            for (ai, j), av in shared_attach_a.items():
+                if av.X > 0.5:
+                    shared_actuator_attachments[actuators[ai].id] = locations[j].id
         
         solution = {
             'assignment': assignment_map,
@@ -408,6 +766,11 @@ def extract_solution(y, z, hw_use, if_use, comm, w, scs, locations, sensors, act
             'interface_cost': if_cost,
             'cable_cost': cable_cost,
             'comm_cost': comm_cost,
+            'comm_links': comm_links,
+            'eth_sensor_attachments': eth_sensor_attachments,
+            'eth_actuator_attachments': eth_actuator_attachments,
+            'shared_sensor_attachments': shared_sensor_attachments,
+            'shared_actuator_attachments': shared_actuator_attachments,
             'cable_length': cable_length,
             'total_cost': total_cost,
             'num_locations_used': num_locations_used,
