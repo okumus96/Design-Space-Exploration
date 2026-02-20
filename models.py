@@ -24,6 +24,7 @@ class Location:
     """Represents a physical location in the vehicle where components can be deployed."""
     id: str        # e.g., 'LOC0', 'LOC1'
     location: 'Point' = None
+    health_factor: float = 1.0
 
 @dataclass
 class Interface:

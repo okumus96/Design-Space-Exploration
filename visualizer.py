@@ -472,7 +472,7 @@ class Visualization:
         plt.tight_layout()
         self.save_plot(filename)
 
-    def plot_vehicle_layout_topdown(self, sensors, actuators, assignments=None, ecus=None, locations=None, scs=None, comm_matrix=None, cable_types=None, comm_links=None, hw_features=None, eth_sensor_attachments=None, eth_actuator_attachments=None, shared_sensor_attachments=None, shared_actuator_attachments=None, vehicle_length=4.5, vehicle_width=1.8, filename="vehicle_layout.png"):
+    def plot_vehicle_layout_topdown(self, sensors, actuators, assignments=None, ecus=None, locations=None, scs=None, comm_matrix=None, cable_types=None, comm_links=None, hw_features=None, interfaces_opened=None, comm_link_peak_load=None, eth_sensor_attachments=None, eth_actuator_attachments=None, shared_sensor_attachments=None, shared_actuator_attachments=None, show_bus_utilization=False, vehicle_length=4.5, vehicle_width=1.8, filename="vehicle_layout.png"):
         """
         Bird's eye view of vehicle layout showing sensors, actuators, and optionally ECUs.
         Displays the physical dimensions and locations of all components.
@@ -534,9 +534,44 @@ class Visualization:
             'HVAC': '#F39C12',        # Orange
             'LIGHT': '#FFD700'        # Gold
         }
-        
-        # Helper function to offset labels to avoid overlap
-        label_offsets = {}
+
+        def _capacity_for_iface(iface_name):
+            if not cable_types:
+                return None
+            iface_obj = cable_types.get(iface_name)
+            if iface_obj is None:
+                return None
+            cap = getattr(iface_obj, 'capacity', None)
+            if cap is None:
+                return None
+            try:
+                cap_val = float(cap)
+            except Exception:
+                return None
+            if cap_val == float('inf') or cap_val <= 0:
+                return None
+            return cap_val
+
+        def _draw_util_text(x1, y1, x2, y2, pct, color):
+            if pct is None:
+                return
+            if pct > 0 and pct < 1:
+                txt = "<1%"
+            else:
+                txt = f"{pct:.1f}%"
+            mx = 0.5 * (x1 + x2)
+            my = 0.5 * (y1 + y2)
+            ax.text(
+                mx,
+                my,
+                txt,
+                fontsize=6,
+                color='black',
+                ha='center',
+                va='center',
+                bbox=dict(boxstyle='round,pad=0.15', facecolor='white', alpha=0.75, edgecolor=color, linewidth=0.6),
+                zorder=15,
+            )
         
         # Plot sensors 
         sensor_types_plotted = set()
@@ -619,12 +654,23 @@ class Visualization:
             # Build SC to sensors/actuators mapping if scs provided
             sc_to_sensors = {}
             sc_to_actuators = {}
+            sc_by_id = {}
             if scs is not None:
                 for sc in scs:
+                    sc_by_id[sc.id] = sc
                     if sc.sensors:
                         sc_to_sensors[sc.id] = sc.sensors
                     if sc.actuators:
                         sc_to_actuators[sc.id] = sc.actuators
+
+            def _asil_group_from_sc(sc_obj):
+                if sc_obj is None:
+                    return 'LOW'
+                a = getattr(sc_obj, 'asil_req', 0)
+                if isinstance(a, str):
+                    a_norm = a.strip().upper()
+                    return 'HIGH' if a_norm in {'C', 'D'} else 'LOW'
+                return 'HIGH' if int(a) >= 3 else 'LOW'
 
             # Helper: infer which location a sensor/actuator is physically wired to.
             # - For ETH peripherals, prefer explicit attachment mapping from solver.
@@ -685,8 +731,28 @@ class Visualization:
                     if _infer_actuator_loc_id(actuator_id) == loc_id:
                         connected_actuators.add(actuator_id)
 
-                direct_links = []  # (x, y, iface)
-                shared_bus_endpoints = {}  # iface -> list[(x, y)]
+                direct_links = []  # (x, y, iface, vol)
+                shared_bus_endpoints = {}  # iface -> {'LOW':[(x,y,vol)], 'HIGH':[(x,y,vol)]}
+
+                sensor_group_map = {}
+                actuator_group_map = {}
+                for sc_id in active_locations.get(loc_id, []):
+                    sc_obj = sc_by_id.get(sc_id)
+                    grp = _asil_group_from_sc(sc_obj)
+                    if sc_obj is None:
+                        continue
+                    for s_id in (getattr(sc_obj, 'sensors', None) or []):
+                        s_obj = sensor_dict.get(s_id)
+                        if s_obj is None:
+                            continue
+                        if getattr(s_obj, 'interface', None) in shared_bus_ifaces and _infer_sensor_loc_id(s_id) == loc_id:
+                            sensor_group_map.setdefault(s_id, set()).add(grp)
+                    for a_id in (getattr(sc_obj, 'actuators', None) or []):
+                        a_obj = actuator_dict.get(a_id)
+                        if a_obj is None:
+                            continue
+                        if getattr(a_obj, 'interface', None) in shared_bus_ifaces and _infer_actuator_loc_id(a_id) == loc_id:
+                            actuator_group_map.setdefault(a_id, set()).add(grp)
 
                 # Gather sensor endpoints
                 for sensor_id in connected_sensors:
@@ -694,10 +760,14 @@ class Visualization:
                         sensor = sensor_dict[sensor_id]
                         sensor_y = -sensor.location.y
                         interface = getattr(sensor, 'interface', 'CAN')
+                        vol = float(getattr(sensor, 'volume', 0.0) or 0.0)
                         if interface in shared_bus_ifaces:
-                            shared_bus_endpoints.setdefault(interface, []).append((sensor.location.x, sensor_y))
+                            groups = sensor_group_map.get(sensor_id, {'LOW'})
+                            iface_groups = shared_bus_endpoints.setdefault(interface, {'LOW': [], 'HIGH': []})
+                            for grp in groups:
+                                iface_groups.setdefault(grp, []).append((sensor.location.x, sensor_y, vol))
                         else:
-                            direct_links.append((sensor.location.x, sensor_y, interface))
+                            direct_links.append((sensor.location.x, sensor_y, interface, vol))
 
                 # Gather actuator endpoints
                 for actuator_id in connected_actuators:
@@ -705,50 +775,118 @@ class Visualization:
                         actuator = actuator_dict[actuator_id]
                         actuator_y = -actuator.location.y
                         interface = getattr(actuator, 'interface', 'CAN')
+                        vol = float(getattr(actuator, 'volume', 0.0) or 0.0)
                         if interface in shared_bus_ifaces:
-                            shared_bus_endpoints.setdefault(interface, []).append((actuator.location.x, actuator_y))
+                            groups = actuator_group_map.get(actuator_id, {'LOW'})
+                            iface_groups = shared_bus_endpoints.setdefault(interface, {'LOW': [], 'HIGH': []})
+                            for grp in groups:
+                                iface_groups.setdefault(grp, []).append((actuator.location.x, actuator_y, vol))
                         else:
-                            direct_links.append((actuator.location.x, actuator_y, interface))
+                            direct_links.append((actuator.location.x, actuator_y, interface, vol))
 
                 # Draw direct (point-to-point) links, e.g., ETH
-                for end_x, end_y, interface in direct_links:
+                for end_x, end_y, interface, vol in direct_links:
                     line_color = interface_colors.get(interface, '#95A5A6')
                     ax.plot([loc.location.x, end_x], [loc_y, end_y],
                            color=line_color, linewidth=2, alpha=0.6, zorder=3)
                     ax.scatter(loc.location.x, loc_y, s=50, c=line_color,
                               marker='o', zorder=6)
+                    if show_bus_utilization:
+                        cap = _capacity_for_iface(interface)
+                        pct = (100.0 * vol / cap) if cap else None
+                        _draw_util_text(loc.location.x, loc_y, end_x, end_y, pct, line_color)
 
                 # Draw shared buses (single trunk + peripheral branches)
-                for interface, endpoints in shared_bus_endpoints.items():
-                    if not endpoints:
+                for interface, grouped_endpoints in shared_bus_endpoints.items():
+                    low_eps = grouped_endpoints.get('LOW', [])
+                    high_eps = grouped_endpoints.get('HIGH', [])
+                    if not low_eps and not high_eps:
                         continue
 
                     line_color = interface_colors.get(interface, '#95A5A6')
-                    mean_x = sum(p[0] for p in endpoints) / len(endpoints)
-                    mean_y = sum(p[1] for p in endpoints) / len(endpoints)
+                    all_eps = low_eps + high_eps
+                    mean_x = sum(p[0] for p in all_eps) / len(all_eps)
+                    mean_y = sum(p[1] for p in all_eps) / len(all_eps)
 
-                    bus_x = 0.5 * (loc.location.x + mean_x)
-                    bus_y = 0.5 * (loc_y + mean_y)
+                    base_bus_x = 0.5 * (loc.location.x + mean_x)
+                    base_bus_y = 0.5 * (loc_y + mean_y)
 
-                    # Shared trunk from location to bus hub
-                    ax.plot([loc.location.x, bus_x], [loc_y, bus_y],
-                           color=line_color, linewidth=3.2, alpha=0.8, zorder=3)
-                    ax.scatter(bus_x, bus_y, s=55, c=line_color,
-                              marker='s', edgecolor='black', linewidth=0.6, zorder=6)
+                    active_groups = []
+                    if low_eps:
+                        active_groups.append('LOW')
+                    if high_eps:
+                        active_groups.append('HIGH')
 
-                    # Branches from bus hub to all peripherals on that interface
-                    for end_x, end_y in endpoints:
-                        ax.plot([bus_x, end_x], [bus_y, end_y],
-                               color=line_color, linewidth=1.5, linestyle=':', alpha=0.65, zorder=3)
+                    hub_by_group = {}
+                    if len(active_groups) == 2:
+                        dx = base_bus_x - loc.location.x
+                        dy = base_bus_y - loc_y
+                        norm = (dx * dx + dy * dy) ** 0.5
+                        if norm < 1e-9:
+                            px, py = 0.0, 1.0
+                        else:
+                            px, py = -dy / norm, dx / norm
+                        sep = 0.07
+                        hub_by_group['LOW'] = (base_bus_x - sep * px, base_bus_y - sep * py)
+                        hub_by_group['HIGH'] = (base_bus_x + sep * px, base_bus_y + sep * py)
+                    else:
+                        only_grp = active_groups[0]
+                        hub_by_group[only_grp] = (base_bus_x, base_bus_y)
 
-                    # Mark the location interface point
+                    for grp in active_groups:
+                        endpoints = low_eps if grp == 'LOW' else high_eps
+                        bus_x, bus_y = hub_by_group[grp]
+                        trunk_style = '-' if grp == 'HIGH' else '--'
+
+                        ax.plot([loc.location.x, bus_x], [loc_y, bus_y],
+                                color=line_color, linewidth=3.0, linestyle=trunk_style, alpha=0.85, zorder=3)
+                        ax.scatter(bus_x, bus_y, s=55, c=line_color,
+                                   marker='s', edgecolor='black', linewidth=0.6, zorder=6)
+
+                        if show_bus_utilization:
+                            trunk_demand = sum(p[2] for p in endpoints)
+                            cap = _capacity_for_iface(interface)
+                            pct = (100.0 * trunk_demand / cap) if cap else None
+                            _draw_util_text(loc.location.x, loc_y, bus_x, bus_y, pct, line_color)
+
+                        for end_x, end_y, end_vol in endpoints:
+                            ax.plot([bus_x, end_x], [bus_y, end_y],
+                                    color=line_color, linewidth=1.5, linestyle=':', alpha=0.65, zorder=3)
+                            if show_bus_utilization:
+                                cap = _capacity_for_iface(interface)
+                                pct = (100.0 * end_vol / cap) if cap else None
+                                _draw_util_text(bus_x, bus_y, end_x, end_y, pct, line_color)
+
                     ax.scatter(loc.location.x, loc_y, s=50, c=line_color,
-                              marker='o', zorder=6)
+                               marker='o', zorder=6)
             
             # Draw ECU-to-ECU backbone connections.
             # Prefer optimized comm_links (from solution) if provided; otherwise fall back to inferring from comm_matrix requirements.
             if comm_links is not None and locations is not None and cable_types is not None:
                 loc_dict_by_id = {loc.id: loc for loc in locations}
+                comm_demand_by_link = {}
+                if show_bus_utilization and comm_link_peak_load:
+                    for k, v in comm_link_peak_load.items():
+                        if not isinstance(k, str):
+                            continue
+                        parts = k.split('|')
+                        if len(parts) != 3:
+                            continue
+                        a, b, iface = parts
+                        comm_demand_by_link[(a, b, iface)] = float(v or 0.0)
+                if show_bus_utilization and comm_matrix:
+                    for req in comm_matrix:
+                        src_sc = req.get('src')
+                        dst_sc = req.get('dst')
+                        if src_sc not in assignments or dst_sc not in assignments:
+                            continue
+                        src_loc = assignments[src_sc]
+                        dst_loc = assignments[dst_sc]
+                        if src_loc == dst_loc:
+                            continue
+                        a, b = sorted((src_loc, dst_loc))
+                        vol = float(req.get('volume', 0.0) or 0.0)
+                        comm_demand_by_link[(a, b, 'ETH')] = comm_demand_by_link.get((a, b, 'ETH'), 0.0) + vol
                 # Define "active" as locations that host at least one assigned SC.
                 # (If you later allow switch-only locations, pass that information in and extend this set.)
                 active_loc_ids = set(active_locations.keys()) | set(switch_loc_ids)
@@ -800,6 +938,13 @@ class Visualization:
                         alpha=0.7,
                         zorder=2,
                     )
+                    if show_bus_utilization:
+                        a, b = sorted((src_loc_id, dst_loc_id))
+                        dem = comm_demand_by_link.get((a, b, iface), comm_demand_by_link.get((a, b, 'ETH'), 0.0))
+                        cap = _capacity_for_iface(iface)
+                        total_cap = (cap * max(1, count)) if cap else None
+                        pct = (100.0 * dem / total_cap) if total_cap else None
+                        _draw_util_text(src_loc.location.x, src_y, dst_loc.location.x, dst_y, pct, line_color)
 
             # Fallback: Draw inferred backbone connections from comm_matrix requirements
             elif comm_matrix is not None and cable_types is not None and scs is not None:
@@ -907,7 +1052,7 @@ class Visualization:
                     ax.text(loc.location.x, y_pos, loc.id,
                            fontsize=7, ha='center', va='center', fontweight='bold',
                            color='gray', zorder=5, alpha=0.5)
-        
+
         elif ecus is not None:
             # Check mode: Candidate Sites (no assignments) or Assigned ECUs
             if assignments is None:

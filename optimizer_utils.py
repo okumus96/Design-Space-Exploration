@@ -155,7 +155,7 @@ def precompute_latency_infeasible_pairs(scs, locations, sensors, actuators, cabl
 # COST CALCULATION UTILITIES
 # ============================================================================
 
-def calculate_sensor_actuator_cable_costs(z, scs, locations, sensors, actuators, cable_types, attach_s=None, attach_a=None, shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None):
+def calculate_sensor_actuator_cable_costs(z, scs, locations, sensors, actuators, cable_types, attach_s=None, attach_a=None, shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None, shared_extra_trunk_len=None):
     """
     Calculate total cable costs and distances for sensor/actuator connections.
     
@@ -263,6 +263,15 @@ def calculate_sensor_actuator_cable_costs(z, scs, locations, sensors, actuators,
     # Shared trunk length contribution (one main segment per location/interface)
     if shared_trunk_len:
         for (_j, iface), tv in shared_trunk_len.items():
+            trunk_len = float(getattr(tv, 'X', 0.0) or 0.0)
+            if trunk_len <= 1e-9:
+                continue
+            cable_length += trunk_len
+            cable_cost += trunk_len * cost_map.get(iface, 0.0)
+
+    # Extra trunk contribution when ASIL split opens a second shared bus segment
+    if shared_extra_trunk_len:
+        for (_j, iface), tv in shared_extra_trunk_len.items():
             trunk_len = float(getattr(tv, 'X', 0.0) or 0.0)
             if trunk_len <= 1e-9:
                 continue
@@ -387,7 +396,7 @@ def extract_communication_links(comm, locations, min_link_value=0.5):
 def extract_solution(y, z, hw_use, if_use, comm, scs, locations, sensors, actuators,
                      cable_types, partitions, hardwares, interfaces, comm_matrix=None,
                      traffic_flows=None, flow=None, attach_s=None, attach_a=None,
-                     shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None):
+                     shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None, shared_extra_trunk_len=None):
         """
         Extract formatted solution dict from raw Gurobi model variables.
         
@@ -475,7 +484,8 @@ def extract_solution(y, z, hw_use, if_use, comm, scs, locations, sensors, actuat
             z, scs, locations, sensors, actuators, cable_types,
             attach_s=attach_s, attach_a=attach_a,
             shared_attach_s=shared_attach_s, shared_attach_a=shared_attach_a,
-            shared_trunk_len=shared_trunk_len
+            shared_trunk_len=shared_trunk_len,
+            shared_extra_trunk_len=shared_extra_trunk_len
         )
         
         # Calculate partition and communication costs
@@ -538,6 +548,8 @@ def extract_solution(y, z, hw_use, if_use, comm, scs, locations, sensors, actuat
                     print(f"  {src_id} <-> {dst_id} iface={iface} count={count} dist={dist:.2f} cost/link={dist * cpm:.2f}")
                 else:
                     print(f"  {src_id} <-> {dst_id} iface={iface} count={count}")
+
+        comm_link_peak_load = {}
 
         # DEBUG: Traffic flow routing analysis (multi-hop detection)
         print(f"\n[DEBUG] Traffic Flow Routing Analysis:")
@@ -731,6 +743,18 @@ def extract_solution(y, z, hw_use, if_use, comm, scs, locations, sensors, actuat
                 # Sort by descending load
                 for (u, v), load in sorted(edge_load.items(), key=lambda kv: (-kv[1], locations[kv[0][0]].id, locations[kv[0][1]].id))[:25]:
                     print(f"    {locations[u].id} -> {locations[v].id}: load={load}")
+
+                # Build undirected peak load per physical ETH link for visualization/utilization.
+                tmp_peak = {}
+                for (u, v), load in edge_load.items():
+                    a, b = (u, v) if u < v else (v, u)
+                    key = (a, b, 'ETH')
+                    prev = tmp_peak.get(key, 0.0)
+                    if load > prev:
+                        tmp_peak[key] = float(load)
+
+                for (a, b, iface), load in tmp_peak.items():
+                    comm_link_peak_load[f"{locations[a].id}|{locations[b].id}|{iface}"] = load
         
         total_cost = partition_cost + hw_cost + if_cost + cable_cost + comm_cost
 
@@ -767,6 +791,7 @@ def extract_solution(y, z, hw_use, if_use, comm, scs, locations, sensors, actuat
             'cable_cost': cable_cost,
             'comm_cost': comm_cost,
             'comm_links': comm_links,
+            'comm_link_peak_load': comm_link_peak_load,
             'eth_sensor_attachments': eth_sensor_attachments,
             'eth_actuator_attachments': eth_actuator_attachments,
             'shared_sensor_attachments': shared_sensor_attachments,

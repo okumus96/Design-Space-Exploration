@@ -124,13 +124,16 @@ class VehicleDataGenerator:
         
         # Create Driver domain SCs for actuators
         for actuator in self.actuators:
+            asil_req = random.choice(domain_config.get('asil_levels', [0, 1]))
+            if actuator.id == 'ACT_HVAC_Cabin':
+                asil_req = 2
             sc = SoftwareComponent(
                 id=f"SC_{sc_index}_Driver_{actuator.id}",
                 domain='Driver',
                 cpu_req=random.randint(domain_config['cpu_range'][0], domain_config['cpu_range'][1]),
                 ram_req=random.randint(domain_config['ram_range'][0], domain_config['ram_range'][1]),
                 rom_req=random.randint(domain_config['rom_range'][0], domain_config['rom_range'][1]),
-                asil_req=random.choice(domain_config.get('asil_levels', [0, 1])),
+                asil_req=asil_req,
                 hw_required=[]
             )
             sc.sensors = []
@@ -348,7 +351,13 @@ class VehicleDataGenerator:
 
                 x_pos = self.ECU_X_MIN + c * x_step
                 y_pos = self.ECU_Y_MAX - r * y_step  # Top to bottom
-                self.locations.append(Location(id=f"LOC{loc_idx}", location=Point(x_pos, y_pos)))
+                self.locations.append(
+                    Location(
+                        id=f"LOC{loc_idx}",
+                        location=Point(x_pos, y_pos),
+                        health_factor=random.uniform(0.8, 0.9),
+                    )
+                )
                 loc_idx += 1
     
     def generate_ecu(self):

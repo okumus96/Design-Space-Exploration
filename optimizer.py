@@ -18,7 +18,7 @@ class AssignmentOptimizer:
         print("Initialized AssignmentOptimizerNew with quadratic ECU-ECU costs and linear sensor/actuator costs")
         pass
 
-    def calculate_cable_expressions(self, z, y, scs, locations, sensors, actuators, cable_types, comm_matrix, max_partitions_per_asil_per_loc, feasible_locs_per_sc, comm=None, attach_s=None, attach_a=None, shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None):
+    def calculate_cable_expressions(self, z, y, scs, locations, sensors, actuators, cable_types, comm_matrix, max_partitions_per_asil_per_loc, feasible_locs_per_sc, comm=None, attach_s=None, attach_a=None, shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None, shared_extra_trunk_len=None):
         """
         Calculate cable cost, distance, and latency as Gurobi linear expressions (NOT constraints).
         Includes: sensor/actuator cables and ECU-ECU/Location communication cables.
@@ -166,6 +166,13 @@ class AssignmentOptimizer:
                 cable_cost_terms.append((tvar, cost_map.get(iface, 0.0)))
                 cable_distance_terms.append((tvar, 1.0))
                 latency_terms.append((tvar, latency_map.get(iface, 0.0)))
+
+        # Extra shared-bus trunks for ASIL-group split instances
+        if shared_extra_trunk_len:
+            for (j, iface), tvar in shared_extra_trunk_len.items():
+                cable_cost_terms.append((tvar, cost_map.get(iface, 0.0)))
+                cable_distance_terms.append((tvar, 1.0))
+                latency_terms.append((tvar, latency_map.get(iface, 0.0)))
         
         # Create compact linear expressions
         if cable_cost_terms:
@@ -299,6 +306,12 @@ class AssignmentOptimizer:
         for j in range(n_locs):
             for iface in shared_bus_ifaces:
                 shared_trunk_len[j, iface] = model.addVar(vtype=GRB.CONTINUOUS, lb=0.0, name=f"sharedTrunkLen_{locations[j].id}_{iface}")
+
+        # Additional trunk length variables for ASIL-group split shared buses.
+        shared_extra_trunk_len = {}
+        for j in range(n_locs):
+            for iface in shared_bus_ifaces:
+                shared_extra_trunk_len[j, iface] = model.addVar(vtype=GRB.CONTINUOUS, lb=0.0, name=f"sharedExtraTrunkLen_{locations[j].id}_{iface}")
         
         # comm[j1,j2,iface] = Number of iface links between location j1 and j2 (integer)
         # Sparse creation: only build comm vars for location pairs that can actually be required by SC comm links.
@@ -451,6 +464,7 @@ class AssignmentOptimizer:
             'shared_attach_s': len(shared_attach_s),
             'shared_attach_a': len(shared_attach_a),
             'shared_trunk_len': len(shared_trunk_len),
+            'shared_extra_trunk_len': len(shared_extra_trunk_len),
             'comm': len(comm),
             'comm_loc_pairs': len(required_loc_pairs),
             'traffic_flows': len(traffic_flows),
@@ -466,14 +480,15 @@ class AssignmentOptimizer:
             + var_stats['shared_attach_s']
             + var_stats['shared_attach_a']
             + var_stats['shared_trunk_len']
+            + var_stats['shared_extra_trunk_len']
             + var_stats['comm']
             + var_stats['traffic_flows']
             + var_stats['flow']
         )
 
-        return model, y, z, hw_use, if_use, attach_s, attach_a, shared_attach_s, shared_attach_a, shared_trunk_len, comm, traffic_flows, flow, max_partitions_per_asil_per_loc, feasible_locs_per_sc, feasible_scs_per_loc, var_stats
+        return model, y, z, hw_use, if_use, attach_s, attach_a, shared_attach_s, shared_attach_a, shared_trunk_len, shared_extra_trunk_len, comm, traffic_flows, flow, max_partitions_per_asil_per_loc, feasible_locs_per_sc, feasible_scs_per_loc, var_stats
 
-    def _add_constraints(self, model, y, z, hw_use, if_use, attach_s, attach_a, shared_attach_s, shared_attach_a, shared_trunk_len, comm, traffic_flows, flow, scs, locations, sensors, actuators, 
+    def _add_constraints(self, model, y, z, hw_use, if_use, attach_s, attach_a, shared_attach_s, shared_attach_a, shared_trunk_len, shared_extra_trunk_len, comm, traffic_flows, flow, scs, locations, sensors, actuators, 
                               cable_types, comm_matrix, partitions, unique_asils, max_partitions_per_asil_per_loc,
                               feasible_locs_per_sc, feasible_scs_per_loc, enable_comm_bw_constraints=True,
                               comm_bw_big_m=None):
@@ -494,7 +509,9 @@ class AssignmentOptimizer:
             'c2_capacity': 0,
             'c3_hw_required': 0,
             'c4_if_required': 0,
+            'c4_asil_bus_split': 0,
             'c5_redundancy': 0,
+            'c6_ai_contention': 0,
             'c8_loc_loc_latency': 0,
             'c9_if_activation': 0,
             'c9_attach': 0,
@@ -507,6 +524,43 @@ class AssignmentOptimizer:
         def x_expr(i, j):
             a_req = scs[i].asil_req
             return gp.quicksum(z[i, j, a_req, p] for p in range(max_partitions_per_asil_per_loc) if (i, j, a_req, p) in z)
+
+        # SW-based uncertainty (selective static margin / VIP list)
+        # Extra margin is applied only to ADAS and Infotainment domains.
+        asil_margins = {
+            0: 0.20,  # QM
+            1: 0.15,  # A
+            2: 0.10,  # B
+            3: 0.05,  # C
+            4: 0.00,  # D
+            'QM': 0.20,
+            'A': 0.15,
+            'B': 0.10,
+            'C': 0.05,
+            'D': 0.00,
+        }
+
+        def get_sw_multiplier(sc):
+            domain_norm = str(getattr(sc, 'domain', '') or '').strip().upper()
+            if domain_norm not in {'ADAS', 'INFOTAINMENT'}:
+                return 1.0
+
+            asil_req = getattr(sc, 'asil_req', 0)
+            if isinstance(asil_req, str):
+                asil_key = asil_req.strip().upper()
+            else:
+                asil_key = int(asil_req)
+
+            m_asil = asil_margins.get(asil_key, 0.20)
+            m_ai = 0.25 if ('HW_ACC' in (getattr(sc, 'hw_required', None) or [])) else 0.0
+            return 1.0 + m_asil + m_ai
+
+        def asil_safety_group(sc):
+            a = getattr(sc, 'asil_req', 0)
+            if isinstance(a, str):
+                a_norm = a.strip().upper()
+                return 'HIGH' if a_norm in {'C', 'D'} else 'LOW'
+            return 'HIGH' if int(a) >= 3 else 'LOW'
 
         # Constraint 1b: Every SC assigned to exactly one partition
         for i in range(n_sc):
@@ -553,36 +607,37 @@ class AssignmentOptimizer:
         
         # Constraint 2: Capacity per location per ASIL partition
         for j in range(n_locs):
+            H_j = max(0.0, float(getattr(locations[j], 'health_factor', 1.0)))
             for a in unique_asils:
                 for p in range(max_partitions_per_asil_per_loc):
                     # CPU Capacity
                     sc_cpu_demand = gp.quicksum(
-                        z[i, j, a, p] * scs[i].cpu_req
+                        z[i, j, a, p] * scs[i].cpu_req * get_sw_multiplier(scs[i])
                         for i in feasible_scs_per_loc[j] if scs[i].asil_req == a and (i, j, a, p) in z
                     )
                     model.addConstr(
-                        sc_cpu_demand <= y[j, a, p] * partitions.get('cpu_cap', float('inf')),
-                        name=f"cpu_capacity_{locations[j].id}_asil{a}_p{p}"
+                        sc_cpu_demand <= y[j, a, p] * partitions.get('cpu_cap', float('inf')) * H_j,
+                        name=f"cpu_capacity_uncertain_{locations[j].id}_asil{a}_p{p}"
                     )
                     
                     # RAM Capacity
                     sc_ram_demand = gp.quicksum(
-                        z[i, j, a, p] * scs[i].ram_req
+                        z[i, j, a, p] * scs[i].ram_req * get_sw_multiplier(scs[i])
                         for i in feasible_scs_per_loc[j] if scs[i].asil_req == a and (i, j, a, p) in z
                     )
                     model.addConstr(
-                        sc_ram_demand <= y[j, a, p] * partitions.get('ram_cap', float('inf')),
-                        name=f"ram_capacity_{locations[j].id}_asil{a}_p{p}"
+                        sc_ram_demand <= y[j, a, p] * partitions.get('ram_cap', float('inf')) * H_j,
+                        name=f"ram_capacity_uncertain_{locations[j].id}_asil{a}_p{p}"
                     )
                     
                     # ROM Capacity
                     sc_rom_demand = gp.quicksum(
-                        z[i, j, a, p] * scs[i].rom_req
+                        z[i, j, a, p] * scs[i].rom_req * get_sw_multiplier(scs[i])
                         for i in feasible_scs_per_loc[j] if scs[i].asil_req == a and (i, j, a, p) in z
                     )
                     model.addConstr(
-                        sc_rom_demand <= y[j, a, p] * partitions.get('rom_cap', float('inf')),
-                        name=f"rom_capacity_{locations[j].id}_asil{a}_p{p}"
+                        sc_rom_demand <= y[j, a, p] * partitions.get('rom_cap', float('inf')) * H_j,
+                        name=f"rom_capacity_uncertain_{locations[j].id}_asil{a}_p{p}"
                     )
                     cstats['c2_capacity'] += 3
         
@@ -615,6 +670,10 @@ class AssignmentOptimizer:
                 # A location needs only one interface endpoint if at least one assigned SC at this
                 # location uses a peripheral on that bus.
                 if i_name in shared_bus_ifaces:
+                    low_group_use = model.addVar(vtype=GRB.BINARY, name=f"busGroupLow_{locations[j].id}_{i_name}")
+                    high_group_use = model.addVar(vtype=GRB.BINARY, name=f"busGroupHigh_{locations[j].id}_{i_name}")
+                    split_active = model.addVar(vtype=GRB.BINARY, name=f"busGroupSplit_{locations[j].id}_{i_name}")
+
                     for i in feasible_scs_per_loc[j]:
                         sc = scs[i]
                         uses_iface = any(
@@ -625,15 +684,78 @@ class AssignmentOptimizer:
                             for a_id in (sc.actuators or [])
                         )
                         if uses_iface:
+                            grp = asil_safety_group(sc)
+                            bus_assign_var = model.addVar(
+                                vtype=GRB.BINARY,
+                                name=f"busAssign_{sc.id}_{locations[j].id}_{i_name}_{grp}"
+                            )
+
+                            # Explicit mapping: if SC is placed at location j, it is assigned to
+                            # its ASIL-group candidate bus instance for this shared interface.
+                            model.addConstr(
+                                bus_assign_var == x_expr(i, j),
+                                name=f"shared_bus_assign_eq_{locations[j].id}_{i_name}_{sc.id}"
+                            )
+
                             model.addConstr(
                                 if_use[j, i_name] >= x_expr(i, j),
                                 name=f"shared_bus_if_use_{locations[j].id}_{i_name}_{sc.id}"
                             )
 
+                            if grp == 'HIGH':
+                                model.addConstr(
+                                    high_group_use >= x_expr(i, j),
+                                    name=f"shared_bus_group_high_{locations[j].id}_{i_name}_{sc.id}"
+                                )
+                                model.addConstr(
+                                    bus_assign_var <= high_group_use,
+                                    name=f"shared_bus_assign_to_high_{locations[j].id}_{i_name}_{sc.id}"
+                                )
+                            else:
+                                model.addConstr(
+                                    low_group_use >= x_expr(i, j),
+                                    name=f"shared_bus_group_low_{locations[j].id}_{i_name}_{sc.id}"
+                                )
+                                model.addConstr(
+                                    bus_assign_var <= low_group_use,
+                                    name=f"shared_bus_assign_to_low_{locations[j].id}_{i_name}_{sc.id}"
+                                )
+                            cstats['c4_asil_bus_split'] += 1
+
+                    # Enforce ASIL 0/1/2 and ASIL 3/4 segregation on shared buses.
+                    # If both groups are present on the same location+interface, at least two bus instances are required.
+                    model.addConstr(
+                        if_use[j, i_name] >= low_group_use + high_group_use,
+                        name=f"shared_bus_asil_split_count_{locations[j].id}_{i_name}"
+                    )
+                    cstats['c4_asil_bus_split'] += 1
+
+                    # split_active = 1 iff both low and high groups are active on this shared bus.
+                    model.addConstr(split_active <= low_group_use, name=f"shared_bus_split_le_low_{locations[j].id}_{i_name}")
+                    model.addConstr(split_active <= high_group_use, name=f"shared_bus_split_le_high_{locations[j].id}_{i_name}")
+                    model.addConstr(split_active >= low_group_use + high_group_use - 1, name=f"shared_bus_split_ge_sum_{locations[j].id}_{i_name}")
+                    cstats['c4_asil_bus_split'] += 3
+
                     model.addConstr(
                         if_use[j, i_name] >= comm_port_demand,
                         name=f"shared_bus_comm_port_count_{locations[j].id}_{i_name}"
                     )
+
+                    # If ASIL split is active, second shared trunk length equals main trunk length.
+                    if (j, i_name) in shared_extra_trunk_len and (j, i_name) in shared_trunk_len:
+                        split_m = 1e6
+                        model.addConstr(
+                            shared_extra_trunk_len[j, i_name] <= split_active * split_m,
+                            name=f"shared_extra_trunk_gate_{locations[j].id}_{i_name}"
+                        )
+                        model.addConstr(
+                            shared_extra_trunk_len[j, i_name] <= shared_trunk_len[j, i_name],
+                            name=f"shared_extra_trunk_le_main_{locations[j].id}_{i_name}"
+                        )
+                        model.addConstr(
+                            shared_extra_trunk_len[j, i_name] >= shared_trunk_len[j, i_name] - split_m * (1 - split_active),
+                            name=f"shared_extra_trunk_eq_main_if_split_{locations[j].id}_{i_name}"
+                        )
 
                 else:
                     # 4b. Point-to-point style counting (ETH and other non-shared interfaces)
@@ -641,18 +763,24 @@ class AssignmentOptimizer:
 
                     for i in feasible_scs_per_loc[j]:
                         sc = scs[i]
-                        num_sensors_if = sum(
-                            1
-                            for s_id in (sc.sensors or [])
-                            if s_lookup.get(s_id)
-                            and s_lookup.get(s_id).interface == i_name
-                        )
-                        num_actuators_if = sum(
-                            1
-                            for a_id in (sc.actuators or [])
-                            if a_lookup.get(a_id)
-                            and a_lookup.get(a_id).interface == i_name
-                        )
+                        # For ETH, peripheral port demand is modeled via attachment vars (attach_s/attach_a).
+                        # Counting SC->peripheral ETH edges here would double-count the same physical ports.
+                        if i_name == 'ETH' and (attach_s is not None or attach_a is not None):
+                            num_sensors_if = 0
+                            num_actuators_if = 0
+                        else:
+                            num_sensors_if = sum(
+                                1
+                                for s_id in (sc.sensors or [])
+                                if s_lookup.get(s_id)
+                                and s_lookup.get(s_id).interface == i_name
+                            )
+                            num_actuators_if = sum(
+                                1
+                                for a_id in (sc.actuators or [])
+                                if a_lookup.get(a_id)
+                                and a_lookup.get(a_id).interface == i_name
+                            )
 
                         if num_sensors_if + num_actuators_if > 0:
                             sc_port_demand.add(x_expr(i, j), num_sensors_if + num_actuators_if)
@@ -701,25 +829,38 @@ class AssignmentOptimizer:
                                 name=f"redundancy_{sc.id}_{partner_id}_{locations[j].id}"
                             )
                             cstats['c5_redundancy'] += 1
+
+        K_THRESHOLD = 2
+        ai_sc_indices = [
+            i for i, sc in enumerate(scs)
+            if 'HW_ACC' in (getattr(sc, 'hw_required', None) or [])
+        ]
+        ai_sc_set = set(ai_sc_indices)
+        if ai_sc_indices:
+            for j in range(n_locs):
+                ai_sum_at_loc = gp.quicksum(
+                    x_expr(i, j)
+                    for i in feasible_scs_per_loc[j]
+                    if i in ai_sc_set
+                )
+                model.addConstr(
+                    ai_sum_at_loc <= K_THRESHOLD,
+                    name=f"ai_contention_limit_loc_{locations[j].id}"
+                )
+                cstats['c6_ai_contention'] += 1
         
         # Constraint 6/7 (Sensor/Actuator max-latency): precomputed and enforced via sparse z creation.
+        NETWORK_SAFETY_FACTOR = 1.10
+        SYNC_ERROR_CONSTANT = 0.0005
+        PLATFORM_OVERHEAD = 0.002
         latency_map = build_latency_map(cable_types)
+
+        def robust_link_latency(iface, dist):
+            nominal = dist * latency_map.get(iface, 0.0)
+            return (nominal * NETWORK_SAFETY_FACTOR) + SYNC_ERROR_CONSTANT + PLATFORM_OVERHEAD
         
         # Constraint 8: Location-Location Communication Latency Constraints
         if comm_matrix:
-            cost_map = build_cost_map(cable_types)
-            loc_loc_latencies = {}
-            all_interfaces = list(cable_types.keys())
-            
-            for j1 in range(n_locs):
-                for j2 in range(j1 + 1, n_locs):
-                    dist = get_distance(locations[j1].location, locations[j2].location)
-                    if all_interfaces:
-                        best_iface = max(all_interfaces, key=lambda x: cost_map.get(x, 0))
-                        loc_loc_latencies[j1, j2] = dist * latency_map.get(best_iface, 0)
-                    else:
-                        loc_loc_latencies[j1, j2] = dist * 1e6
-            
             sc_id_map = {sc.id: i for i, sc in enumerate(scs)}
             for link in comm_matrix:
                 src_id = link.get('src')
@@ -736,15 +877,15 @@ class AssignmentOptimizer:
                     for j2 in feasible_locs_per_sc[v]:
                         if j1 == j2:
                             continue
-                        
-                        a, b = (j1, j2) if j1 < j2 else (j2, j1)
-                        lat = loc_loc_latencies.get((a, b), 0)
-                        if lat > max_lat:
+
+                        dist = get_distance(locations[j1].location, locations[j2].location)
+                        robust_lat = robust_link_latency('ETH', dist)
+                        if robust_lat > max_lat:
                             model.addConstr(
                                 x_expr(u, j1)
                                 + x_expr(v, j2)
                                 <= 1,
-                                name=f"loc_loc_lat_{u}_{v}_{j1}_{j2}"
+                                name=f"net_uncertainty_{u}_{v}_{j1}_{j2}"
                             )
                             cstats['c8_loc_loc_latency'] += 1
         
@@ -784,7 +925,7 @@ class AssignmentOptimizer:
                 max_lat = getattr(sensors[si], 'max_latency', None)
                 if max_lat is not None and getattr(sensors[si], 'location', None) is not None:
                     dist = get_distance(sensors[si].location, locations[j].location)
-                    lat = dist * latency_map.get('ETH', 0.0)
+                    lat = robust_link_latency('ETH', dist)
                     if lat > max_lat:
                         model.addConstr(av == 0, name=f"attachS_lat_infeas_{sensors[si].id}_{locations[j].id}")
                         cstats['c9_attach'] += 1
@@ -803,7 +944,7 @@ class AssignmentOptimizer:
                 max_lat = getattr(actuators[ai], 'max_latency', None)
                 if max_lat is not None and getattr(actuators[ai], 'location', None) is not None:
                     dist = get_distance(actuators[ai].location, locations[j].location)
-                    lat = dist * latency_map.get('ETH', 0.0)
+                    lat = robust_link_latency('ETH', dist)
                     if lat > max_lat:
                         model.addConstr(av == 0, name=f"attachA_lat_infeas_{actuators[ai].id}_{locations[j].id}")
                         cstats['c9_attach'] += 1
@@ -832,7 +973,7 @@ class AssignmentOptimizer:
                 max_lat = getattr(sensors[si], 'max_latency', None)
                 if max_lat is not None and getattr(sensors[si], 'location', None) is not None:
                     dist = get_distance(sensors[si].location, locations[j].location)
-                    lat = dist * latency_map.get(iface, 0.0)
+                    lat = robust_link_latency(iface, dist)
                     if lat > max_lat:
                         model.addConstr(av == 0, name=f"sharedAttachS_lat_infeas_{sensors[si].id}_{locations[j].id}")
                         cstats['c9_shared_attach'] += 1
@@ -856,7 +997,7 @@ class AssignmentOptimizer:
                 max_lat = getattr(actuators[ai], 'max_latency', None)
                 if max_lat is not None and getattr(actuators[ai], 'location', None) is not None:
                     dist = get_distance(actuators[ai].location, locations[j].location)
-                    lat = dist * latency_map.get(iface, 0.0)
+                    lat = robust_link_latency(iface, dist)
                     if lat > max_lat:
                         model.addConstr(av == 0, name=f"sharedAttachA_lat_infeas_{actuators[ai].id}_{locations[j].id}")
                         cstats['c9_shared_attach'] += 1
@@ -962,6 +1103,14 @@ class AssignmentOptimizer:
                     name=f"sharedTrunk_zero_if_no_ep_{locations[j].id}_{iface}"
                 )
                 cstats['c9_shared_trunk'] += 1
+
+                # Extra split trunk length is bounded by the same physical envelope.
+                if shared_extra_trunk_len and (j, iface) in shared_extra_trunk_len:
+                    model.addConstr(
+                        shared_extra_trunk_len[j, iface] <= trunk_var,
+                        name=f"sharedExtraTrunk_le_main_{locations[j].id}_{iface}"
+                    )
+                    cstats['c9_shared_trunk'] += 1
             
         for (j1, j2, iface), comm_var in comm.items():
             model.addConstr(
@@ -1191,7 +1340,7 @@ class AssignmentOptimizer:
     def _build_objective_function(self, model, y, z, hw_use, if_use, comm, scs, locations, sensors, actuators, 
                                   cable_types, comm_matrix, partitions, hardwares, interfaces,
                                   n_locs, unique_asils, all_hw, all_interfaces, max_partitions_per_asil_per_loc,
-                                  feasible_locs_per_sc, attach_s=None, attach_a=None, shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None):
+                                  feasible_locs_per_sc, attach_s=None, attach_a=None, shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None, shared_extra_trunk_len=None):
         """
         Build and set the objective function for the optimization model
         
@@ -1226,7 +1375,7 @@ class AssignmentOptimizer:
             z, {}, scs, locations, sensors, actuators, cable_types, comm_matrix, max_partitions_per_asil_per_loc,
             feasible_locs_per_sc, comm=comm, attach_s=attach_s, attach_a=attach_a,
             shared_attach_s=shared_attach_s, shared_attach_a=shared_attach_a,
-            shared_trunk_len=shared_trunk_len
+            shared_trunk_len=shared_trunk_len, shared_extra_trunk_len=shared_extra_trunk_len
         )
         
         # Total cost
@@ -1281,13 +1430,13 @@ class AssignmentOptimizer:
             print(f"  Precomputed infeasible SC-location pairs (latency): {len(infeasible_ij)}")
 
         # ======================= CREATE MODEL & VARIABLES =======================
-        model, y, z, hw_use, if_use, attach_s, attach_a, shared_attach_s, shared_attach_a, shared_trunk_len, comm, traffic_flows, flows ,max_partitions_per_asil_per_loc, feasible_locs_per_sc, feasible_scs_per_loc, var_stats = self._create_model_and_variables(
+        model, y, z, hw_use, if_use, attach_s, attach_a, shared_attach_s, shared_attach_a, shared_trunk_len, shared_extra_trunk_len, comm, traffic_flows, flows ,max_partitions_per_asil_per_loc, feasible_locs_per_sc, feasible_scs_per_loc, var_stats = self._create_model_and_variables(
             n_sc, n_locs, scs, locations, unique_asils, all_hw, sensors, actuators, all_interfaces, infeasible_ij=infeasible_ij, comm_matrix=comm_matrix
         )
         
         # ======================= ADD CONSTRAINTS =======================
         model, cstats = self._add_constraints(
-            model, y, z, hw_use, if_use, attach_s, attach_a, shared_attach_s, shared_attach_a, shared_trunk_len, comm, traffic_flows, flows, scs, locations, sensors, actuators,
+            model, y, z, hw_use, if_use, attach_s, attach_a, shared_attach_s, shared_attach_a, shared_trunk_len, shared_extra_trunk_len, comm, traffic_flows, flows, scs, locations, sensors, actuators,
             cable_types, comm_matrix, partitions, unique_asils, max_partitions_per_asil_per_loc,
             feasible_locs_per_sc, feasible_scs_per_loc,
             enable_comm_bw_constraints=enable_comm_bw_constraints,
@@ -1305,6 +1454,7 @@ class AssignmentOptimizer:
         print(f"  shared_attach_s: {var_stats.get('shared_attach_s', 0)}")
         print(f"  shared_attach_a: {var_stats.get('shared_attach_a', 0)}")
         print(f"  shared_trunk_len: {var_stats.get('shared_trunk_len', 0)}")
+        print(f"  shared_extra_trunk_len: {var_stats.get('shared_extra_trunk_len', 0)}")
         print(f"  comm: {var_stats['comm']} ({(100.0 * var_stats['comm'] / max(1, var_stats['total'])):.1f}%)")
         print(f"  traffic_flows: {var_stats['traffic_flows']}")
         print(f"  flow: {var_stats['flow']}")
@@ -1318,7 +1468,9 @@ class AssignmentOptimizer:
         print(f"  c2_capacity: {cstats['c2_capacity']}")
         print(f"  c3_hw_required: {cstats['c3_hw_required']}")
         print(f"  c4_if_required: {cstats['c4_if_required']}")
+        print(f"  c4_asil_bus_split: {cstats.get('c4_asil_bus_split', 0)}")
         print(f"  c5_redundancy: {cstats['c5_redundancy']}")
+        print(f"  c6_ai_contention: {cstats.get('c6_ai_contention', 0)}")
         print(f"  c8_loc_loc_latency: {cstats['c8_loc_loc_latency']}")
         print(f"  c9_if_activation: {cstats['c9_if_activation']}")
         print(f"  c9_attach: {cstats.get('c9_attach', 0)}")
@@ -1333,7 +1485,7 @@ class AssignmentOptimizer:
             n_locs, unique_asils, all_hw, all_interfaces, max_partitions_per_asil_per_loc,
             feasible_locs_per_sc, attach_s=attach_s, attach_a=attach_a,
             shared_attach_s=shared_attach_s, shared_attach_a=shared_attach_a,
-            shared_trunk_len=shared_trunk_len
+            shared_trunk_len=shared_trunk_len, shared_extra_trunk_len=shared_extra_trunk_len
         )
 
         model.update()
@@ -1355,7 +1507,7 @@ class AssignmentOptimizer:
                 cable_types, partitions, hardwares, interfaces, comm_matrix=comm_matrix,
                 traffic_flows=traffic_flows, flow=flows, attach_s=attach_s, attach_a=attach_a,
                 shared_attach_s=shared_attach_s, shared_attach_a=shared_attach_a,
-                shared_trunk_len=shared_trunk_len
+                shared_trunk_len=shared_trunk_len, shared_extra_trunk_len=shared_extra_trunk_len
             )
             return formatted_solution
         else:

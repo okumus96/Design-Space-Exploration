@@ -5,12 +5,14 @@ sudo ip link set gurobihack up
 
 
 
-1) DEBUG IT.
-2) Shared buses need to be modelled. 
-3) Uncertainities
-4) Use real software architectures (autoware) to be able say it is real
-5) Mix criticality in CAN
-6) Objetives
-7) Pareto.
-8) put placeholders
-9) Add addtional latency penalty on hop in terms of latency
+1) Uncertainities
+2) Use real software architectures (autoware) to be able say it is real
+3) Mix criticality in CAN
+4) Objetives
+5) Pareto.
+6) put placeholders
+7) Add addtional latency penalty on hop in terms of latency
+8) We can add vendor compatibility.
+9) Think about Energy consumption
+10) Check whether load balancing causes more ECUs or not.
+11) Consider ASIL decomposition
