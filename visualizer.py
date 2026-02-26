@@ -472,7 +472,7 @@ class Visualization:
         plt.tight_layout()
         self.save_plot(filename)
 
-    def plot_vehicle_layout_topdown(self, sensors, actuators, assignments=None, ecus=None, locations=None, scs=None, comm_matrix=None, cable_types=None, comm_links=None, hw_features=None, interfaces_opened=None, comm_link_peak_load=None, eth_sensor_attachments=None, eth_actuator_attachments=None, shared_sensor_attachments=None, shared_actuator_attachments=None, show_bus_utilization=False, vehicle_length=4.5, vehicle_width=1.8, filename="vehicle_layout.png"):
+    def plot_vehicle_layout_topdown(self, sensors, actuators, assignments=None, ecus=None, locations=None, scs=None, comm_matrix=None, cable_types=None, comm_links=None, hw_features=None, interfaces_opened=None, comm_link_peak_load=None, eth_sensor_attachments=None, eth_actuator_attachments=None, shared_sensor_attachments=None, shared_actuator_attachments=None, show_bus_utilization=False, show_peripheral_labels=True, vehicle_length=4.5, vehicle_width=1.8, filename="vehicle_layout.png"):
         """
         Bird's eye view of vehicle layout showing sensors, actuators, and optionally ECUs.
         Displays the physical dimensions and locations of all components.
@@ -483,7 +483,7 @@ class Visualization:
         - Models CAN/LIN/FLEXRAY as shared buses (trunk + branches), ETH as direct link
         - Shows ECU-to-ECU backbone connections with different line styles
         """
-        fig, ax = plt.subplots(figsize=(16, 12))
+        fig, ax = plt.subplots(figsize=(12, 9))
         
         # Draw vehicle outline (front at top, rear at bottom)
         vehicle_rect = patches.Rectangle(
@@ -584,13 +584,14 @@ class Visualization:
                 ax.scatter(sensor.location.x, y_pos, s=250, c=color, 
                           marker='o', edgecolor='black', linewidth=2, zorder=5, label=label)
                 
-                # Offset labels to avoid overlap
-                offset_x = 0.08 if idx % 2 == 0 else -0.08
-                offset_y = 0.08 if idx % 3 == 0 else -0.08
-                short_id = sensor.id.replace('CAM_', 'C_').replace('LIDAR_', 'L_').replace('_', '')
-                ax.annotate(short_id, (sensor.location.x + offset_x, y_pos + offset_y), 
-                           fontsize=7, ha='center', va='center', fontweight='bold', color='black',
-                           bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7, edgecolor='none'))
+                if show_peripheral_labels:
+                    # Offset labels to avoid overlap
+                    offset_x = 0.08 if idx % 2 == 0 else -0.08
+                    offset_y = 0.08 if idx % 3 == 0 else -0.08
+                    short_id = sensor.id.replace('CAM_', 'C_').replace('LIDAR_', 'L_').replace('_', '')
+                    ax.annotate(short_id, (sensor.location.x + offset_x, y_pos + offset_y), 
+                               fontsize=7, ha='center', va='center', fontweight='bold', color='black',
+                               bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7, edgecolor='none'))
                 if sensor.type not in sensor_types_plotted:
                     sensor_types_plotted.add(sensor.type)
         
@@ -605,13 +606,14 @@ class Visualization:
                 ax.scatter(actuator.location.x, y_pos, s=250, c=color, 
                           marker='^', edgecolor='black', linewidth=2, zorder=5, label=label)
                 
-                # Offset labels to avoid overlap
-                offset_x = 0.08 if idx % 2 == 0 else -0.08
-                offset_y = 0.08 if idx % 3 == 1 else -0.08
-                short_id = actuator.id.replace('ACT_', 'A_').replace('_', '')
-                ax.annotate(short_id, (actuator.location.x + offset_x, y_pos + offset_y), 
-                           fontsize=7, ha='center', va='center', fontweight='bold', color='black',
-                           bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7, edgecolor='none'))
+                if show_peripheral_labels:
+                    # Offset labels to avoid overlap
+                    offset_x = 0.08 if idx % 2 == 0 else -0.08
+                    offset_y = 0.08 if idx % 3 == 1 else -0.08
+                    short_id = actuator.id.replace('ACT_', 'A_').replace('_', '')
+                    ax.annotate(short_id, (actuator.location.x + offset_x, y_pos + offset_y), 
+                               fontsize=7, ha='center', va='center', fontweight='bold', color='black',
+                               bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7, edgecolor='none'))
                 if actuator.type not in actuator_types_plotted:
                     actuator_types_plotted.add(actuator.type)
         
@@ -626,8 +628,9 @@ class Visualization:
                           marker='s', edgecolor='black', linewidth=2, zorder=4,
                           label=label)
 
-                ax.text(loc.location.x, y_pos, loc.id,
-                       fontsize=8, ha='center', va='center', fontweight='bold',
+                short_loc_id = loc.id.replace('LOC', 'L')
+                ax.text(loc.location.x, y_pos, short_loc_id,
+                       fontsize=7, ha='center', va='center', fontweight='bold',
                        color='black', zorder=10)
         
         elif locations is not None and assignments is not None:
@@ -1039,8 +1042,9 @@ class Visualization:
 
                     # Show number of assigned SCs (0 for switch-only)
                     num_scs = len(active_locations.get(loc.id, []))
-                    ax.text(loc.location.x, y_pos, f"{loc.id}\n({num_scs})",
-                           fontsize=9, ha='center', va='center', fontweight='bold',
+                    short_loc_id = loc.id.replace('LOC', 'L')
+                    ax.text(loc.location.x, y_pos, f"{short_loc_id}\n({num_scs})",
+                           fontsize=7, ha='center', va='center', fontweight='bold',
                            color='black', zorder=10)
                 else:
                     # Inactive location: grayed out
@@ -1049,8 +1053,9 @@ class Visualization:
                               label='Inactive Location' if not inactive_label_done else '')
                     inactive_label_done = True
                     
-                    ax.text(loc.location.x, y_pos, loc.id,
-                           fontsize=7, ha='center', va='center', fontweight='bold',
+                    short_loc_id = loc.id.replace('LOC', 'L')
+                    ax.text(loc.location.x, y_pos, short_loc_id,
+                           fontsize=6, ha='center', va='center', fontweight='bold',
                            color='gray', zorder=5, alpha=0.5)
 
         elif ecus is not None:
@@ -1121,19 +1126,44 @@ class Visualization:
                         ecu_types_plotted.add(ecu.type)
         
         # Add dimension annotations
-        # Length annotation (vertical on the left)
-        ax.annotate('', xy=(-vehicle_width/2 - 0.4, vehicle_length/2), xytext=(-vehicle_width/2 - 0.4, -vehicle_length/2),
-                   arrowprops=dict(arrowstyle='<->', color='black', lw=2.5))
-        ax.text(-vehicle_width/2 - 0.7, 0, f'{vehicle_length}m', fontsize=12, weight='bold', 
-               ha='right', va='center', rotation=90,
-               bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='black'))
-        
-        # Width annotation (horizontal at the bottom)
-        ax.annotate('', xy=(vehicle_width/2, -vehicle_length/2 - 0.4), xytext=(-vehicle_width/2, -vehicle_length/2 - 0.4),
-                   arrowprops=dict(arrowstyle='<->', color='black', lw=2.5))
-        ax.text(0, -vehicle_length/2 - 0.7, f'{vehicle_width}m', fontsize=12, weight='bold', 
-               ha='center', va='top',
-               bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='black'))
+        # Length annotation (vertical on the left, inside plotting area)
+        dim_x = -vehicle_width / 2 -0.2
+        ax.annotate(
+            '',
+            xy=(dim_x, vehicle_length / 2),
+            xytext=(dim_x, -vehicle_length / 2),
+            arrowprops=dict(arrowstyle='<->', color='black', lw=2.5),
+        )
+        ax.text(
+            dim_x-0.1,
+            0,
+            f'{vehicle_length}m',
+            fontsize=12,
+            weight='bold',
+            ha='right',
+            va='center',
+            rotation=90,
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='black'),
+        )
+
+        # Width annotation (horizontal at the bottom, inside plotting area)
+        dim_y = -vehicle_length / 2 -0.35
+        ax.annotate(
+            '',
+            xy=(vehicle_width / 2, dim_y),
+            xytext=(-vehicle_width / 2, dim_y),
+            arrowprops=dict(arrowstyle='<->', color='black', lw=2.5),
+        )
+        ax.text(
+            0,
+            dim_y - 0.05,
+            f'{vehicle_width}m',
+            fontsize=12,
+            weight='bold',
+            ha='center',
+            va='top',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='black'),
+        )
         
         # Create legend
         from matplotlib.lines import Line2D
@@ -1195,7 +1225,9 @@ class Visualization:
             Line2D([0], [0], marker='^', color='w', markerfacecolor='#F39C12', markersize=12, markeredgecolor='black', markeredgewidth=2, label='HVAC'),
         ])
         
-        ax.legend(handles=legend_elements, loc='upper right', fontsize=10, ncol=2, framealpha=0.95, edgecolor='black', fancybox=True)
+        ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.01, 1.0),
+              fontsize=9, ncol=1, framealpha=0.95, edgecolor='black', fancybox=True,
+              borderaxespad=0.0)
         
         # Set labels and title
         ax.set_xlabel('X (Left-Right) [meters]', fontsize=13, weight='bold')
@@ -1222,28 +1254,28 @@ class Visualization:
                 ecu_y_min, ecu_y_max = min(ecu_y_coords), max(ecu_y_coords)
                 
                 # Set limits with padding around ECU spread
-                padding_x = max(1.5, abs(ecu_x_max - ecu_x_min) * 0.1)
-                padding_y = max(1.0, abs(ecu_y_max - ecu_y_min) * 0.1)
+                padding_x = max(0.55, abs(ecu_x_max - ecu_x_min) * 0.08)
+                padding_y = max(0.55, abs(ecu_y_max - ecu_y_min) * 0.08)
                 
                 ax.set_xlim(min(ecu_x_min, -vehicle_width/2) - padding_x, max(ecu_x_max, vehicle_width/2) + padding_x)
                 ax.set_ylim(min(ecu_y_min, -vehicle_length/2) - padding_y, max(ecu_y_max, vehicle_length/2) + padding_y)
             else:
                 # Default limits if no assigned ECUs
-                padding_x = 1.5
-                padding_y = 1.0
+                padding_x = 0.55
+                padding_y = 0.55
                 ax.set_xlim(-vehicle_width/2 - padding_x, vehicle_width/2 + padding_x)
                 ax.set_ylim(-vehicle_length/2 - padding_y, vehicle_length/2 + padding_y)
         else:
             # Default limits if no ECUs
-            padding_x = 1.5
-            padding_y = 1.0
+            padding_x = 0.55
+            padding_y = 0.55
             ax.set_xlim(-vehicle_width/2 - padding_x, vehicle_width/2 + padding_x)
             ax.set_ylim(-vehicle_length/2 - padding_y, vehicle_length/2 + padding_y)
         
         ax.grid(True, alpha=0.4, linestyle=':', linewidth=0.8)
         ax.set_facecolor('#F8F9F9')
         
-        plt.tight_layout()
+        plt.tight_layout(rect=[0, 0, 0.73, 1])
         self.save_plot(filename)
 
     def visualize_solution_architecture(self, solution, scs, locations, partitions_config=None, filename="solution_architecture.png"):
@@ -1307,7 +1339,10 @@ class Visualization:
                 loc_partition_sws[loc_id] = {}
         
         # Create figure
-        fig, ax = plt.subplots(figsize=(18, 12))
+        from textwrap import fill
+        num_locs = max(1, len(loc_partition_sws))
+        fig_h = max(7.0, 2.35 * num_locs + 1.0)
+        fig, ax = plt.subplots(figsize=(11, fig_h))
         
         # Color schemes
         asil_colors = {
@@ -1319,11 +1354,10 @@ class Visualization:
         }
         
         # Render locations and their contents
-        num_locs = len(loc_partition_sws)
-        loc_width = 16  # Increased width
-        loc_height = 20 # Significantly increased height to fit lists
+        loc_width = 15.5
+        loc_height = 16.0
         spacing_x = 24
-        spacing_y = 25
+        spacing_y = loc_height + 2.2
         
         start_x = 2
         start_y = (num_locs - 1) * spacing_y
@@ -1338,28 +1372,50 @@ class Visualization:
                                       edgecolor='darkblue', facecolor='#E8F8FF',
                                       linewidth=3, alpha=0.9)
             ax.add_patch(loc_box)
-            
+
             # Location title
-            loc = location_dict.get(loc_id)
-            title_text = f"📍 {loc_id}"
-            ax.text(x_pos + loc_width/2, y_pos + loc_height - 0.8, title_text,
-                   fontsize=14, ha='center', va='top', weight='bold')
-            
+            title_text = f"{loc_id}"
+            ax.text(
+                x_pos + loc_width / 2,
+                y_pos + loc_height - 0.8,
+                title_text,
+                fontsize=14,
+                ha='center',
+                va='top',
+                weight='bold',
+            )
+
             # HW Features section
-            hw_text = f"Hardware: {', '.join(loc_hw.get(loc_id, ['None']))}"
-            ax.text(x_pos + 0.5, y_pos + loc_height - 1.8, hw_text,
-                   fontsize=10, ha='left', va='top', style='italic',
-                   bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.6))
-            
+            hw_items = sorted(loc_hw.get(loc_id, ['None']))
+            hw_text = fill(f"Hardware: {', '.join(hw_items)}", width=42)
+            ax.text(
+                x_pos + 0.5,
+                y_pos + loc_height - 1.8,
+                hw_text,
+                fontsize=8,
+                ha='left',
+                va='top',
+                style='italic',
+                bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.6),
+            )
+
             # Interfaces section
-            if_text = f"Interfaces: {', '.join(loc_if.get(loc_id, ['None']))}"
-            ax.text(x_pos + 0.5, y_pos + loc_height - 2.8, if_text,
-                   fontsize=10, ha='left', va='top', style='italic',
-                   bbox=dict(boxstyle='round', facecolor='lightcyan', alpha=0.6))
-            
+            iface_items = sorted(loc_if.get(loc_id, ['None']))
+            if_text = fill(f"Interfaces: {', '.join(iface_items)}", width=42)
+            ax.text(
+                x_pos + 0.5,
+                y_pos + loc_height - 3.2,
+                if_text,
+                fontsize=8,
+                ha='left',
+                va='top',
+                style='italic',
+                bbox=dict(boxstyle='round', facecolor='lightcyan', alpha=0.6),
+            )
+
             # Render partitions within location
-            partition_y_top = y_pos + loc_height - 4.5
-            partition_height = loc_height - 6.0
+            partition_y_top = y_pos + loc_height - 5.3
+            partition_height = loc_height - 6.5
             partition_width = (loc_width - 1.0) / max(len(partitions_dict), 1)
 
             if len(partitions_dict) == 0:
@@ -1417,30 +1473,14 @@ class Visualization:
                        fontsize=font_size, ha='center', va='top',
                        bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='gray'))
         
-        # Legend
-        legend_elements = [
-            Line2D([0], [0], marker='s', color='w', label='ASIL-D', 
-                   markerfacecolor='#FF9999', markersize=10),
-            Line2D([0], [0], marker='s', color='w', label='ASIL-C', 
-                   markerfacecolor='#FFB3B3', markersize=10),
-            Line2D([0], [0], marker='s', color='w', label='ASIL-B', 
-                   markerfacecolor='#FFD1D1', markersize=10),
-            Line2D([0], [0], marker='s', color='w', label='ASIL-A', 
-                   markerfacecolor='#FFE5E5', markersize=10),
-            Line2D([0], [0], marker='s', color='w', label='QM', 
-                   markerfacecolor='#E8F4E8', markersize=10),
-        ]
-        ax.legend(handles=legend_elements, loc='upper right', fontsize=12)
-        
-        # Title
-        ax.text(0.5, 0.98, 'LEGO Optimization Solution Architecture',
-               transform=ax.transAxes, fontsize=18, ha='center', va='top',
-               weight='bold',
-               bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.8))
-        
-        ax.set_xlim(-1, 30)
-        ax.set_ylim(-5, (num_locs + 1) * spacing_y)
+        # Compact bounds to reduce excess whitespace
+        x_min = start_x - 0.8
+        x_max = start_x + loc_width + 0.8
+        y_max = start_y + loc_height + 0.8
+        y_min = start_y - (num_locs - 1) * spacing_y - 0.8
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(y_min, y_max)
         ax.axis('off')
         
-        plt.tight_layout()
+        plt.tight_layout(pad=0.4)
         self.save_plot(filename)

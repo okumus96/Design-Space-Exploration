@@ -39,7 +39,14 @@ def main(args):
     reporter = ReportGenerator()
     reporter.display_data_summary(scs, sensors, actuators, cable_types, comm_matrix, locations=locations)
     reporter.display_data(sensors, actuators, scs, locations=locations, hardwares=hardwares, interface_costs=interfaces, partitions=partitions)
-    visualizer.plot_vehicle_layout_topdown( sensors, actuators, assignments=None, locations=locations, filename="initial_vehicle_layout.png")
+    visualizer.plot_vehicle_layout_topdown(
+        sensors,
+        actuators,
+        assignments=None,
+        locations=locations,
+        show_peripheral_labels=not args.hide_peripheral_labels,
+        filename="initial_vehicle_layout.png"
+    )
     #visualizer.plot_sw_sensor_actuator_graph_final(scs, sensors, actuators, comm_matrix)
     #visualizer.plot_charts(scs, sensors, actuators)
 
@@ -90,12 +97,13 @@ def main(args):
         # Generate vehicle layout with active locations and bus connections
         print(f"   Generating vehicle layout for Solution {solution_idx}...")
         visualizer.plot_vehicle_layout_topdown(sensors, actuators, solution['assignment'], locations=locations,
-                                               scs=scs, comm_matrix=comm_matrix, cable_types=cable_types, comm_links=solution.get('comm_links'), hw_features=solution.get('hw_features'),
-                                               interfaces_opened=solution.get('interfaces'), show_bus_utilization=args.show_bus_utilization,
-                                               comm_link_peak_load=solution.get('comm_link_peak_load'),
-                                               eth_sensor_attachments=solution.get('eth_sensor_attachments'), eth_actuator_attachments=solution.get('eth_actuator_attachments'),
-                                               shared_sensor_attachments=solution.get('shared_sensor_attachments'), shared_actuator_attachments=solution.get('shared_actuator_attachments'),
-                                               filename=f"vehicle_layout_solution_{solution_idx}.png")
+                               scs=scs, comm_matrix=comm_matrix, cable_types=cable_types, comm_links=solution.get('comm_links'), hw_features=solution.get('hw_features'),
+                               interfaces_opened=solution.get('interfaces'), show_bus_utilization=args.show_bus_utilization,
+                               comm_link_peak_load=solution.get('comm_link_peak_load'),
+                               eth_sensor_attachments=solution.get('eth_sensor_attachments'), eth_actuator_attachments=solution.get('eth_actuator_attachments'),
+                               shared_sensor_attachments=solution.get('shared_sensor_attachments'), shared_actuator_attachments=solution.get('shared_actuator_attachments'),
+                               show_peripheral_labels=not args.hide_peripheral_labels,
+                               filename=f"vehicle_layout_solution_{solution_idx}.png")
     
     print("\n" + "=" * 80)
     print("PIPELINE COMPLETED SUCCESSFULLY")
@@ -116,5 +124,6 @@ if __name__ == "__main__":
     argparser.add_argument("--num_points", type=int, default=5, help="Number of Pareto points to generate")
     argparser.add_argument("--verbose", action="store_true", help="Enable verbose output during optimization")
     argparser.add_argument("--show_bus_utilization", action="store_true", help="Show bus utilization summary on top-down layout")
+    argparser.add_argument("--hide_peripheral_labels", action="store_true", help="Hide sensor and actuator labels in top-down vehicle layout plots")
     args = argparser.parse_args()
     main(args)
