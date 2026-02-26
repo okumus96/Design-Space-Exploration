@@ -1340,11 +1340,14 @@ class AssignmentOptimizer:
     def _build_objective_function(self, model, y, z, hw_use, if_use, comm, scs, locations, sensors, actuators, 
                                   cable_types, comm_matrix, partitions, hardwares, interfaces,
                                   n_locs, unique_asils, all_hw, all_interfaces, max_partitions_per_asil_per_loc,
-                                  feasible_locs_per_sc, attach_s=None, attach_a=None, shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None, shared_extra_trunk_len=None):
+                                  feasible_locs_per_sc, attach_s=None, attach_a=None, shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None, shared_extra_trunk_len=None,
+                                  minimize_cable_length=False, cable_length_limit=None):
         """
         Build and set the objective function for the optimization model
         
-        Objective: Minimize total cost = partition_cost + hw_cost + interface_cost + cable_cost + comm_cost
+        Objectives:
+            - Default: minimize total cost
+            - If minimize_cable_length=True: minimize total cable length
         """
         print(f"Building objective function...")
         
@@ -1371,22 +1374,31 @@ class AssignmentOptimizer:
         )
         
         # Cable cost (sensor/actuator cables + ECU-to-ECU communication backbone)
-        cable_cost_expr, _, _ = self.calculate_cable_expressions(
+        cable_cost_expr, cable_distance_expr, _ = self.calculate_cable_expressions(
             z, {}, scs, locations, sensors, actuators, cable_types, comm_matrix, max_partitions_per_asil_per_loc,
             feasible_locs_per_sc, comm=comm, attach_s=attach_s, attach_a=attach_a,
             shared_attach_s=shared_attach_s, shared_attach_a=shared_attach_a,
             shared_trunk_len=shared_trunk_len, shared_extra_trunk_len=shared_extra_trunk_len
         )
+
+        # Optional epsilon-constraint on total cable length for Pareto search
+        if cable_length_limit is not None:
+            model.addConstr(
+                cable_distance_expr <= float(cable_length_limit),
+                name="eps_cable_length_limit"
+            )
         
-        # Total cost
-        total_cost = partition_cost_expr + hw_cost_expr + if_cost_expr + cable_cost_expr
-        model.setObjective(total_cost, GRB.MINIMIZE)
-        
-        print(f"Objective: Partition + HW + Interface + Cable + Communication costs")
+        if minimize_cable_length:
+            model.setObjective(cable_distance_expr, GRB.MINIMIZE)
+            print("Objective: Total Cable Length (all cables)")
+        else:
+            total_cost = partition_cost_expr + hw_cost_expr + if_cost_expr + cable_cost_expr
+            model.setObjective(total_cost, GRB.MINIMIZE)
+            print("Objective: Partition + HW + Interface + Cable + Communication costs")
         
         return model
 
-    def optimize(self, scs, locations, sensors, actuators, cable_types, comm_matrix, partitions=None, hardwares=None, interfaces=None, enable_comm_bw_constraints=True, comm_bw_big_m=10000):
+    def optimize(self, scs, locations, sensors, actuators, cable_types, comm_matrix, partitions=None, hardwares=None, interfaces=None, enable_comm_bw_constraints=True, comm_bw_big_m=10000, minimize_cable_length=False, cable_length_limit=None):
         """
         Dynamic selection of partitions + HW + interfaces + cables.
         
@@ -1485,7 +1497,8 @@ class AssignmentOptimizer:
             n_locs, unique_asils, all_hw, all_interfaces, max_partitions_per_asil_per_loc,
             feasible_locs_per_sc, attach_s=attach_s, attach_a=attach_a,
             shared_attach_s=shared_attach_s, shared_attach_a=shared_attach_a,
-            shared_trunk_len=shared_trunk_len, shared_extra_trunk_len=shared_extra_trunk_len
+            shared_trunk_len=shared_trunk_len, shared_extra_trunk_len=shared_extra_trunk_len,
+            minimize_cable_length=minimize_cable_length, cable_length_limit=cable_length_limit
         )
 
         model.update()
@@ -1513,5 +1526,79 @@ class AssignmentOptimizer:
         else:
             print(f"\n✗ Optimization failed. Status: {model.status}")
             return None
+
+    def optimize_pareto_epsilon_constraint(self, scs, locations, sensors, actuators, cable_types, comm_matrix,
+                                           partitions=None, hardwares=None, interfaces=None,
+                                           enable_comm_bw_constraints=True, comm_bw_big_m=10000, num_points=5):
+        """
+        Build Pareto front between total_cost and cable_length via epsilon-constraint.
+
+        Steps:
+        1) Solve min total_cost (gives one extreme)
+        2) Solve min cable_length (gives other extreme)
+        3) Sweep cable_length upper bound and minimize total_cost for intermediate points
+        """
+        print("=" * 80)
+        print("PARETO OPTIMIZATION (total_cost vs cable_length)")
+        print("=" * 80)
+
+        # Extreme 1: minimum cost
+        sol_min_cost = self.optimize(
+            scs, locations, sensors, actuators, cable_types, comm_matrix,
+            partitions=partitions, hardwares=hardwares, interfaces=interfaces,
+            enable_comm_bw_constraints=enable_comm_bw_constraints,
+            comm_bw_big_m=comm_bw_big_m
+        )
+
+        # Extreme 2: minimum cable length
+        sol_min_len = self.optimize(
+            scs, locations, sensors, actuators, cable_types, comm_matrix,
+            partitions=partitions, hardwares=hardwares, interfaces=interfaces,
+            enable_comm_bw_constraints=enable_comm_bw_constraints,
+            comm_bw_big_m=comm_bw_big_m,
+            minimize_cable_length=True
+        )
+
+        pareto_solutions = []
+        seen = set()
+
+        def _add_unique(sol):
+            if not sol or sol.get('status') != 'OPTIMAL':
+                return
+            key = (round(float(sol.get('total_cost', 0.0)), 4), round(float(sol.get('cable_length', 0.0)), 4))
+            if key in seen:
+                return
+            seen.add(key)
+            pareto_solutions.append(sol)
+
+        _add_unique(sol_min_cost)
+        _add_unique(sol_min_len)
+
+        if not sol_min_cost or not sol_min_len:
+            return pareto_solutions
+
+        l_max = float(sol_min_cost.get('cable_length', 0.0))
+        l_min = float(sol_min_len.get('cable_length', 0.0))
+
+        if num_points is None:
+            num_points = 5
+        num_points = max(2, int(num_points))
+
+        # Epsilon sweep between extremes (skip endpoints; already solved)
+        if l_max > l_min + 1e-9 and num_points > 2:
+            eps_values = np.linspace(l_max, l_min, num_points)[1:-1]
+            for eps_len in eps_values:
+                sol_eps = self.optimize(
+                    scs, locations, sensors, actuators, cable_types, comm_matrix,
+                    partitions=partitions, hardwares=hardwares, interfaces=interfaces,
+                    enable_comm_bw_constraints=enable_comm_bw_constraints,
+                    comm_bw_big_m=comm_bw_big_m,
+                    cable_length_limit=float(eps_len) + 1e-6
+                )
+                _add_unique(sol_eps)
+
+        pareto_solutions.sort(key=lambda s: (float(s.get('cable_length', 0.0)), float(s.get('total_cost', 0.0))))
+        print(f"Pareto solutions found: {len(pareto_solutions)}")
+        return pareto_solutions
 
 

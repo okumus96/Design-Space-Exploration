@@ -56,23 +56,19 @@ def main(args):
     else:
         opt = AssignmentOptimizer()
     
-    # Step 3: Run optimization
+    # Step 3: Run Pareto optimization
     start_time = time.time()
-    raw_solution = opt.optimize(
+    pareto_solutions = opt.optimize_pareto_epsilon_constraint(
         scs, locations, sensors, actuators, cable_types, comm_matrix,
         partitions=partitions,
         hardwares=hardwares,
-        interfaces=interfaces
+        interfaces=interfaces,
+        num_points=args.num_points
     )
     end_time = time.time()
     print(f"#"*80)
-    print(f"Optimization completed in {end_time - start_time:.2f} seconds.")
+    print(f"Pareto optimization completed in {end_time - start_time:.2f} seconds.")
     print(f"#"*80)
-    
-    # Step 4: Extract formatted solution from raw optimization results
-    pareto_solutions = []
-    if raw_solution and raw_solution.get('status') == 'OPTIMAL':
-        pareto_solutions.append(raw_solution)
     
     # Display detailed solution analysis
     if pareto_solutions:
