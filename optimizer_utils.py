@@ -753,8 +753,38 @@ def extract_solution(y, z, hw_use, if_use, comm, scs, locations, sensors, actuat
                     if load > prev:
                         tmp_peak[key] = float(load)
 
+                # Sanity clamp: visualization load for a physical ETH link should not exceed
+                # opened link capacity (count * ETH capacity). If it does due route-reconstruction
+                # artifacts, cap it to the physical maximum for plotting consistency.
+                eth_cap = None
+                eth_obj = cable_types.get('ETH') if cable_types else None
+                if eth_obj is not None:
+                    try:
+                        eth_cap = float(getattr(eth_obj, 'capacity', None))
+                    except Exception:
+                        eth_cap = None
+
+                eth_count_by_pair = {}
+                for lk in comm_links:
+                    if lk.get('iface') != 'ETH':
+                        continue
+                    src_id = lk.get('src_loc')
+                    dst_id = lk.get('dst_loc')
+                    if not src_id or not dst_id:
+                        continue
+                    a_id, b_id = sorted((src_id, dst_id))
+                    eth_count_by_pair[(a_id, b_id)] = max(1, int(lk.get('count', 1) or 1))
+
                 for (a, b, iface), load in tmp_peak.items():
-                    comm_link_peak_load[f"{locations[a].id}|{locations[b].id}|{iface}"] = load
+                    a_id = locations[a].id
+                    b_id = locations[b].id
+                    if eth_cap is not None and eth_cap > 0 and eth_cap != float('inf') and iface == 'ETH':
+                        cnt = eth_count_by_pair.get(tuple(sorted((a_id, b_id))), 1)
+                        max_load = eth_cap * cnt
+                        if load > max_load + 1e-6:
+                            print(f"  WARNING: peak ETH load {load:.2f} exceeds capacity {max_load:.2f} on {a_id}<->{b_id}; clamped for visualization")
+                            load = max_load
+                    comm_link_peak_load[f"{a_id}|{b_id}|{iface}"] = load
         
         total_cost = partition_cost + hw_cost + if_cost + cable_cost + comm_cost
 

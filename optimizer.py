@@ -6,12 +6,6 @@ from gurobipy import GRB
 from optimizer_utils import (get_distance, build_sensor_lookup, build_actuator_lookup, 
                              precompute_latency_infeasible_pairs, build_cost_map, build_latency_map, extract_solution)
 
-# We need change direct link b/w the ECUs to some sort of network topology.
-# We did not include uncertainty in overall system.
-# We do not know numbers we gave is correct (i.e., cost, latency,  etc.)
-# WE do not know our objective functions is correct. (semanatically, we can change distance with complexity model)
-
-
 
 class AssignmentOptimizer:
     def __init__(self):
@@ -218,6 +212,8 @@ class AssignmentOptimizer:
         model = gp.Model("ECU_Assignment")
         model.setParam('OutputFlag', 1)
         model.setParam('MIPFocus', 2)
+        #model.setParam('Symmetry', 1)
+        model.setParam("Method", 6)
         #model.setParam("MIPGap", 0.001)  # 1% gap for faster solutions (adjust as needed)
         model.update()
         
@@ -510,6 +506,7 @@ class AssignmentOptimizer:
             'c3_hw_required': 0,
             'c4_if_required': 0,
             'c4_asil_bus_split': 0,
+            'c4_shared_bus_bw': 0,
             'c5_redundancy': 0,
             'c6_ai_contention': 0,
             'c8_loc_loc_latency': 0,
@@ -741,6 +738,42 @@ class AssignmentOptimizer:
                         name=f"shared_bus_comm_port_count_{locations[j].id}_{i_name}"
                     )
 
+                    # Shared-bus bandwidth capacity at this location/interface.
+                    # Without this, CAN/LIN/FLEXRAY trunks can be over-subscribed.
+                    cap_obj = cable_types.get(i_name)
+                    cap_val = getattr(cap_obj, 'capacity', None) if cap_obj is not None else None
+                    try:
+                        cap_val = float(cap_val) if cap_val is not None else None
+                    except Exception:
+                        cap_val = None
+
+                    if cap_val is not None and cap_val > 0 and cap_val != float('inf'):
+                        shared_bus_load = gp.LinExpr()
+                        if shared_attach_s:
+                            for (si, jj), av in shared_attach_s.items():
+                                if jj != j:
+                                    continue
+                                if getattr(sensors[si], 'interface', None) != i_name:
+                                    continue
+                                vol = float(getattr(sensors[si], 'volume', 0.0) or 0.0)
+                                if vol > 0:
+                                    shared_bus_load.add(av, vol)
+                        if shared_attach_a:
+                            for (ai, jj), av in shared_attach_a.items():
+                                if jj != j:
+                                    continue
+                                if getattr(actuators[ai], 'interface', None) != i_name:
+                                    continue
+                                vol = float(getattr(actuators[ai], 'volume', 0.0) or 0.0)
+                                if vol > 0:
+                                    shared_bus_load.add(av, vol)
+
+                        model.addConstr(
+                            shared_bus_load <= cap_val * if_use[j, i_name],
+                            name=f"shared_bus_bw_{locations[j].id}_{i_name}"
+                        )
+                        cstats['c4_shared_bus_bw'] += 1
+
                     # If ASIL split is active, second shared trunk length equals main trunk length.
                     if (j, i_name) in shared_extra_trunk_len and (j, i_name) in shared_trunk_len:
                         split_m = 1e6
@@ -918,10 +951,26 @@ class AssignmentOptimizer:
         # and must respect peripheral max-latency on the physical cable to that attachment point.
         # (We do not model end-to-end network latency here; this only constrains the local cable.)
         latency_map = build_latency_map(cable_types)
+        eth_cap_obj = cable_types.get('ETH') if cable_types else None
+        eth_cap = getattr(eth_cap_obj, 'capacity', None) if eth_cap_obj is not None else None
+        try:
+            eth_cap = float(eth_cap) if eth_cap is not None else None
+        except Exception:
+            eth_cap = None
         if attach_s:
             for (si, j), av in attach_s.items():
                 model.addConstr(av <= loc_active[j], name=f"attachS_active_{sensors[si].id}_{locations[j].id}")
                 cstats['c9_attach'] += 1
+
+                # ETH peripheral link bandwidth (sensor -> attachment point)
+                vol = float(getattr(sensors[si], 'volume', 0.0) or 0.0)
+                if eth_cap is not None and eth_cap > 0 and eth_cap != float('inf') and vol > 0:
+                    model.addConstr(
+                        vol * av <= eth_cap,
+                        name=f"attachS_bw_{sensors[si].id}_{locations[j].id}"
+                    )
+                    cstats['c9_attach'] += 1
+
                 max_lat = getattr(sensors[si], 'max_latency', None)
                 if max_lat is not None and getattr(sensors[si], 'location', None) is not None:
                     dist = get_distance(sensors[si].location, locations[j].location)
@@ -941,6 +990,16 @@ class AssignmentOptimizer:
             for (ai, j), av in attach_a.items():
                 model.addConstr(av <= loc_active[j], name=f"attachA_active_{actuators[ai].id}_{locations[j].id}")
                 cstats['c9_attach'] += 1
+
+                # ETH peripheral link bandwidth (attachment point -> actuator)
+                vol = float(getattr(actuators[ai], 'volume', 0.0) or 0.0)
+                if eth_cap is not None and eth_cap > 0 and eth_cap != float('inf') and vol > 0:
+                    model.addConstr(
+                        vol * av <= eth_cap,
+                        name=f"attachA_bw_{actuators[ai].id}_{locations[j].id}"
+                    )
+                    cstats['c9_attach'] += 1
+
                 max_lat = getattr(actuators[ai], 'max_latency', None)
                 if max_lat is not None and getattr(actuators[ai], 'location', None) is not None:
                     dist = get_distance(actuators[ai].location, locations[j].location)

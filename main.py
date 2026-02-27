@@ -10,6 +10,7 @@ Main script that orchestrates the entire workflow:
 import argparse
 from config_reader import ConfigReader
 from data_generator import VehicleDataGenerator
+from architecture_loader import load_architecture_from_json
 from optimizer import AssignmentOptimizer
 from visualizer import Visualization
 from report import ReportGenerator
@@ -26,13 +27,21 @@ def main(args):
     hardwares = config_reader.get_hardwares()
     interfaces = config_reader.get_interfaces()
     
-    # Step 1: Generate data
+    # Step 1: Prepare data
     print("\n" + "-" * 80)
-    print("STEP 1: Generating Vehicle Architecture Data")
+    print("STEP 1: Preparing Vehicle Architecture Data")
     print("-" * 80)
 
-    generator = VehicleDataGenerator(num_locs=args.num_locs, num_scs=args.num_scs, seed=args.seed, config_reader=config_reader)
-    scs, comm_matrix, sensors, actuators, cable_types, locations = generator.generate_data()
+    if args.architecture_json:
+        print(f"Loading architecture from JSON: {args.architecture_json}")
+        scs, comm_matrix, sensors, actuators, cable_types, locations = load_architecture_from_json(
+            args.architecture_json,
+            config_reader=config_reader,
+            num_locs=args.num_locs,
+        )
+    else:
+        generator = VehicleDataGenerator(num_locs=args.num_locs, num_scs=args.num_scs, seed=args.seed, config_reader=config_reader)
+        scs, comm_matrix, sensors, actuators, cable_types, locations = generator.generate_data()
     
     # Summary and visualization of generated data
     visualizer = Visualization(save_dir=args.output_dir)
@@ -110,6 +119,7 @@ if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description="ECU Optimization and Visualization Pipeline")
     argparser.add_argument("--num_locs", type=int, default=20, help="Number of locations to generate")
     argparser.add_argument("--num_scs", type=int, default=20, help="Number of software components to generate")
+    argparser.add_argument("--architecture_json", type=str, default=None, help="Load complete architecture from JSON and bypass data_generator")
     argparser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     argparser.add_argument("--config_dir", type=str, default="configs", help="Directory containing configuration JSON files")
     argparser.add_argument("--solver", type=str, default="gurobi", choices=["gurobi", "z3"], help="Solver to use")

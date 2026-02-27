@@ -811,8 +811,18 @@ class Visualization:
                     mean_x = sum(p[0] for p in all_eps) / len(all_eps)
                     mean_y = sum(p[1] for p in all_eps) / len(all_eps)
 
-                    base_bus_x = 0.5 * (loc.location.x + mean_x)
-                    base_bus_y = 0.5 * (loc_y + mean_y)
+                    # Keep shared-bus hub local to the location to avoid visually implying
+                    # a location-to-location (e.g., L1-L3-L5) backbone on CAN/LIN/FLEXRAY.
+                    dx = mean_x - loc.location.x
+                    dy = mean_y - loc_y
+                    norm = (dx * dx + dy * dy) ** 0.5
+                    if norm < 1e-9:
+                        ux, uy = 0.0, 1.0
+                    else:
+                        ux, uy = dx / norm, dy / norm
+                    hub_dist = min(0.28, max(0.12, 0.35 * norm))
+                    base_bus_x = loc.location.x + hub_dist * ux
+                    base_bus_y = loc_y + hub_dist * uy
 
                     active_groups = []
                     if low_eps:
@@ -822,13 +832,13 @@ class Visualization:
 
                     hub_by_group = {}
                     if len(active_groups) == 2:
-                        dx = base_bus_x - loc.location.x
-                        dy = base_bus_y - loc_y
-                        norm = (dx * dx + dy * dy) ** 0.5
-                        if norm < 1e-9:
+                        grp_dx = base_bus_x - loc.location.x
+                        grp_dy = base_bus_y - loc_y
+                        grp_norm = (grp_dx * grp_dx + grp_dy * grp_dy) ** 0.5
+                        if grp_norm < 1e-9:
                             px, py = 0.0, 1.0
                         else:
-                            px, py = -dy / norm, dx / norm
+                            px, py = -grp_dy / grp_norm, grp_dx / grp_norm
                         sep = 0.07
                         hub_by_group['LOW'] = (base_bus_x - sep * px, base_bus_y - sep * py)
                         hub_by_group['HIGH'] = (base_bus_x + sep * px, base_bus_y + sep * py)
@@ -877,19 +887,6 @@ class Visualization:
                             continue
                         a, b, iface = parts
                         comm_demand_by_link[(a, b, iface)] = float(v or 0.0)
-                if show_bus_utilization and comm_matrix:
-                    for req in comm_matrix:
-                        src_sc = req.get('src')
-                        dst_sc = req.get('dst')
-                        if src_sc not in assignments or dst_sc not in assignments:
-                            continue
-                        src_loc = assignments[src_sc]
-                        dst_loc = assignments[dst_sc]
-                        if src_loc == dst_loc:
-                            continue
-                        a, b = sorted((src_loc, dst_loc))
-                        vol = float(req.get('volume', 0.0) or 0.0)
-                        comm_demand_by_link[(a, b, 'ETH')] = comm_demand_by_link.get((a, b, 'ETH'), 0.0) + vol
                 # Define "active" as locations that host at least one assigned SC.
                 # (If you later allow switch-only locations, pass that information in and extend this set.)
                 active_loc_ids = set(active_locations.keys()) | set(switch_loc_ids)
@@ -943,7 +940,11 @@ class Visualization:
                     )
                     if show_bus_utilization:
                         a, b = sorted((src_loc_id, dst_loc_id))
-                        dem = comm_demand_by_link.get((a, b, iface), comm_demand_by_link.get((a, b, 'ETH'), 0.0))
+                        dem = comm_demand_by_link.get((a, b, iface), None)
+                        if dem is None and iface != 'ETH':
+                            dem = comm_demand_by_link.get((a, b, 'ETH'), None)
+                        if dem is None:
+                            continue
                         cap = _capacity_for_iface(iface)
                         total_cap = (cap * max(1, count)) if cap else None
                         pct = (100.0 * dem / total_cap) if total_cap else None

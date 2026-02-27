@@ -8,3 +8,10 @@ ECU optimization/
 results/
 *.lp
 *.ilp
+*.pdf
+*.png
+*.log
+*.csv
+*.xlsx
+*.zip
+*.txt
