@@ -1,0 +1,62 @@
+{
+  "software_components": [
+    { "id": "SC_0_Driver_CAM_Rear_Left_Corner", "domain": "Driver", "type": "sensor", "cpu_req": 408, "ram_req": 13, "rom_req": 674, "asil_req": 3, "hw_required": [], "receives_from": [] },
+    { "id": "SC_1_Driver_CAM_Front_Center", "domain": "Driver", "type": "sensor", "cpu_req": 466, "ram_req": 93, "rom_req": 818, "asil_req": 4, "hw_required": [], "receives_from": [] },
+    { "id": "SC_2_Driver_CAM_Rear_Right_Corner", "domain": "Driver", "type": "sensor", "cpu_req": 212, "ram_req": 67, "rom_req": 703, "asil_req": 4, "hw_required": [], "receives_from": [] },
+    { "id": "SC_3_Driver_CAM_Front_Left", "domain": "Driver", "type": "sensor", "cpu_req": 103, "ram_req": 30, "rom_req": 814, "asil_req": 4, "hw_required": [], "receives_from": [] },
+    { "id": "SC_4_Driver_CAM_Front_Right", "domain": "Driver", "type": "sensor", "cpu_req": 274, "ram_req": 45, "rom_req": 259, "asil_req": 3, "hw_required": [], "receives_from": [] },
+    { "id": "SC_5_Driver_CAM_Left_Side", "domain": "Driver", "type": "sensor", "cpu_req": 490, "ram_req": 53, "rom_req": 204, "asil_req": 3, "hw_required": [], "receives_from": [] },
+    { "id": "SC_6_Driver_CAM_Right_Side", "domain": "Driver", "type": "sensor", "cpu_req": 294, "ram_req": 22, "rom_req": 467, "asil_req": 4, "hw_required": [], "receives_from": [] },
+    { "id": "SC_7_Driver_CAM_Rear_Center", "domain": "Driver", "type": "sensor", "cpu_req": 409, "ram_req": 43, "rom_req": 926, "asil_req": 3, "hw_required": [], "receives_from": [] },
+    { "id": "SC_8_Driver_LIDAR_Front", "domain": "Driver", "type": "sensor", "cpu_req": 473, "ram_req": 68, "rom_req": 649, "asil_req": 3, "hw_required": [], "receives_from": [] },
+    { "id": "SC_9_Driver_LIDAR_Left_Pillar", "domain": "Driver", "type": "sensor", "cpu_req": 293, "ram_req": 20, "rom_req": 665, "asil_req": 4, "hw_required": [], "receives_from": [] },
+    { "id": "SC_10_Driver_LIDAR_Right_Pillar", "domain": "Driver", "type": "sensor", "cpu_req": 421, "ram_req": 89, "rom_req": 982, "asil_req": 4, "hw_required": [], "receives_from": [] },
+    { "id": "SC_11_Driver_LIDAR_Rear", "domain": "Driver", "type": "sensor", "cpu_req": 395, "ram_req": 34, "rom_req": 821, "asil_req": 3, "hw_required": [], "receives_from": [] },
+    { "id": "SC_12_Driver_LIDAR_Top", "domain": "Driver", "type": "sensor", "cpu_req": 123, "ram_req": 94, "rom_req": 333, "asil_req": 4, "hw_required": [], "receives_from": [] },
+    { "id": "SC_13_Driver_IMU_Top_Center", "domain": "Driver", "type": "sensor", "cpu_req": 140, "ram_req": 39, "rom_req": 987, "asil_req": 3, "hw_required": [], "receives_from": [] },
+    { "id": "SC_14_Driver_GPS_Center", "domain": "Driver", "type": "sensor", "cpu_req": 294, "ram_req": 45, "rom_req": 564, "asil_req": 4, "hw_required": [], "receives_from": [] },
+
+    { "id": "AW_Sensing_Lidar_Preprocessor", "domain": "ADAS", "type": "autoware", "cpu_req": 1500, "ram_req": 512, "rom_req": 50, "asil_req": 2, "hw_required": [], "receives_from": ["SC_8_Driver_LIDAR_Front", "SC_9_Driver_LIDAR_Left_Pillar", "SC_10_Driver_LIDAR_Right_Pillar", "SC_11_Driver_LIDAR_Rear", "SC_12_Driver_LIDAR_Top"] },
+    { "id": "AW_Sensing_Camera_Preprocessor", "domain": "ADAS", "type": "autoware", "cpu_req": 2000, "ram_req": 1024, "rom_req": 50, "asil_req": 2, "hw_required": ["DSP"], "receives_from": ["SC_0_Driver_CAM_Rear_Left_Corner", "SC_1_Driver_CAM_Front_Center", "SC_2_Driver_CAM_Rear_Right_Corner", "SC_3_Driver_CAM_Front_Left", "SC_4_Driver_CAM_Front_Right", "SC_5_Driver_CAM_Left_Side", "SC_6_Driver_CAM_Right_Side", "SC_7_Driver_CAM_Rear_Center"] },
+    
+    { "id": "AW_Localization_Twist_Estimator", "domain": "ADAS", "type": "autoware", "cpu_req": 1000, "ram_req": 256, "rom_req": 50, "asil_req": 3, "hw_required": [], "receives_from": ["SC_13_Driver_IMU_Top_Center"] },
+    { "id": "AW_Localization_NDT_Matcher", "domain": "ADAS", "type": "autoware", "cpu_req": 5000, "ram_req": 2048, "rom_req": 100, "asil_req": 3, "hw_required": [], "receives_from": ["AW_Sensing_Lidar_Preprocessor"] },
+    { "id": "AW_Localization_EKF_Localizer", "domain": "ADAS", "type": "autoware", "cpu_req": 2500, "ram_req": 512, "rom_req": 100, "asil_req": 4, "hw_required": [], "receives_from": ["AW_Localization_Twist_Estimator", "AW_Localization_NDT_Matcher", "SC_14_Driver_GPS_Center"] },
+
+    { "id": "AW_Perception_Lidar_Cluster", "domain": "ADAS", "type": "autoware", "cpu_req": 3000, "ram_req": 1024, "rom_req": 100, "asil_req": 3, "hw_required": [], "receives_from": ["AW_Sensing_Lidar_Preprocessor"] },
+    { "id": "AW_Perception_Lidar_CenterPoint", "domain": "ADAS", "type": "autoware", "cpu_req": 6500, "ram_req": 2048, "rom_req": 200, "asil_req": 3, "hw_required": ["HW_ACC"], "receives_from": ["AW_Sensing_Lidar_Preprocessor"] },
+    { "id": "AW_Perception_Camera_TrafficLight", "domain": "ADAS", "type": "autoware", "cpu_req": 2000, "ram_req": 512, "rom_req": 100, "asil_req": 2, "hw_required": ["HW_ACC"], "receives_from": ["AW_Sensing_Camera_Preprocessor"] },
+    { "id": "AW_Perception_Camera_YOLO", "domain": "ADAS", "type": "autoware", "cpu_req": 7000, "ram_req": 2048, "rom_req": 200, "asil_req": 3, "hw_required": ["HW_ACC"], "receives_from": ["AW_Sensing_Camera_Preprocessor"] },
+    { "id": "AW_Perception_Sensor_Fusion", "domain": "ADAS", "type": "autoware", "cpu_req": 2500, "ram_req": 512, "rom_req": 50, "asil_req": 3, "hw_required": [], "receives_from": ["AW_Perception_Lidar_Cluster", "AW_Perception_Lidar_CenterPoint", "AW_Perception_Camera_YOLO"] },
+    { "id": "AW_Perception_Object_Tracker", "domain": "ADAS", "type": "autoware", "cpu_req": 1500, "ram_req": 512, "rom_req": 50, "asil_req": 3, "hw_required": [], "receives_from": ["AW_Perception_Sensor_Fusion"] },
+    { "id": "AW_Perception_Trajectory_Predictor", "domain": "ADAS", "type": "autoware", "cpu_req": 3000, "ram_req": 512, "rom_req": 100, "asil_req": 3, "hw_required": [], "receives_from": ["AW_Perception_Object_Tracker"] },
+
+    { "id": "AW_Planning_Mission_Route", "domain": "ADAS", "type": "autoware", "cpu_req": 1000, "ram_req": 256, "rom_req": 50, "asil_req": 3, "hw_required": [], "receives_from": ["AW_Localization_EKF_Localizer"] },
+    { "id": "AW_Planning_Behavior_Path", "domain": "ADAS", "type": "autoware", "cpu_req": 3000, "ram_req": 512, "rom_req": 100, "asil_req": 4, "hw_required": [], "receives_from": ["AW_Planning_Mission_Route", "AW_Localization_EKF_Localizer", "AW_Perception_Trajectory_Predictor"] },
+    { "id": "AW_Planning_Obstacle_Avoidance", "domain": "ADAS", "type": "autoware", "cpu_req": 4000, "ram_req": 512, "rom_req": 100, "asil_req": 4, "hw_required": [], "receives_from": ["AW_Planning_Behavior_Path", "AW_Perception_Object_Tracker"] },
+    { "id": "AW_Planning_Velocity_Smoother", "domain": "ADAS", "type": "autoware", "cpu_req": 1500, "ram_req": 256, "rom_req": 50, "asil_req": 4, "hw_required": [], "receives_from": ["AW_Planning_Obstacle_Avoidance", "AW_Perception_Camera_TrafficLight"] },
+
+    { "id": "AW_Control_Lateral_MPC", "domain": "ADAS", "type": "autoware", "cpu_req": 2500, "ram_req": 256, "rom_req": 50, "asil_req": 4, "hw_required": [], "receives_from": ["AW_Planning_Velocity_Smoother", "AW_Localization_Twist_Estimator"] },
+    { "id": "AW_Control_Longitudinal_PID", "domain": "ADAS", "type": "autoware", "cpu_req": 1000, "ram_req": 128, "rom_req": 20, "asil_req": 4, "hw_required": [], "receives_from": ["AW_Planning_Velocity_Smoother", "AW_Localization_Twist_Estimator"] },
+
+    { "id": "BC_Climate_Control", "domain": "BodyComfort", "type": "body_comfort", "cpu_req": 500, "ram_req": 128, "rom_req": 256, "asil_req": 1, "hw_required": [], "receives_from": [] },
+    { "id": "BC_Lighting_Manager", "domain": "BodyComfort", "type": "body_comfort", "cpu_req": 300, "ram_req": 64, "rom_req": 128, "asil_req": 2, "hw_required": [], "receives_from": ["AW_Planning_Behavior_Path", "INFO_Dashboard_Display"] },
+    { "id": "BC_Door_Window_Control", "domain": "BodyComfort", "type": "body_comfort", "cpu_req": 400, "ram_req": 128, "rom_req": 256, "asil_req": 1, "hw_required": [], "receives_from": ["INFO_Dashboard_Display"] },
+
+    { "id": "INFO_Media_Player", "domain": "Infotainment", "type": "infotainment", "cpu_req": 2000, "ram_req": 2048, "rom_req": 4096, "asil_req": 0, "hw_required": ["DSP"], "receives_from": ["CONN_Telematics"] },
+    { "id": "INFO_Navigation_UI", "domain": "Infotainment", "type": "infotainment", "cpu_req": 1500, "ram_req": 1024, "rom_req": 2048, "asil_req": 0, "hw_required": ["HW_ACC"], "receives_from": ["AW_Localization_EKF_Localizer", "AW_Planning_Mission_Route"] },
+    { "id": "INFO_Dashboard_Display", "domain": "Infotainment", "type": "infotainment", "cpu_req": 1000, "ram_req": 512, "rom_req": 1024, "asil_req": 1, "hw_required": [], "receives_from": ["AW_Control_Lateral_MPC", "AW_Control_Longitudinal_PID", "BC_Climate_Control"] },
+
+    { "id": "CONN_V2X_Gateway", "domain": "Connectivity", "type": "connectivity", "cpu_req": 2500, "ram_req": 1024, "rom_req": 512, "asil_req": 2, "hw_required": ["HSM"], "receives_from": ["AW_Perception_Trajectory_Predictor", "AW_Planning_Mission_Route"] },
+    { "id": "CONN_OTA_Manager", "domain": "Connectivity", "type": "connectivity", "cpu_req": 1000, "ram_req": 4096, "rom_req": 8192, "asil_req": 2, "hw_required": ["HSM"], "receives_from": ["CONN_V2X_Gateway"] },
+    { "id": "CONN_Telematics", "domain": "Connectivity", "type": "connectivity", "cpu_req": 800, "ram_req": 256, "rom_req": 512, "asil_req": 1, "hw_required": [], "receives_from": ["INFO_Dashboard_Display", "CONN_V2X_Gateway"] },
+
+    { "id": "SC_15_Driver_ACT_Steering", "domain": "Driver", "type": "actuator", "cpu_req": 289, "ram_req": 55, "rom_req": 314, "asil_req": 3, "hw_required": [], "receives_from": ["AW_Control_Lateral_MPC"] },
+    { "id": "SC_16_Driver_ACT_Motor_Front", "domain": "Driver", "type": "actuator", "cpu_req": 459, "ram_req": 97, "rom_req": 763, "asil_req": 4, "hw_required": [], "receives_from": ["AW_Control_Longitudinal_PID"] },
+    { "id": "SC_17_Driver_ACT_Brake_Front", "domain": "Driver", "type": "actuator", "cpu_req": 411, "ram_req": 91, "rom_req": 275, "asil_req": 3, "hw_required": [], "receives_from": ["AW_Control_Longitudinal_PID"] },
+    { "id": "SC_18_Driver_ACT_Brake_Rear", "domain": "Driver", "type": "actuator", "cpu_req": 183, "ram_req": 69, "rom_req": 488, "asil_req": 3, "hw_required": [], "receives_from": ["AW_Control_Longitudinal_PID"] },
+    { "id": "SC_19_Driver_ACT_HVAC_Cabin", "domain": "Driver", "type": "actuator", "cpu_req": 427, "ram_req": 98, "rom_req": 670, "asil_req": 2, "hw_required": [], "receives_from": ["BC_Climate_Control"] },
+    { "id": "SC_20_Driver_ACT_Light_Front", "domain": "Driver", "type": "actuator", "cpu_req": 450, "ram_req": 51, "rom_req": 963, "asil_req": 3, "hw_required": [], "receives_from": ["BC_Lighting_Manager"] },
+    { "id": "SC_21_Driver_ACT_Light_Rear", "domain": "Driver", "type": "actuator", "cpu_req": 217, "ram_req": 14, "rom_req": 924, "asil_req": 3, "hw_required": [], "receives_from": ["BC_Lighting_Manager"] }
+  ]
+}

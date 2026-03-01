@@ -7,7 +7,7 @@ import re
 import textwrap
 
 
-def _build_compact_layered_positions(graph, layer_attr="layer", x_gap=2.1, y_gap=1.25):
+def _build_compact_layered_positions(graph, layer_attr="layer", x_gap=1.9, y_gap=1.3):
     layers = {}
     for node, attrs in graph.nodes(data=True):
         layer = attrs.get(layer_attr, 0)
@@ -97,7 +97,7 @@ def _resolve_node_style(node_id, node_type, layer_map):
         if "Map" in node_id:
             return '#D5D8DC', layer_map["sensor"]
         if "Sensing" in node_id:
-            return '#D2B4DE', layer_map["preprocessor"]
+            return '#5DADE2', layer_map["preprocessor"]
         if "Localization" in node_id or "Perception" in node_id:
             layer = layer_map["perception_loc"]
             if "Fusion" in node_id or "Grid" in node_id:
@@ -148,7 +148,13 @@ def _ensure_default_map_nodes(components):
     return components + defaults
 
 
-def draw_complete_architecture_dag(json_filepath="full_architecture_v2.json", label_mode="code", add_default_map_if_missing=False):
+def draw_complete_architecture_dag(
+    json_filepath="./configs/full_architecture.json",
+    label_mode="code",
+    add_default_map_if_missing=False,
+    show_legend=False,
+    readability_scale=1.0,
+):
     with open(json_filepath, 'r') as f:
         data = json.load(f)
     
@@ -182,8 +188,10 @@ def draw_complete_architecture_dag(json_filepath="full_architecture_v2.json", la
         for src in sc.get('receives_from', []):
             G.add_edge(src, node_id)
             
+    readability_scale = max(0.8, float(readability_scale))
+
     # Daha kompakt ve kontrollü hiyerarşik çizim düzeni
-    pos = _build_compact_layered_positions(G, layer_attr="layer", x_gap=2.1, y_gap=1.25)
+    pos = _build_compact_layered_positions(G, layer_attr="layer", x_gap=1.9, y_gap=1.3)
     
     # İsimleri temizle/kısalt (Grafikte net okunabilmesi için)
     labels = {}
@@ -205,62 +213,69 @@ def draw_complete_architecture_dag(json_filepath="full_architecture_v2.json", la
 
     colors = [nx.get_node_attributes(G, 'color').get(node, 'white') for node in G.nodes()]
 
-    # Çizim Ayarları (LaTeX'e uygun, daha okunur ve daha az whitespace)
-    fig, ax = plt.subplots(figsize=(15, 8.5), constrained_layout=True)
+    # Çizim Ayarları (LaTeX'e uygun, yüksek kalite ve minimum whitespace)
+    fig, ax = plt.subplots(figsize=(14, 7.2), constrained_layout=False)
     nx.draw(
         G,
         pos,
         labels=labels,
         with_labels=True,
         node_color=colors,
-        node_size=1000,
-        font_size=7,
+        node_size=760 * readability_scale,
+        font_size=8 * readability_scale,
         font_weight="bold",
         arrows=True,
-        arrowsize=14,
-        edge_color="#666666",
-        width=1.2,
-        linewidths=1.2,
+        arrowsize=18 * readability_scale,
+        edge_color="#4A4A4A",
+        width=1.5,
+        linewidths=1.4,
         edgecolors="black",
         connectionstyle="arc3,rad=0.05",
         ax=ax,
     )
 
-    legend_items = [
-        Patch(facecolor='#A9CCE3', edgecolor='black', label='Sensor'),
-        Patch(facecolor='#D5D8DC', edgecolor='black', label='Autoware Map'),
-        Patch(facecolor='#F5B7B1', edgecolor='black', label='Actuator'),
-        Patch(facecolor='#73C6B6', edgecolor='black', label='DriveTrain'),
-        Patch(facecolor='#A3E4D7', edgecolor='black', label='Body Comfort'),
-        Patch(facecolor='#D7BDE2', edgecolor='black', label='Infotainment'),
-        Patch(facecolor='#F9E79F', edgecolor='black', label='Connectivity'),
-        Patch(facecolor='#D2B4DE', edgecolor='black', label='Autoware Sensing/Preprocessor'),
-        Patch(facecolor='#82E0AA', edgecolor='black', label='Autoware Perception/Localization/Fusion/Grid'),
-        Patch(facecolor='#F1C40F', edgecolor='black', label='Autoware Planning'),
-        Patch(facecolor='#E67E22', edgecolor='black', label='Autoware Control/System'),
-        Patch(facecolor='#CB4335', edgecolor='black', label='Autoware Vehicle Cmd Gate'),
-    ]
-    fig.legend(
-        handles=legend_items,
-        title="Node Types",
-        loc='lower center',
-        bbox_to_anchor=(0.5, -0.02),
-        ncol=4,
-        frameon=True
-    )
-    
-    ax.set_title("Whole-Vehicle Software Architecture DAG", fontsize=14, fontweight='bold', pad=8)
-    ax.margins(x=0.02, y=0.04)
+    if show_legend:
+        legend_items = [
+            Patch(facecolor='#A9CCE3', edgecolor='black', label='Sensor'),
+            Patch(facecolor='#D5D8DC', edgecolor='black', label='Autoware Map'),
+            Patch(facecolor='#F5B7B1', edgecolor='black', label='Actuator'),
+            Patch(facecolor='#73C6B6', edgecolor='black', label='DriveTrain'),
+            Patch(facecolor='#A3E4D7', edgecolor='black', label='Body Comfort'),
+            Patch(facecolor='#D7BDE2', edgecolor='black', label='Infotainment'),
+            Patch(facecolor='#F9E79F', edgecolor='black', label='Connectivity'),
+            Patch(facecolor='#5DADE2', edgecolor='black', label='AW Sensing/Preprocessor'),
+            Patch(facecolor='#82E0AA', edgecolor='black', label='AW Perception/Localization/Fusion'),
+            Patch(facecolor='#F1C40F', edgecolor='black', label='AW Planning'),
+            Patch(facecolor='#E67E22', edgecolor='black', label='AW Control/System'),
+            Patch(facecolor='#CB4335', edgecolor='black', label='AW Vehicle Cmd Gate'),
+        ]
+        fig.legend(
+            handles=legend_items,
+            loc='lower center',
+            bbox_to_anchor=(0.5, 0.01),
+            ncol=3,
+            frameon=True,
+            framealpha=1.0,
+            facecolor='white',
+            edgecolor='black',
+            fontsize=11 * readability_scale,
+            title='Node Types',
+            title_fontsize=12 * readability_scale,
+            borderpad=0.8,
+            labelspacing=0.7,
+        )
+
+    ax.margins(x=0.004, y=0.008)
     ax.set_axis_off()
+    fig.subplots_adjust(left=0.002, right=0.998, top=0.998, bottom=0.002)
     
-    fig.savefig("whole_vehicle_dag.png", dpi=400, bbox_inches='tight', pad_inches=0.05)
-    fig.savefig("whole_vehicle_dag.pdf", bbox_inches='tight', pad_inches=0.05)
+    fig.savefig("whole_vehicle_dag.pdf", dpi=600, bbox_inches='tight', pad_inches=0.01)
     if label_mode == "code":
         with open("whole_vehicle_dag_label_map.txt", "w", encoding="utf-8") as mapping_file:
             mapping_file.write("Code\tShort Name\tOriginal Node ID\n")
             for compact_code, short_name, original_id in sorted(label_map_rows, key=lambda item: item[0]):
                 mapping_file.write(f"{compact_code}\t{short_name}\t{original_id}\n")
-    print("Grafik 'whole_vehicle_dag.png' ve 'whole_vehicle_dag.pdf' olarak kaydedildi!")
+    print("Grafik 'whole_vehicle_dag.pdf' olarak kaydedildi!")
 
 
 def _parse_args():
@@ -268,8 +283,8 @@ def _parse_args():
     parser.add_argument(
         "--json",
         dest="json_filepath",
-        default="full_architecture_v2.json",
-        help="Path to architecture JSON file (default: full_architecture_v2.json)",
+        default="./configs/full_architecture.json",
+        help="Path to architecture JSON file (default: ./configs/full_architecture.json)",
     )
     parser.add_argument(
         "--label-mode",
@@ -282,6 +297,17 @@ def _parse_args():
         action="store_true",
         help="Automatically add default Autoware map nodes if they are missing in the input JSON",
     )
+    parser.add_argument(
+        "--show-legend",
+        action="store_true",
+        help="Show a high-visibility node type legend on the output PDF",
+    )
+    parser.add_argument(
+        "--readability-scale",
+        type=float,
+        default=1.0,
+        help="Scale node/text/legend sizes for better readability in LaTeX (e.g., 1.2 or 1.4)",
+    )
     return parser.parse_args()
 
 
@@ -291,5 +317,7 @@ if __name__ == "__main__":
         json_filepath=arguments.json_filepath,
         label_mode=arguments.label_mode,
         add_default_map_if_missing=arguments.add_default_map_if_missing,
+        show_legend=arguments.show_legend,
+        readability_scale=arguments.readability_scale,
     )
     

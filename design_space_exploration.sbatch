@@ -19,7 +19,7 @@ echo "Starting Design Space Exploration..."
 
 # Run
 source ./.optimization/bin/activate
-srun --cpu-bind=none python main.py --num_locs 6 --verbose --show_bus_utilization --hide_peripheral_labels  --num_points 5 --architecture_json full_architecture_v3.json --output_dir "results/experiment_${SLURM_JOB_ID}" &
+srun --cpu-bind=none python main.py --num_locs 6 --verbose --show_bus_utilization --hide_peripheral_labels --num_points 5 --architecture_json ./configs/full_architecture_v2.json --latex_topdown --topdown_dpi 600 --time_limit 600 --output_dir "results/experiment_${SLURM_JOB_ID}" &
 
 wait
 

@@ -96,6 +96,7 @@ def load_architecture_from_json(json_filepath, config_reader, num_locs=6):
             rom_req=int(comp.get('rom_req', 0)),
             asil_req=int(comp.get('asil_req', 0)),
             hw_required=list(comp.get('hw_required', [])),
+            redundant_with=comp.get('redundant_with', None),
         )
 
         sc_type = comp.get('type', '')

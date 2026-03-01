@@ -3,6 +3,7 @@ import matplotlib.patches as patches
 import networkx as nx
 import pandas as pd
 import seaborn as sns
+import numpy as np
 import os
 from matplotlib.lines import Line2D
 from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
@@ -18,10 +19,10 @@ class Visualization:
             os.makedirs(self.save_dir)
             print(f"Created directory for results: {self.save_dir}")
 
-    def save_plot(self, filename):
+    def save_plot(self, filename, dpi=300, pad_inches=0.02):
         if self.save_dir:
             filepath = os.path.join(self.save_dir, filename)
-            plt.savefig(filepath, bbox_inches='tight')
+            plt.savefig(filepath, dpi=dpi, bbox_inches='tight', pad_inches=pad_inches)
             print(f"Saved plot to: {filepath}")
             plt.close()
         else:
@@ -239,7 +240,7 @@ class Visualization:
         plt.tight_layout()
         self.save_plot(filename)
 
-    def visualize_pareto_front(self, pareto_solutions, filename="pareto_front_analysis.png"):
+    def visualize_pareto_front(self, pareto_solutions, filename="pareto_front_analysis.pdf"):
         """
         Create a visualization of the Pareto front showing trade-offs.
         
@@ -264,21 +265,91 @@ class Visualization:
         # Add solution numbers
         for i, (length, cost) in enumerate(zip(cable_lengths, total_costs), 1):
             ax1.annotate(f'S{i}', (length, cost), textcoords="offset points", 
-                        xytext=(0,10), ha='center', fontsize=10, fontweight='bold')
+                        xytext=(0,10), ha='center', fontsize=22, fontweight='bold')
         
         # Add line connecting solutions (Sorted by cable length)
         sorted_indices = sorted(range(len(cable_lengths)), key=lambda i: cable_lengths[i])
         sorted_lengths = [cable_lengths[i] for i in sorted_indices]
         sorted_costs = [total_costs[i] for i in sorted_indices]
-        ax1.plot(sorted_lengths, sorted_costs, 'b--', alpha=0.3, linewidth=1)
+
+        # Shade regions split by Pareto front (line remains untouched)
+        x_span = (max(sorted_lengths) - min(sorted_lengths)) if len(sorted_lengths) > 1 else 1.0
+        y_span = (max(sorted_costs) - min(sorted_costs)) if len(sorted_costs) > 1 else 1.0
+        x_pad = 0.0
+        y_pad = max(120.0, 0.04 * y_span)
+        x_min = min(sorted_lengths) - x_pad
+        x_max = max(sorted_lengths) + x_pad
+        y_min = min(sorted_costs) - y_pad
+        y_max = max(sorted_costs) + y_pad
+
+        if len(sorted_lengths) >= 2:
+            ax1.fill_between(
+                sorted_lengths,
+                sorted_costs,
+                y_max,
+                color="#000000",
+                alpha=0.58
+            )
+            ax1.fill_between(
+                sorted_lengths,
+                y_min,
+                sorted_costs,
+                color="#000000",
+                alpha=0.50
+            )
+
+        ax1.plot(sorted_lengths, sorted_costs, color='#1F2937', linestyle='--', alpha=0.95, linewidth=2.6)
+
+        # Export Pareto points for TikZ/pgfplots usage
+        base_name, _ = os.path.splitext(filename)
+        points_filename = f"{base_name}_points.dat"
+        if self.save_dir:
+            points_path = os.path.join(self.save_dir, points_filename)
+        else:
+            points_path = points_filename
+
+        with open(points_path, "w", encoding="utf-8") as points_file:
+            points_file.write("# idx cable_length total_cost\n")
+            for rank, (length, cost) in enumerate(zip(sorted_lengths, sorted_costs), 1):
+                points_file.write(f"{rank} {float(length):.6f} {float(cost):.6f}\n")
+        print(f"Saved Pareto points to: {points_path}")
         
-        ax1.set_xlabel('Total Cable Length (m)', fontsize=12, fontweight='bold')
-        ax1.set_ylabel('Total Cost ($)', fontsize=12, fontweight='bold')
-        ax1.set_title('Pareto Front: Cost vs Cable Length', fontsize=14, fontweight='bold')
+        # Removed axis labels and title for publication-ready plot
+        ax1.set_xlim(x_min, x_max)
+        ax1.set_ylim(y_min, y_max)
+        ax1.margins(x=0.0, y=0.0)
+
+        # Direct region labels (instead of legend)
+        x_mid = 0.5 * (x_min + x_max)
+        y_mid = 0.5 * (y_min + y_max)
+        ax1.text(
+            0.62,
+            0.30,
+            'Dominated Region',
+            fontsize=20,
+            fontweight='bold',
+            color="#008622",
+            ha='center',
+            va='center',
+            transform=ax1.transAxes,
+            bbox=dict(boxstyle='round,pad=0.25', facecolor='white', alpha=0.75, edgecolor='none')
+        )
+        ax1.text(
+            0.16,
+            0.28,
+            'Infeasible',
+            fontsize=20,
+            fontweight='bold',
+            color="#7A7A7A",
+            ha='center',
+            va='center',
+            transform=ax1.transAxes,
+            bbox=dict(boxstyle='round,pad=0.25', facecolor='white', alpha=0.75, edgecolor='none')
+        )
         ax1.grid(True, alpha=0.3)
         
-        plt.tight_layout()
-        self.save_plot(filename)
+        plt.tight_layout(pad=0.05)
+        self.save_plot(filename, dpi=600, pad_inches=0.0)
 
     def visualize_optimization_result(self,scs, ecus, sensors, actuators, assignments, filename="optimization_result.png"):
         """
@@ -472,7 +543,7 @@ class Visualization:
         plt.tight_layout()
         self.save_plot(filename)
 
-    def plot_vehicle_layout_topdown(self, sensors, actuators, assignments=None, ecus=None, locations=None, scs=None, comm_matrix=None, cable_types=None, comm_links=None, hw_features=None, interfaces_opened=None, comm_link_peak_load=None, eth_sensor_attachments=None, eth_actuator_attachments=None, shared_sensor_attachments=None, shared_actuator_attachments=None, show_bus_utilization=False, show_peripheral_labels=True, vehicle_length=4.5, vehicle_width=1.8, filename="vehicle_layout.png"):
+    def plot_vehicle_layout_topdown(self, sensors, actuators, assignments=None, ecus=None, locations=None, scs=None, comm_matrix=None, cable_types=None, comm_links=None, hw_features=None, interfaces_opened=None, comm_link_peak_load=None, eth_sensor_attachments=None, eth_actuator_attachments=None, shared_sensor_attachments=None, shared_actuator_attachments=None, show_bus_utilization=False, show_peripheral_labels=True, vehicle_length=4.5, vehicle_width=1.8, latex_mode=False, output_dpi=300, filename="vehicle_layout.png", ax=None, show_legend=True, save_output=True, subplot_title=None):
         """
         Bird's eye view of vehicle layout showing sensors, actuators, and optionally ECUs.
         Displays the physical dimensions and locations of all components.
@@ -483,7 +554,12 @@ class Visualization:
         - Models CAN/LIN/FLEXRAY as shared buses (trunk + branches), ETH as direct link
         - Shows ECU-to-ECU backbone connections with different line styles
         """
-        fig, ax = plt.subplots(figsize=(12, 9))
+        fig_size = (10.0, 7.4) if latex_mode else (12, 9)
+        created_figure = ax is None
+        if created_figure:
+            fig, ax = plt.subplots(figsize=fig_size)
+        else:
+            fig = ax.figure
         
         # Draw vehicle outline (front at top, rear at bottom)
         vehicle_rect = patches.Rectangle(
@@ -820,9 +896,22 @@ class Visualization:
                         ux, uy = 0.0, 1.0
                     else:
                         ux, uy = dx / norm, dy / norm
-                    hub_dist = min(0.28, max(0.12, 0.35 * norm))
-                    base_bus_x = loc.location.x + hub_dist * ux
-                    base_bus_y = loc_y + hub_dist * uy
+                    hub_dist = min(0.55, max(0.25, 0.50 * norm))
+
+                    # --- Change D: lateral offset per interface type so CAN/LIN/FLEXRAY
+                    # trunks from the same ECU don't overlap each other.
+                    iface_order = {'CAN': -1, 'FLEXRAY': 0, 'LIN': 1}
+                    n_shared = len(shared_bus_endpoints)
+                    if n_shared > 1:
+                        lateral_idx = iface_order.get(interface, 0)
+                        # perpendicular to the trunk direction
+                        perp_x, perp_y = -uy, ux
+                        lateral_sep = 0.12
+                        base_bus_x = loc.location.x + hub_dist * ux + lateral_idx * lateral_sep * perp_x
+                        base_bus_y = loc_y + hub_dist * uy + lateral_idx * lateral_sep * perp_y
+                    else:
+                        base_bus_x = loc.location.x + hub_dist * ux
+                        base_bus_y = loc_y + hub_dist * uy
 
                     active_groups = []
                     if low_eps:
@@ -1041,12 +1130,21 @@ class Visualization:
                               label='Active Location' if not active_label_done else '')
                     active_label_done = True
 
-                    # Show number of assigned SCs (0 for switch-only)
-                    num_scs = len(active_locations.get(loc.id, []))
+                    # Location label (only name inside the box)
                     short_loc_id = loc.id.replace('LOC', 'L')
-                    ax.text(loc.location.x, y_pos, f"{short_loc_id}\n({num_scs})",
-                           fontsize=7, ha='center', va='center', fontweight='bold',
+                    ax.text(loc.location.x, y_pos, short_loc_id,
+                           fontsize=8, ha='center', va='center', fontweight='bold',
                            color='black', zorder=10)
+
+                    # SC count badge – small circle at top-right corner
+                    num_scs = len(active_locations.get(loc.id, []))
+                    badge_x = loc.location.x + 0.08
+                    badge_y = y_pos + 0.08
+                    ax.scatter(badge_x, badge_y, s=210, c='white',
+                              marker='o', edgecolor='#FF6B35', linewidth=1.5, zorder=11)
+                    ax.text(badge_x, badge_y, str(num_scs),
+                           fontsize=6, ha='center', va='center', fontweight='bold',
+                           color='#FF6B35', zorder=12)
                 else:
                     # Inactive location: grayed out
                     ax.scatter(loc.location.x, y_pos, s=300, c='#D3D3D3',
@@ -1226,21 +1324,34 @@ class Visualization:
             Line2D([0], [0], marker='^', color='w', markerfacecolor='#F39C12', markersize=12, markeredgecolor='black', markeredgewidth=2, label='HVAC'),
         ])
         
-        ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.01, 1.0),
-              fontsize=9, ncol=1, framealpha=0.95, edgecolor='black', fancybox=True,
-              borderaxespad=0.0)
+        if show_legend:
+            legend_fontsize = 10 if latex_mode else 9
+            ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.01, 1.0),
+                fontsize=legend_fontsize, ncol=1, framealpha=0.95, edgecolor='black', fancybox=True,
+                borderaxespad=0.0)
         
         # Set labels and title
-        ax.set_xlabel('X (Left-Right) [meters]', fontsize=13, weight='bold')
-        ax.set_ylabel('Y (Front-Back) [meters]', fontsize=13, weight='bold')
-        
-        title = "Vehicle Layout - Bird's Eye View (Top-Down)"
-        if locations is not None and assignments is not None:
-            active_count = len(set(assignments.values()))
-            title += f" - {active_count} Active Locations"
-        elif assignments:
-            title += f" - {len(set(assignments.values()))} ECUs Assigned"
-        ax.set_title(title, fontsize=16, weight='bold', pad=20)
+        if subplot_title is not None:
+            ax.set_xlabel('')
+            ax.set_ylabel('')
+            ax.set_title(subplot_title, fontsize=16, weight='bold', pad=10)
+            ax.tick_params(axis='both', labelsize=8)
+        elif latex_mode:
+            ax.set_xlabel('')
+            ax.set_ylabel('')
+            ax.set_title('')
+            ax.tick_params(axis='both', labelsize=8)
+        else:
+            ax.set_xlabel('X (Left-Right) [meters]', fontsize=13, weight='bold')
+            ax.set_ylabel('Y (Front-Back) [meters]', fontsize=13, weight='bold')
+
+            title = "Vehicle Layout - Bird's Eye View (Top-Down)"
+            if locations is not None and assignments is not None:
+                active_count = len(set(assignments.values()))
+                title += f" - {active_count} Active Locations"
+            elif assignments:
+                title += f" - {len(set(assignments.values()))} ECUs Assigned"
+            ax.set_title(title, fontsize=16, weight='bold', pad=20)
         
         # Set equal aspect ratio
         ax.set_aspect('equal')
@@ -1276,8 +1387,186 @@ class Visualization:
         ax.grid(True, alpha=0.4, linestyle=':', linewidth=0.8)
         ax.set_facecolor('#F8F9F9')
         
-        plt.tight_layout(rect=[0, 0, 0.73, 1])
-        self.save_plot(filename)
+        if save_output:
+            layout_rect = [0, 0, 0.74, 1] if (latex_mode and show_legend) else ([0, 0, 0.73, 1] if show_legend else [0, 0, 1, 1])
+            fig.tight_layout(rect=layout_rect)
+            export_dpi = max(300, int(output_dpi))
+            pad_inches = 0.01 if latex_mode else 0.02
+            self.save_plot(filename, dpi=export_dpi, pad_inches=pad_inches)
+            if created_figure:
+                plt.close(fig)
+
+        return legend_elements
+
+    def plot_two_solutions_side_by_side_shared_legend(self, sensors, actuators, solution_a, solution_b, locations=None, scs=None, comm_matrix=None, cable_types=None, show_bus_utilization=False, show_peripheral_labels=True, latex_mode=True, output_dpi=600, filename="vehicle_layout_s1_s2_shared_legend.pdf", label_a="S1", label_b="S2"):
+        """Render two solutions side-by-side with one figure-level shared legend and export as a single file."""
+        fig_h = 7.2 if latex_mode else 8.6
+        fig, axes = plt.subplots(1, 2, figsize=(19.0, fig_h))
+
+        legend_elements = self.plot_vehicle_layout_topdown(
+            sensors,
+            actuators,
+            assignments=solution_a.get('assignment'),
+            locations=locations,
+            scs=scs,
+            comm_matrix=comm_matrix,
+            cable_types=cable_types,
+            comm_links=solution_a.get('comm_links'),
+            hw_features=solution_a.get('hw_features'),
+            interfaces_opened=solution_a.get('interfaces'),
+            comm_link_peak_load=solution_a.get('comm_link_peak_load'),
+            eth_sensor_attachments=solution_a.get('eth_sensor_attachments'),
+            eth_actuator_attachments=solution_a.get('eth_actuator_attachments'),
+            shared_sensor_attachments=solution_a.get('shared_sensor_attachments'),
+            shared_actuator_attachments=solution_a.get('shared_actuator_attachments'),
+            show_bus_utilization=show_bus_utilization,
+            show_peripheral_labels=show_peripheral_labels,
+            latex_mode=latex_mode,
+            output_dpi=output_dpi,
+            ax=axes[0],
+            show_legend=False,
+            save_output=False,
+            subplot_title=label_a,
+        )
+
+        self.plot_vehicle_layout_topdown(
+            sensors,
+            actuators,
+            assignments=solution_b.get('assignment'),
+            locations=locations,
+            scs=scs,
+            comm_matrix=comm_matrix,
+            cable_types=cable_types,
+            comm_links=solution_b.get('comm_links'),
+            hw_features=solution_b.get('hw_features'),
+            interfaces_opened=solution_b.get('interfaces'),
+            comm_link_peak_load=solution_b.get('comm_link_peak_load'),
+            eth_sensor_attachments=solution_b.get('eth_sensor_attachments'),
+            eth_actuator_attachments=solution_b.get('eth_actuator_attachments'),
+            shared_sensor_attachments=solution_b.get('shared_sensor_attachments'),
+            shared_actuator_attachments=solution_b.get('shared_actuator_attachments'),
+            show_bus_utilization=show_bus_utilization,
+            show_peripheral_labels=show_peripheral_labels,
+            latex_mode=latex_mode,
+            output_dpi=output_dpi,
+            ax=axes[1],
+            show_legend=False,
+            save_output=False,
+            subplot_title=label_b,
+        )
+
+        legend_fontsize = 10 if latex_mode else 9
+        fig.legend(
+            handles=legend_elements,
+            loc='lower center',
+            bbox_to_anchor=(0.5, -0.01),
+            ncol=7,
+            fontsize=legend_fontsize,
+            framealpha=0.95,
+            edgecolor='black',
+            fancybox=True,
+        )
+
+        fig.subplots_adjust(left=0.02, right=0.98, top=0.94, bottom=0.20, wspace=0.06)
+        export_dpi = max(300, int(output_dpi))
+        pad_inches = 0.01 if latex_mode else 0.02
+
+        if self.save_dir:
+            filepath = os.path.join(self.save_dir, filename)
+        else:
+            filepath = filename
+        fig.savefig(filepath, dpi=export_dpi, bbox_inches='tight', pad_inches=pad_inches)
+        print(f"Saved plot to: {filepath}")
+        plt.close(fig)
+
+    def plot_latex_topdown_comparison(self, sensors, actuators, pareto_solutions, locations=None, scs=None, comm_matrix=None, cable_types=None, solution_indices=None, show_bus_utilization=False, show_peripheral_labels=True, output_dpi=600, filename="vehicle_layout_latex_compare_shared_legend.pdf"):
+        """Render 2-3 selected Pareto solutions side-by-side with one shared legend in a single PDF."""
+        if not pareto_solutions or len(pareto_solutions) < 2:
+            print("Skipping LaTeX comparison plot: need at least 2 Pareto solutions.")
+            return
+
+        n_total = len(pareto_solutions)
+        if solution_indices is None:
+            # Default: first and last (two extremes)
+            selected = [0, n_total - 1] if n_total >= 2 else [0]
+        else:
+            selected = []
+            for idx in solution_indices:
+                if 0 <= idx < n_total and idx not in selected:
+                    selected.append(idx)
+
+        if len(selected) < 2:
+            # Fallback: always pick two extremes (first=min cable, last=min cost)
+            selected = [0, n_total - 1] if n_total >= 2 else [0]
+        if len(selected) > 3:
+            selected = selected[:3]
+
+        n_cols = len(selected)
+        fig_w = 4.2 * n_cols
+        fig_h = 7.0
+        fig, axes = plt.subplots(1, n_cols, figsize=(fig_w, fig_h))
+        axes = np.atleast_1d(axes).tolist()
+
+        legend_elements = None
+        for ax, idx in zip(axes, selected):
+            solution = pareto_solutions[idx]
+            label = f"S{idx + 1}"
+            current_legend = self.plot_vehicle_layout_topdown(
+                sensors,
+                actuators,
+                assignments=solution.get('assignment'),
+                locations=locations,
+                scs=scs,
+                comm_matrix=comm_matrix,
+                cable_types=cable_types,
+                comm_links=solution.get('comm_links'),
+                hw_features=solution.get('hw_features'),
+                interfaces_opened=solution.get('interfaces'),
+                comm_link_peak_load=solution.get('comm_link_peak_load'),
+                eth_sensor_attachments=solution.get('eth_sensor_attachments'),
+                eth_actuator_attachments=solution.get('eth_actuator_attachments'),
+                shared_sensor_attachments=solution.get('shared_sensor_attachments'),
+                shared_actuator_attachments=solution.get('shared_actuator_attachments'),
+                show_bus_utilization=show_bus_utilization,
+                show_peripheral_labels=show_peripheral_labels,
+                latex_mode=True,
+                output_dpi=output_dpi,
+                ax=ax,
+                show_legend=False,
+                save_output=False,
+                subplot_title=label,
+            )
+            if legend_elements is None:
+                legend_elements = current_legend
+
+        if legend_elements:
+            fig.legend(
+                handles=legend_elements,
+                loc='lower center',
+                bbox_to_anchor=(0.5, 0.04),
+                ncol=min(len(legend_elements), 10),
+                fontsize=7.5,
+                framealpha=0.95,
+                edgecolor='black',
+                fancybox=True,
+                markerscale=0.9,
+                handlelength=1.25,
+                handletextpad=0.4,
+                columnspacing=0.75,
+                labelspacing=0.3,
+                borderpad=0.28,
+            )
+
+        fig.subplots_adjust(left=0.01, right=0.99, top=0.96, bottom=0.12, wspace=0.005)
+        export_dpi = max(300, int(output_dpi))
+
+        if self.save_dir:
+            filepath = os.path.join(self.save_dir, filename)
+        else:
+            filepath = filename
+        fig.savefig(filepath, dpi=export_dpi, bbox_inches='tight', pad_inches=0.01)
+        print(f"Saved plot to: {filepath}")
+        plt.close(fig)
 
     def visualize_solution_architecture(self, solution, scs, locations, partitions_config=None, filename="solution_architecture.png"):
         """

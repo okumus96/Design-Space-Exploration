@@ -48,13 +48,17 @@ def main(args):
     reporter = ReportGenerator()
     reporter.display_data_summary(scs, sensors, actuators, cable_types, comm_matrix, locations=locations)
     reporter.display_data(sensors, actuators, scs, locations=locations, hardwares=hardwares, interface_costs=interfaces, partitions=partitions)
+    topdown_ext = "pdf" if args.latex_topdown else "png"
+
     visualizer.plot_vehicle_layout_topdown(
         sensors,
         actuators,
         assignments=None,
         locations=locations,
         show_peripheral_labels=not args.hide_peripheral_labels,
-        filename="initial_vehicle_layout.png"
+        latex_mode=args.latex_topdown,
+        output_dpi=args.topdown_dpi,
+        filename=f"initial_vehicle_layout.{topdown_ext}"
     )
     #visualizer.plot_sw_sensor_actuator_graph_final(scs, sensors, actuators, comm_matrix)
     #visualizer.plot_charts(scs, sensors, actuators)
@@ -72,7 +76,9 @@ def main(args):
         partitions=partitions,
         hardwares=hardwares,
         interfaces=interfaces,
-        num_points=args.num_points
+        num_points=args.num_points,
+        solve_time_limit=args.time_limit,
+        enable_uncertainty=args.uncertainty,
     )
     end_time = time.time()
     print(f"#"*80)
@@ -108,7 +114,36 @@ def main(args):
                                eth_sensor_attachments=solution.get('eth_sensor_attachments'), eth_actuator_attachments=solution.get('eth_actuator_attachments'),
                                shared_sensor_attachments=solution.get('shared_sensor_attachments'), shared_actuator_attachments=solution.get('shared_actuator_attachments'),
                                show_peripheral_labels=not args.hide_peripheral_labels,
-                               filename=f"vehicle_layout_solution_{solution_idx}.png")
+                               latex_mode=args.latex_topdown,
+                               output_dpi=args.topdown_dpi,
+                               filename=f"vehicle_layout_solution_{solution_idx}.{topdown_ext}")
+
+    if args.latex_topdown and len(pareto_solutions) >= 2:
+        raw_tokens = [token.strip() for token in args.latex_compare_solutions.split(',') if token.strip()]
+        selected_indices = []
+        for token in raw_tokens:
+            try:
+                value = int(token)
+            except ValueError:
+                continue
+            if value >= 1:
+                selected_indices.append(value - 1)
+
+        print("\n   Generating LaTeX side-by-side solution comparison with shared legend...")
+        visualizer.plot_latex_topdown_comparison(
+            sensors,
+            actuators,
+            pareto_solutions,
+            locations=locations,
+            scs=scs,
+            comm_matrix=comm_matrix,
+            cable_types=cable_types,
+            solution_indices=selected_indices,
+            show_bus_utilization=args.show_bus_utilization,
+            show_peripheral_labels=not args.hide_peripheral_labels,
+            output_dpi=args.topdown_dpi,
+            filename="vehicle_layout_latex_compare_shared_legend.pdf",
+        )
     
     print("\n" + "=" * 80)
     print("PIPELINE COMPLETED SUCCESSFULLY")
@@ -124,6 +159,7 @@ if __name__ == "__main__":
     argparser.add_argument("--config_dir", type=str, default="configs", help="Directory containing configuration JSON files")
     argparser.add_argument("--solver", type=str, default="gurobi", choices=["gurobi", "z3"], help="Solver to use")
     argparser.add_argument("--time_limit", type=int, default=None, help="Time limit in seconds")
+    argparser.add_argument("--uncertainty", "--uncertainity", dest="uncertainty", action="store_true", help="Enable uncertainty-aware constraints (robust latency, SW margins, health factor)")
     argparser.add_argument("--warm_start", action="store_true", help="Enable warm start for optimization")
     argparser.add_argument("--mip_gap", type=float, default=None, help="MIP Gap for Gurobi optimizer")
     argparser.add_argument("--output_dir", type=str, default="results", help="Directory to save visualization results")
@@ -131,5 +167,8 @@ if __name__ == "__main__":
     argparser.add_argument("--verbose", action="store_true", help="Enable verbose output during optimization")
     argparser.add_argument("--show_bus_utilization", action="store_true", help="Show bus utilization summary on top-down layout")
     argparser.add_argument("--hide_peripheral_labels", action="store_true", help="Hide sensor and actuator labels in top-down vehicle layout plots")
+    argparser.add_argument("--latex_topdown", action="store_true", help="Enable LaTeX-oriented top-down plotting and save initial/solution layouts as PDF")
+    argparser.add_argument("--latex_compare_solutions", type=str, default="1,3", help="Comma-separated 1-based Pareto solution indices for LaTeX shared-legend comparison (2 or 3 entries), e.g. 1,3 or 1,2,3")
+    argparser.add_argument("--topdown_dpi", type=int, default=600, help="DPI for top-down figure export (used for PDF/PNG output)")
     args = argparser.parse_args()
     main(args)
