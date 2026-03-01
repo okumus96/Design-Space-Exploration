@@ -3,11 +3,13 @@ import matplotlib.patches as patches
 import networkx as nx
 import pandas as pd
 import seaborn as sns
+import numpy as np
 import os
 from matplotlib.lines import Line2D
 from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
 from matplotlib.patches import ConnectionPatch
 from tabulate import tabulate
+
 
 
 class Visualization:
@@ -17,102 +19,16 @@ class Visualization:
             os.makedirs(self.save_dir)
             print(f"Created directory for results: {self.save_dir}")
 
-    def save_plot(self, filename):
+    def save_plot(self, filename, dpi=300, pad_inches=0.02):
         if self.save_dir:
             filepath = os.path.join(self.save_dir, filename)
-            plt.savefig(filepath, bbox_inches='tight')
+            plt.savefig(filepath, dpi=dpi, bbox_inches='tight', pad_inches=pad_inches)
             print(f"Saved plot to: {filepath}")
             plt.close()
         else:
             plt.show()
 
-    def display_data_summary(self, ecus, scs, sensors, actuators, cable_types, comm_matrix):
-        print(f"\n Generated Data Summary:")
-        print(f"   - ECUs: {len(ecus)}")
-        print(f"   - Software Components: {len(scs)}")
-        print(f"   - Sensors: {len(sensors)}")
-        print(f"   - Actuators: {len(actuators)}")
-        print(f"   - Communication Links: {len(comm_matrix)}")
-        print(f"   - Bus Types: {len(cable_types)}")
-
-    def display_assignments(self,assignments):
-            # Summary by ECU
-            print(f"\n   SWs assigned per ECU:")
-            ecu_assignments = {}
-            for sc_id, ecu_id in assignments.items():
-                if ecu_id not in ecu_assignments:
-                    ecu_assignments[ecu_id] = []
-                ecu_assignments[ecu_id].append(sc_id)
-            
-            for ecu_id in sorted(ecu_assignments.keys()):
-                assigned_scs = ecu_assignments[ecu_id]
-                sc_list = ", ".join(assigned_scs)
-                print(f"      - {ecu_id}: {len(assigned_scs)} SWs → [{sc_list}]")
-
-    def display_sensors(self,df_sensors):
-        print("\n" + "="*80)
-        print("SENSORS")
-        print("="*80)
-        print(tabulate(df_sensors, headers="keys", tablefmt="grid", showindex=True))
-
-    def display_actuators(self,df_actuators):
-        print("\n" + "="*80)
-        print("ACTUATORS")
-        print("="*80)
-        print(tabulate(df_actuators, headers="keys", tablefmt="grid", showindex=True))
-
-    def display_scs(self,df_sc):
-        print("\n" + "="*80)
-        print("SOFTWARE COMPONENTS - Resource Requirements")
-        print("="*80)
-        # Convert to DataFrame if it's a list
-        if isinstance(df_sc, list):
-            df_sc = pd.DataFrame([vars(s) for s in df_sc])
-        
-        # First table: Resource requirements
-        resource_cols = ['id', 'domain', 'cpu_req', 'ram_req', 'rom_req', 'asil_req', 'hw_required', 'redundant_with']
-        df_resources = df_sc[resource_cols]
-        print(tabulate(df_resources, headers="keys", tablefmt="grid", showindex=False))
-        
-        # Second table: Connectivity
-        print("\n" + "="*80)
-        print("SOFTWARE COMPONENTS - Connectivity")
-        print("="*80)
-        connectivity_cols = ['id', 'interface_required', 'sensors', 'actuators']
-        df_connectivity = df_sc[connectivity_cols]
-        print(tabulate(df_connectivity, headers="keys", tablefmt="grid", showindex=False))
-
-    def display_ECUs(self,df_ecu):
-        print("\n" + "="*80)
-        print("ECUs")
-        print("="*80)
-        print(tabulate(df_ecu, headers="keys", tablefmt="grid", showindex=True))
-
-    def display_data(self,df_sensors, df_actuators, df_sc, df_ecu):
-
-        # Display summary of generated Sensors and Actuators
-        self.display_sensors(df_sensors)
-        self.display_actuators(df_actuators)
-        # Display summary of generated Software Components (SWs)
-        self.display_scs(df_sc)
-
-        # Display summary of generated ECUs
-        self.display_ECUs(df_ecu)
-    
-    def display_assignments(self,solution_idx, solution,scs, ecus):
-        assignments = solution['assignment']
-        print("\n" + "-" * 80)
-        print(f"SOLUTION {solution_idx}")
-        print(f"  Hardware Cost: ${solution['hardware_cost']:.2f}")
-        print(f"  Cable Length: {solution['cable_length']:.2f}m")
-        print(f"  Total Cost: ${solution['hardware_cost']:.2f}")
-        print(f"  ECUs Used: {solution['num_ecus_used']}")
-        print("-" * 80)
-        
-        print(f"\nAssignment Summary:")
-        print(f"   - Total SWs Assigned: {len(assignments)} / {len(scs)}")
-
-    def plot_charts(self, sc_list, ecu_list, sensor_list, actuator_list):
+    def plot_charts(self, sc_list, sensor_list, actuator_list, ecu_list=None):
         """Convert lists to DataFrames and plot charts"""
         # Convert lists to DataFrames if not already
         if isinstance(sc_list, list):
@@ -120,10 +36,12 @@ class Visualization:
         else:
             df_sc = sc_list
             
-        if isinstance(ecu_list, list):
-            df_ecu = pd.DataFrame([vars(e) for e in ecu_list])
-        else:
-            df_ecu = ecu_list
+        df_ecu = None
+        if ecu_list is not None:
+            if isinstance(ecu_list, list):
+                df_ecu = pd.DataFrame([vars(e) for e in ecu_list])
+            else:
+                df_ecu = ecu_list
             
         if isinstance(sensor_list, list):
             df_sensors = pd.DataFrame([vars(s) for s in sensor_list])
@@ -139,23 +57,27 @@ class Visualization:
         fig, axes = plt.subplots(2, 2, figsize=(14, 10))
         fig.suptitle('Hardware vs Software Distribution', fontsize=16)
 
-        # ECU Distribution
-        sns.countplot(x='type', data=df_ecu, ax=axes[0, 0], palette='viridis')
-        axes[0, 0].set_title('Distribution of Candidate ECU Types')
+        # ECU Distribution (optional)
+        if df_ecu is not None and 'type' in df_ecu.columns:
+            sns.countplot(x='type', data=df_ecu, ax=axes[0, 0], palette='viridis')
+            axes[0, 0].set_title('Distribution of Candidate ECU Types')
+        else:
+            axes[0, 0].axis('off')
+            axes[0, 0].set_title('')
 
         #  SWC Distribution in terms of Domain
         df_sc['type_guess'] = df_sc['id'].apply(lambda x: x.split('_')[-1])
-        sns.countplot(x='type_guess', data=df_sc, ax=axes[0, 1], palette='magma')
+        sns.countplot(x='type_guess', data=df_sc, hue='type_guess', ax=axes[0, 1], palette='magma', legend=False)
         axes[0, 1].set_title('Distribution of SWC Workloads')
 
         # Sensor Type Distribution
-        sns.countplot(x='type', data=df_sensors, ax=axes[1, 0], palette='Set2')
+        sns.countplot(x='type', data=df_sensors, hue='type', ax=axes[1, 0], palette='Set2', legend=False)
         axes[1, 0].set_title('Distribution of Sensor Types')
         axes[1, 0].set_xlabel('Sensor Type')
         axes[1, 0].set_ylabel('Count')
 
         # Actuator Type Distribution
-        sns.countplot(x='type', data=df_actuators, ax=axes[1, 1], palette='Set1')
+        sns.countplot(x='type', data=df_actuators, hue='type', ax=axes[1, 1], palette='Set1', legend=False)
         axes[1, 1].set_title('Distribution of Actuator Types')
         axes[1, 1].set_xlabel('Actuator Type')
         axes[1, 1].set_ylabel('Count')
@@ -318,7 +240,7 @@ class Visualization:
         plt.tight_layout()
         self.save_plot(filename)
 
-    def visualize_pareto_front(self, pareto_solutions, filename="pareto_front_analysis.png"):
+    def visualize_pareto_front(self, pareto_solutions, filename="pareto_front_analysis.pdf"):
         """
         Create a visualization of the Pareto front showing trade-offs.
         
@@ -343,21 +265,91 @@ class Visualization:
         # Add solution numbers
         for i, (length, cost) in enumerate(zip(cable_lengths, total_costs), 1):
             ax1.annotate(f'S{i}', (length, cost), textcoords="offset points", 
-                        xytext=(0,10), ha='center', fontsize=10, fontweight='bold')
+                        xytext=(0,10), ha='center', fontsize=22, fontweight='bold')
         
         # Add line connecting solutions (Sorted by cable length)
         sorted_indices = sorted(range(len(cable_lengths)), key=lambda i: cable_lengths[i])
         sorted_lengths = [cable_lengths[i] for i in sorted_indices]
         sorted_costs = [total_costs[i] for i in sorted_indices]
-        ax1.plot(sorted_lengths, sorted_costs, 'b--', alpha=0.3, linewidth=1)
+
+        # Shade regions split by Pareto front (line remains untouched)
+        x_span = (max(sorted_lengths) - min(sorted_lengths)) if len(sorted_lengths) > 1 else 1.0
+        y_span = (max(sorted_costs) - min(sorted_costs)) if len(sorted_costs) > 1 else 1.0
+        x_pad = 0.0
+        y_pad = max(120.0, 0.04 * y_span)
+        x_min = min(sorted_lengths) - x_pad
+        x_max = max(sorted_lengths) + x_pad
+        y_min = min(sorted_costs) - y_pad
+        y_max = max(sorted_costs) + y_pad
+
+        if len(sorted_lengths) >= 2:
+            ax1.fill_between(
+                sorted_lengths,
+                sorted_costs,
+                y_max,
+                color="#000000",
+                alpha=0.58
+            )
+            ax1.fill_between(
+                sorted_lengths,
+                y_min,
+                sorted_costs,
+                color="#000000",
+                alpha=0.50
+            )
+
+        ax1.plot(sorted_lengths, sorted_costs, color='#1F2937', linestyle='--', alpha=0.95, linewidth=2.6)
+
+        # Export Pareto points for TikZ/pgfplots usage
+        base_name, _ = os.path.splitext(filename)
+        points_filename = f"{base_name}_points.dat"
+        if self.save_dir:
+            points_path = os.path.join(self.save_dir, points_filename)
+        else:
+            points_path = points_filename
+
+        with open(points_path, "w", encoding="utf-8") as points_file:
+            points_file.write("# idx cable_length total_cost\n")
+            for rank, (length, cost) in enumerate(zip(sorted_lengths, sorted_costs), 1):
+                points_file.write(f"{rank} {float(length):.6f} {float(cost):.6f}\n")
+        print(f"Saved Pareto points to: {points_path}")
         
-        ax1.set_xlabel('Total Cable Length (m)', fontsize=12, fontweight='bold')
-        ax1.set_ylabel('Total Cost ($)', fontsize=12, fontweight='bold')
-        ax1.set_title('Pareto Front: Cost vs Cable Length', fontsize=14, fontweight='bold')
+        # Removed axis labels and title for publication-ready plot
+        ax1.set_xlim(x_min, x_max)
+        ax1.set_ylim(y_min, y_max)
+        ax1.margins(x=0.0, y=0.0)
+
+        # Direct region labels (instead of legend)
+        x_mid = 0.5 * (x_min + x_max)
+        y_mid = 0.5 * (y_min + y_max)
+        ax1.text(
+            0.62,
+            0.30,
+            'Dominated Region',
+            fontsize=20,
+            fontweight='bold',
+            color="#008622",
+            ha='center',
+            va='center',
+            transform=ax1.transAxes,
+            bbox=dict(boxstyle='round,pad=0.25', facecolor='white', alpha=0.75, edgecolor='none')
+        )
+        ax1.text(
+            0.16,
+            0.28,
+            'Infeasible',
+            fontsize=20,
+            fontweight='bold',
+            color="#7A7A7A",
+            ha='center',
+            va='center',
+            transform=ax1.transAxes,
+            bbox=dict(boxstyle='round,pad=0.25', facecolor='white', alpha=0.75, edgecolor='none')
+        )
         ax1.grid(True, alpha=0.3)
         
-        plt.tight_layout()
-        self.save_plot(filename)
+        plt.tight_layout(pad=0.05)
+        self.save_plot(filename, dpi=600, pad_inches=0.0)
 
     def visualize_optimization_result(self,scs, ecus, sensors, actuators, assignments, filename="optimization_result.png"):
         """
@@ -551,12 +543,23 @@ class Visualization:
         plt.tight_layout()
         self.save_plot(filename)
 
-    def plot_vehicle_layout_topdown(self, sensors, actuators, assignments=None, ecus=None, vehicle_length=4.5, vehicle_width=1.8, filename="vehicle_layout.png"):
+    def plot_vehicle_layout_topdown(self, sensors, actuators, assignments=None, ecus=None, locations=None, scs=None, comm_matrix=None, cable_types=None, comm_links=None, hw_features=None, interfaces_opened=None, comm_link_peak_load=None, eth_sensor_attachments=None, eth_actuator_attachments=None, shared_sensor_attachments=None, shared_actuator_attachments=None, show_bus_utilization=False, show_peripheral_labels=True, vehicle_length=4.5, vehicle_width=1.8, latex_mode=False, output_dpi=300, filename="vehicle_layout.png", ax=None, show_legend=True, save_output=True, subplot_title=None):
         """
         Bird's eye view of vehicle layout showing sensors, actuators, and optionally ECUs.
         Displays the physical dimensions and locations of all components.
+        
+        When assignments and scs are provided:
+        - Highlights active locations (those with assigned SCs)
+        - Shows connections from active locations to their connected sensors/actuators
+        - Models CAN/LIN/FLEXRAY as shared buses (trunk + branches), ETH as direct link
+        - Shows ECU-to-ECU backbone connections with different line styles
         """
-        fig, ax = plt.subplots(figsize=(16, 12))
+        fig_size = (10.0, 7.4) if latex_mode else (12, 9)
+        created_figure = ax is None
+        if created_figure:
+            fig, ax = plt.subplots(figsize=fig_size)
+        else:
+            fig = ax.figure
         
         # Draw vehicle outline (front at top, rear at bottom)
         vehicle_rect = patches.Rectangle(
@@ -581,6 +584,16 @@ class Visualization:
         ax.axhline(y=0, color='black', linestyle='--', linewidth=1.5, alpha=0.5, label='Vehicle Centerline')
         ax.axvline(x=0, color='black', linestyle='--', linewidth=1.5, alpha=0.5)
         
+        # Color maps for bus/interface types
+        interface_colors = {
+            'ETH': '#3498DB',        # Blue
+            'CAN': '#E74C3C',        # Red
+            'FLEXRAY': '#2ECC71',    # Green
+            'LIN': '#F39C12',        # Orange
+            'UART': '#9B59B6',       # Purple
+            'SPI': '#4ECDC4',        # Teal
+        }
+        
         # Color maps for sensor/actuator types
         sensor_colors = {
             'CAMERA': '#2ECC71',      # Green
@@ -597,9 +610,44 @@ class Visualization:
             'HVAC': '#F39C12',        # Orange
             'LIGHT': '#FFD700'        # Gold
         }
-        
-        # Helper function to offset labels to avoid overlap
-        label_offsets = {}
+
+        def _capacity_for_iface(iface_name):
+            if not cable_types:
+                return None
+            iface_obj = cable_types.get(iface_name)
+            if iface_obj is None:
+                return None
+            cap = getattr(iface_obj, 'capacity', None)
+            if cap is None:
+                return None
+            try:
+                cap_val = float(cap)
+            except Exception:
+                return None
+            if cap_val == float('inf') or cap_val <= 0:
+                return None
+            return cap_val
+
+        def _draw_util_text(x1, y1, x2, y2, pct, color):
+            if pct is None:
+                return
+            if pct > 0 and pct < 1:
+                txt = "<1%"
+            else:
+                txt = f"{pct:.1f}%"
+            mx = 0.5 * (x1 + x2)
+            my = 0.5 * (y1 + y2)
+            ax.text(
+                mx,
+                my,
+                txt,
+                fontsize=6,
+                color='black',
+                ha='center',
+                va='center',
+                bbox=dict(boxstyle='round,pad=0.15', facecolor='white', alpha=0.75, edgecolor=color, linewidth=0.6),
+                zorder=15,
+            )
         
         # Plot sensors 
         sensor_types_plotted = set()
@@ -612,13 +660,14 @@ class Visualization:
                 ax.scatter(sensor.location.x, y_pos, s=250, c=color, 
                           marker='o', edgecolor='black', linewidth=2, zorder=5, label=label)
                 
-                # Offset labels to avoid overlap
-                offset_x = 0.08 if idx % 2 == 0 else -0.08
-                offset_y = 0.08 if idx % 3 == 0 else -0.08
-                short_id = sensor.id.replace('CAM_', 'C_').replace('LIDAR_', 'L_').replace('_', '')
-                ax.annotate(short_id, (sensor.location.x + offset_x, y_pos + offset_y), 
-                           fontsize=7, ha='center', va='center', fontweight='bold', color='black',
-                           bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7, edgecolor='none'))
+                if show_peripheral_labels:
+                    # Offset labels to avoid overlap
+                    offset_x = 0.08 if idx % 2 == 0 else -0.08
+                    offset_y = 0.08 if idx % 3 == 0 else -0.08
+                    short_id = sensor.id.replace('CAM_', 'C_').replace('LIDAR_', 'L_').replace('_', '')
+                    ax.annotate(short_id, (sensor.location.x + offset_x, y_pos + offset_y), 
+                               fontsize=7, ha='center', va='center', fontweight='bold', color='black',
+                               bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7, edgecolor='none'))
                 if sensor.type not in sensor_types_plotted:
                     sensor_types_plotted.add(sensor.type)
         
@@ -633,18 +682,482 @@ class Visualization:
                 ax.scatter(actuator.location.x, y_pos, s=250, c=color, 
                           marker='^', edgecolor='black', linewidth=2, zorder=5, label=label)
                 
-                # Offset labels to avoid overlap
-                offset_x = 0.08 if idx % 2 == 0 else -0.08
-                offset_y = 0.08 if idx % 3 == 1 else -0.08
-                short_id = actuator.id.replace('ACT_', 'A_').replace('_', '')
-                ax.annotate(short_id, (actuator.location.x + offset_x, y_pos + offset_y), 
-                           fontsize=7, ha='center', va='center', fontweight='bold', color='black',
-                           bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7, edgecolor='none'))
+                if show_peripheral_labels:
+                    # Offset labels to avoid overlap
+                    offset_x = 0.08 if idx % 2 == 0 else -0.08
+                    offset_y = 0.08 if idx % 3 == 1 else -0.08
+                    short_id = actuator.id.replace('ACT_', 'A_').replace('_', '')
+                    ax.annotate(short_id, (actuator.location.x + offset_x, y_pos + offset_y), 
+                               fontsize=7, ha='center', va='center', fontweight='bold', color='black',
+                               bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7, edgecolor='none'))
                 if actuator.type not in actuator_types_plotted:
                     actuator_types_plotted.add(actuator.type)
         
-        # Plot ECUs (if provided)
-        if ecus is not None:
+        # Plot Locations or ECUs (if provided)
+        if locations is not None and assignments is None:
+            # Mode 1: Show all candidate locations without assignments
+            for loc in locations:
+                y_pos = -loc.location.y
+
+                label = 'Candidate Site' if loc.id == 'LOC0' else ""
+                ax.scatter(loc.location.x, y_pos, s=350, c='lightgray',
+                          marker='s', edgecolor='black', linewidth=2, zorder=4,
+                          label=label)
+
+                short_loc_id = loc.id.replace('LOC', 'L')
+                ax.text(loc.location.x, y_pos, short_loc_id,
+                       fontsize=7, ha='center', va='center', fontweight='bold',
+                       color='black', zorder=10)
+        
+        elif locations is not None and assignments is not None:
+            # Mode 2: Show locations with assignments and connections
+            # Create a mapping of location to its coordinates
+            loc_dict = {loc.id: loc for loc in locations}
+            
+            # Find active locations and their assigned SCs
+            active_locations = {}
+            for sc_id, loc_id in assignments.items():
+                if loc_id not in active_locations:
+                    active_locations[loc_id] = []
+                active_locations[loc_id].append(sc_id)
+
+            # Also mark switch-only locations as active (if provided).
+            switch_loc_ids = set()
+            if hw_features:
+                for hw in hw_features:
+                    if isinstance(hw, str) and hw.startswith('SWITCH@'):
+                        parts = hw.split('@', 1)
+                        if len(parts) == 2 and parts[1]:
+                            switch_loc_ids.add(parts[1])
+            
+            # Build SC to sensors/actuators mapping if scs provided
+            sc_to_sensors = {}
+            sc_to_actuators = {}
+            sc_by_id = {}
+            if scs is not None:
+                for sc in scs:
+                    sc_by_id[sc.id] = sc
+                    if sc.sensors:
+                        sc_to_sensors[sc.id] = sc.sensors
+                    if sc.actuators:
+                        sc_to_actuators[sc.id] = sc.actuators
+
+            def _asil_group_from_sc(sc_obj):
+                if sc_obj is None:
+                    return 'LOW'
+                a = getattr(sc_obj, 'asil_req', 0)
+                if isinstance(a, str):
+                    a_norm = a.strip().upper()
+                    return 'HIGH' if a_norm in {'C', 'D'} else 'LOW'
+                return 'HIGH' if int(a) >= 3 else 'LOW'
+
+            # Helper: infer which location a sensor/actuator is physically wired to.
+            # - For ETH peripherals, prefer explicit attachment mapping from solver.
+            # - Otherwise fall back to the location of the SC that references it.
+            def _infer_sensor_loc_id(sensor_id):
+                sensor = sensor_dict.get(sensor_id)
+                if sensor is None:
+                    return None
+                if getattr(sensor, 'interface', None) == 'ETH' and eth_sensor_attachments:
+                    return eth_sensor_attachments.get(sensor_id)
+                if getattr(sensor, 'interface', None) in {'CAN', 'LIN', 'FLEXRAY'} and shared_sensor_attachments:
+                    return shared_sensor_attachments.get(sensor_id)
+                if scs is not None:
+                    for sc in scs:
+                        if sc.sensors and sensor_id in sc.sensors:
+                            return assignments.get(sc.id)
+                return None
+
+            def _infer_actuator_loc_id(actuator_id):
+                actuator = actuator_dict.get(actuator_id)
+                if actuator is None:
+                    return None
+                if getattr(actuator, 'interface', None) == 'ETH' and eth_actuator_attachments:
+                    return eth_actuator_attachments.get(actuator_id)
+                if getattr(actuator, 'interface', None) in {'CAN', 'LIN', 'FLEXRAY'} and shared_actuator_attachments:
+                    return shared_actuator_attachments.get(actuator_id)
+                if scs is not None:
+                    for sc in scs:
+                        if sc.actuators and actuator_id in sc.actuators:
+                            return assignments.get(sc.id)
+                return None
+            
+            # Create sensor/actuator lookup dictionaries
+            sensor_dict = {s.id: s for s in sensors}
+            actuator_dict = {a.id: a for a in actuators}
+            
+            # Draw connections from (active + switch-only) locations to peripherals.
+            # Shared-bus modeling for peripherals: CAN/LIN/FLEXRAY use one trunk per location/interface.
+            # ETH remains direct point-to-point to the attachment/hosting location.
+            draw_loc_ids = set(active_locations.keys()) | set(switch_loc_ids)
+            interfaces_drawn = set()
+            shared_bus_ifaces = {'CAN', 'LIN', 'FLEXRAY'}
+            for loc_id in sorted(draw_loc_ids):
+                if loc_id not in loc_dict:
+                    continue
+                
+                loc = loc_dict[loc_id]
+                loc_y = -loc.location.y
+
+                # Collect peripherals that are physically wired to this location.
+                connected_sensors = set()
+                for sensor_id in sensor_dict.keys():
+                    if _infer_sensor_loc_id(sensor_id) == loc_id:
+                        connected_sensors.add(sensor_id)
+
+                connected_actuators = set()
+                for actuator_id in actuator_dict.keys():
+                    if _infer_actuator_loc_id(actuator_id) == loc_id:
+                        connected_actuators.add(actuator_id)
+
+                direct_links = []  # (x, y, iface, vol)
+                shared_bus_endpoints = {}  # iface -> {'LOW':[(x,y,vol)], 'HIGH':[(x,y,vol)]}
+
+                sensor_group_map = {}
+                actuator_group_map = {}
+                for sc_id in active_locations.get(loc_id, []):
+                    sc_obj = sc_by_id.get(sc_id)
+                    grp = _asil_group_from_sc(sc_obj)
+                    if sc_obj is None:
+                        continue
+                    for s_id in (getattr(sc_obj, 'sensors', None) or []):
+                        s_obj = sensor_dict.get(s_id)
+                        if s_obj is None:
+                            continue
+                        if getattr(s_obj, 'interface', None) in shared_bus_ifaces and _infer_sensor_loc_id(s_id) == loc_id:
+                            sensor_group_map.setdefault(s_id, set()).add(grp)
+                    for a_id in (getattr(sc_obj, 'actuators', None) or []):
+                        a_obj = actuator_dict.get(a_id)
+                        if a_obj is None:
+                            continue
+                        if getattr(a_obj, 'interface', None) in shared_bus_ifaces and _infer_actuator_loc_id(a_id) == loc_id:
+                            actuator_group_map.setdefault(a_id, set()).add(grp)
+
+                # Gather sensor endpoints
+                for sensor_id in connected_sensors:
+                    if sensor_id in sensor_dict:
+                        sensor = sensor_dict[sensor_id]
+                        sensor_y = -sensor.location.y
+                        interface = getattr(sensor, 'interface', 'CAN')
+                        vol = float(getattr(sensor, 'volume', 0.0) or 0.0)
+                        if interface in shared_bus_ifaces:
+                            groups = sensor_group_map.get(sensor_id, {'LOW'})
+                            iface_groups = shared_bus_endpoints.setdefault(interface, {'LOW': [], 'HIGH': []})
+                            for grp in groups:
+                                iface_groups.setdefault(grp, []).append((sensor.location.x, sensor_y, vol))
+                        else:
+                            direct_links.append((sensor.location.x, sensor_y, interface, vol))
+
+                # Gather actuator endpoints
+                for actuator_id in connected_actuators:
+                    if actuator_id in actuator_dict:
+                        actuator = actuator_dict[actuator_id]
+                        actuator_y = -actuator.location.y
+                        interface = getattr(actuator, 'interface', 'CAN')
+                        vol = float(getattr(actuator, 'volume', 0.0) or 0.0)
+                        if interface in shared_bus_ifaces:
+                            groups = actuator_group_map.get(actuator_id, {'LOW'})
+                            iface_groups = shared_bus_endpoints.setdefault(interface, {'LOW': [], 'HIGH': []})
+                            for grp in groups:
+                                iface_groups.setdefault(grp, []).append((actuator.location.x, actuator_y, vol))
+                        else:
+                            direct_links.append((actuator.location.x, actuator_y, interface, vol))
+
+                # Draw direct (point-to-point) links, e.g., ETH
+                for end_x, end_y, interface, vol in direct_links:
+                    line_color = interface_colors.get(interface, '#95A5A6')
+                    ax.plot([loc.location.x, end_x], [loc_y, end_y],
+                           color=line_color, linewidth=2, alpha=0.6, zorder=3)
+                    ax.scatter(loc.location.x, loc_y, s=50, c=line_color,
+                              marker='o', zorder=6)
+                    if show_bus_utilization:
+                        cap = _capacity_for_iface(interface)
+                        pct = (100.0 * vol / cap) if cap else None
+                        _draw_util_text(loc.location.x, loc_y, end_x, end_y, pct, line_color)
+
+                # Draw shared buses (single trunk + peripheral branches)
+                for interface, grouped_endpoints in shared_bus_endpoints.items():
+                    low_eps = grouped_endpoints.get('LOW', [])
+                    high_eps = grouped_endpoints.get('HIGH', [])
+                    if not low_eps and not high_eps:
+                        continue
+
+                    line_color = interface_colors.get(interface, '#95A5A6')
+                    all_eps = low_eps + high_eps
+                    mean_x = sum(p[0] for p in all_eps) / len(all_eps)
+                    mean_y = sum(p[1] for p in all_eps) / len(all_eps)
+
+                    # Keep shared-bus hub local to the location to avoid visually implying
+                    # a location-to-location (e.g., L1-L3-L5) backbone on CAN/LIN/FLEXRAY.
+                    dx = mean_x - loc.location.x
+                    dy = mean_y - loc_y
+                    norm = (dx * dx + dy * dy) ** 0.5
+                    if norm < 1e-9:
+                        ux, uy = 0.0, 1.0
+                    else:
+                        ux, uy = dx / norm, dy / norm
+                    hub_dist = min(0.55, max(0.25, 0.50 * norm))
+
+                    # --- Change D: lateral offset per interface type so CAN/LIN/FLEXRAY
+                    # trunks from the same ECU don't overlap each other.
+                    iface_order = {'CAN': -1, 'FLEXRAY': 0, 'LIN': 1}
+                    n_shared = len(shared_bus_endpoints)
+                    if n_shared > 1:
+                        lateral_idx = iface_order.get(interface, 0)
+                        # perpendicular to the trunk direction
+                        perp_x, perp_y = -uy, ux
+                        lateral_sep = 0.12
+                        base_bus_x = loc.location.x + hub_dist * ux + lateral_idx * lateral_sep * perp_x
+                        base_bus_y = loc_y + hub_dist * uy + lateral_idx * lateral_sep * perp_y
+                    else:
+                        base_bus_x = loc.location.x + hub_dist * ux
+                        base_bus_y = loc_y + hub_dist * uy
+
+                    active_groups = []
+                    if low_eps:
+                        active_groups.append('LOW')
+                    if high_eps:
+                        active_groups.append('HIGH')
+
+                    hub_by_group = {}
+                    if len(active_groups) == 2:
+                        grp_dx = base_bus_x - loc.location.x
+                        grp_dy = base_bus_y - loc_y
+                        grp_norm = (grp_dx * grp_dx + grp_dy * grp_dy) ** 0.5
+                        if grp_norm < 1e-9:
+                            px, py = 0.0, 1.0
+                        else:
+                            px, py = -grp_dy / grp_norm, grp_dx / grp_norm
+                        sep = 0.07
+                        hub_by_group['LOW'] = (base_bus_x - sep * px, base_bus_y - sep * py)
+                        hub_by_group['HIGH'] = (base_bus_x + sep * px, base_bus_y + sep * py)
+                    else:
+                        only_grp = active_groups[0]
+                        hub_by_group[only_grp] = (base_bus_x, base_bus_y)
+
+                    for grp in active_groups:
+                        endpoints = low_eps if grp == 'LOW' else high_eps
+                        bus_x, bus_y = hub_by_group[grp]
+                        trunk_style = '-' if grp == 'HIGH' else '--'
+
+                        ax.plot([loc.location.x, bus_x], [loc_y, bus_y],
+                                color=line_color, linewidth=3.0, linestyle=trunk_style, alpha=0.85, zorder=3)
+                        ax.scatter(bus_x, bus_y, s=55, c=line_color,
+                                   marker='s', edgecolor='black', linewidth=0.6, zorder=6)
+
+                        if show_bus_utilization:
+                            trunk_demand = sum(p[2] for p in endpoints)
+                            cap = _capacity_for_iface(interface)
+                            pct = (100.0 * trunk_demand / cap) if cap else None
+                            _draw_util_text(loc.location.x, loc_y, bus_x, bus_y, pct, line_color)
+
+                        for end_x, end_y, end_vol in endpoints:
+                            ax.plot([bus_x, end_x], [bus_y, end_y],
+                                    color=line_color, linewidth=1.5, linestyle=':', alpha=0.65, zorder=3)
+                            if show_bus_utilization:
+                                cap = _capacity_for_iface(interface)
+                                pct = (100.0 * end_vol / cap) if cap else None
+                                _draw_util_text(bus_x, bus_y, end_x, end_y, pct, line_color)
+
+                    ax.scatter(loc.location.x, loc_y, s=50, c=line_color,
+                               marker='o', zorder=6)
+            
+            # Draw ECU-to-ECU backbone connections.
+            # Prefer optimized comm_links (from solution) if provided; otherwise fall back to inferring from comm_matrix requirements.
+            if comm_links is not None and locations is not None and cable_types is not None:
+                loc_dict_by_id = {loc.id: loc for loc in locations}
+                comm_demand_by_link = {}
+                if show_bus_utilization and comm_link_peak_load:
+                    for k, v in comm_link_peak_load.items():
+                        if not isinstance(k, str):
+                            continue
+                        parts = k.split('|')
+                        if len(parts) != 3:
+                            continue
+                        a, b, iface = parts
+                        comm_demand_by_link[(a, b, iface)] = float(v or 0.0)
+                # Define "active" as locations that host at least one assigned SC.
+                # (If you later allow switch-only locations, pass that information in and extend this set.)
+                active_loc_ids = set(active_locations.keys()) | set(switch_loc_ids)
+                drawn_connections = set()
+                for link in comm_links:
+                    src_loc_id = link.get('src_loc')
+                    dst_loc_id = link.get('dst_loc')
+                    iface = link.get('iface', 'ETH')
+                    count = int(link.get('count', 1) or 1)
+
+                    if not src_loc_id or not dst_loc_id:
+                        continue
+                    if src_loc_id not in loc_dict_by_id or dst_loc_id not in loc_dict_by_id:
+                        continue
+                    # Avoid drawing links to inactive locations (prevents phantom edges in plots).
+                    if src_loc_id not in active_loc_ids or dst_loc_id not in active_loc_ids:
+                        continue
+
+                    conn_key = tuple(sorted([src_loc_id, dst_loc_id, iface]))
+                    if conn_key in drawn_connections:
+                        continue
+                    drawn_connections.add(conn_key)
+
+                    src_loc = loc_dict_by_id[src_loc_id]
+                    dst_loc = loc_dict_by_id[dst_loc_id]
+
+                    src_y = -src_loc.location.y
+                    dst_y = -dst_loc.location.y
+
+                    linestyle = '--'
+                    linewidth = 2.5 + min(3.0, 0.6 * max(0, count - 1))
+                    if iface == 'ETH':
+                        linestyle = '--'
+                        linewidth = max(linewidth, 3.5)
+                    elif iface == 'CAN':
+                        linestyle = '--'
+                    elif iface == 'FLEXRAY':
+                        linestyle = '--'
+                    elif iface == 'LIN':
+                        linestyle = '--'
+
+                    line_color = interface_colors.get(iface, '#95A5A6')
+                    ax.plot(
+                        [src_loc.location.x, dst_loc.location.x],
+                        [src_y, dst_y],
+                        color=line_color,
+                        linewidth=linewidth,
+                        linestyle=linestyle,
+                        alpha=0.7,
+                        zorder=2,
+                    )
+                    if show_bus_utilization:
+                        a, b = sorted((src_loc_id, dst_loc_id))
+                        dem = comm_demand_by_link.get((a, b, iface), None)
+                        if dem is None and iface != 'ETH':
+                            dem = comm_demand_by_link.get((a, b, 'ETH'), None)
+                        if dem is None:
+                            continue
+                        cap = _capacity_for_iface(iface)
+                        total_cap = (cap * max(1, count)) if cap else None
+                        pct = (100.0 * dem / total_cap) if total_cap else None
+                        _draw_util_text(src_loc.location.x, src_y, dst_loc.location.x, dst_y, pct, line_color)
+
+            # Fallback: Draw inferred backbone connections from comm_matrix requirements
+            elif comm_matrix is not None and cable_types is not None and scs is not None:
+                # Create SC to location mapping
+                sc_to_loc = {sc_id: loc_id for sc_id, loc_id in assignments.items()}
+                
+                # Create cable_types lookup: interface_name -> interface object
+                cable_dict = {name: iface for name, iface in cable_types.items()}
+                
+                # Track drawn connections to avoid duplicates
+                drawn_connections = set()
+                
+                for comm_link in comm_matrix:
+                    src_sc = comm_link.get('src')
+                    dst_sc = comm_link.get('dst')
+                    
+                    if src_sc not in sc_to_loc or dst_sc not in sc_to_loc:
+                        continue
+                    
+                    src_loc_id = sc_to_loc[src_sc]
+                    dst_loc_id = sc_to_loc[dst_sc]
+                    
+                    # Skip if same location (not backbone)
+                    if src_loc_id == dst_loc_id:
+                        continue
+                    
+                    # Avoid duplicate connections
+                    conn_key = tuple(sorted([src_loc_id, dst_loc_id]))
+                    if conn_key in drawn_connections:
+                        continue
+                    drawn_connections.add(conn_key)
+                    
+                    # Get source and destination locations
+                    if src_loc_id not in loc_dict or dst_loc_id not in loc_dict:
+                        continue
+                    
+                    src_loc = loc_dict[src_loc_id]
+                    dst_loc = loc_dict[dst_loc_id]
+                    
+                    src_y = -src_loc.location.y
+                    dst_y = -dst_loc.location.y
+                    
+                    # Determine bus type from SC interface requirements
+                    # Check both SCs to find compatible interface
+                    src_sc_obj = next((s for s in scs if s.id == src_sc), None)
+                    dst_sc_obj = next((s for s in scs if s.id == dst_sc), None)
+                    
+                    bus_type = 'CAN'  # Default
+                    linestyle = '-'   # Default solid
+                    linewidth = 2.5
+                    
+                    if src_sc_obj and src_sc_obj.interface_required:
+                        bus_type = src_sc_obj.interface_required[0]
+                    elif dst_sc_obj and dst_sc_obj.interface_required:
+                        bus_type = dst_sc_obj.interface_required[0]
+                    
+                    # Set line style based on bus type
+                    if bus_type == 'ETH':
+                        linestyle = '--'    # Solid for Ethernet
+                        linewidth = 3.5
+                    elif bus_type == 'CAN':
+                        linestyle = '--'   # Dashed for CAN
+                        linewidth = 2.5
+                    elif bus_type == 'FLEXRAY':
+                        linestyle = '--'   # Dash-dot for FLEXRAY
+                        linewidth = 2.5
+                    elif bus_type == 'LIN':
+                        linestyle = '--'    # Dotted for LIN
+                        linewidth = 2
+                    
+                    line_color = interface_colors.get(bus_type, '#95A5A6')
+                    
+                    # Draw ECU-ECU backbone connection
+                    ax.plot([src_loc.location.x, dst_loc.location.x], 
+                           [src_y, dst_y],
+                           color=line_color, linewidth=linewidth, linestyle=linestyle, 
+                           alpha=0.7, zorder=2, label=f'ECU-ECU: {bus_type}' if bus_type not in [c.get('_label') for c in []] else '')
+            
+            # Plot all locations (active ones with highlight, inactive ones with less emphasis)
+            active_label_done = False
+            inactive_label_done = False
+            for loc in locations:
+                y_pos = -loc.location.y
+                is_active = (loc.id in active_locations) or (loc.id in switch_loc_ids)
+                
+                if is_active:
+                    # Active location: brighter, with border
+                    ax.scatter(loc.location.x, y_pos, s=400, c='#FFE74C', 
+                              marker='s', edgecolor='#FF6B35', linewidth=3, zorder=4,
+                              label='Active Location' if not active_label_done else '')
+                    active_label_done = True
+
+                    # Location label (only name inside the box)
+                    short_loc_id = loc.id.replace('LOC', 'L')
+                    ax.text(loc.location.x, y_pos, short_loc_id,
+                           fontsize=8, ha='center', va='center', fontweight='bold',
+                           color='black', zorder=10)
+
+                    # SC count badge – small circle at top-right corner
+                    num_scs = len(active_locations.get(loc.id, []))
+                    badge_x = loc.location.x + 0.08
+                    badge_y = y_pos + 0.08
+                    ax.scatter(badge_x, badge_y, s=210, c='white',
+                              marker='o', edgecolor='#FF6B35', linewidth=1.5, zorder=11)
+                    ax.text(badge_x, badge_y, str(num_scs),
+                           fontsize=6, ha='center', va='center', fontweight='bold',
+                           color='#FF6B35', zorder=12)
+                else:
+                    # Inactive location: grayed out
+                    ax.scatter(loc.location.x, y_pos, s=300, c='#D3D3D3',
+                              marker='s', edgecolor='gray', linewidth=1.5, zorder=2, alpha=0.5,
+                              label='Inactive Location' if not inactive_label_done else '')
+                    inactive_label_done = True
+                    
+                    short_loc_id = loc.id.replace('LOC', 'L')
+                    ax.text(loc.location.x, y_pos, short_loc_id,
+                           fontsize=6, ha='center', va='center', fontweight='bold',
+                           color='gray', zorder=5, alpha=0.5)
+
+        elif ecus is not None:
             # Check mode: Candidate Sites (no assignments) or Assigned ECUs
             if assignments is None:
                 # --- CANDIDATE SITES MODE ---
@@ -712,19 +1225,44 @@ class Visualization:
                         ecu_types_plotted.add(ecu.type)
         
         # Add dimension annotations
-        # Length annotation (vertical on the left)
-        ax.annotate('', xy=(-vehicle_width/2 - 0.4, vehicle_length/2), xytext=(-vehicle_width/2 - 0.4, -vehicle_length/2),
-                   arrowprops=dict(arrowstyle='<->', color='black', lw=2.5))
-        ax.text(-vehicle_width/2 - 0.7, 0, f'{vehicle_length}m', fontsize=12, weight='bold', 
-               ha='right', va='center', rotation=90,
-               bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='black'))
-        
-        # Width annotation (horizontal at the bottom)
-        ax.annotate('', xy=(vehicle_width/2, -vehicle_length/2 - 0.4), xytext=(-vehicle_width/2, -vehicle_length/2 - 0.4),
-                   arrowprops=dict(arrowstyle='<->', color='black', lw=2.5))
-        ax.text(0, -vehicle_length/2 - 0.7, f'{vehicle_width}m', fontsize=12, weight='bold', 
-               ha='center', va='top',
-               bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='black'))
+        # Length annotation (vertical on the left, inside plotting area)
+        dim_x = -vehicle_width / 2 -0.2
+        ax.annotate(
+            '',
+            xy=(dim_x, vehicle_length / 2),
+            xytext=(dim_x, -vehicle_length / 2),
+            arrowprops=dict(arrowstyle='<->', color='black', lw=2.5),
+        )
+        ax.text(
+            dim_x-0.1,
+            0,
+            f'{vehicle_length}m',
+            fontsize=12,
+            weight='bold',
+            ha='right',
+            va='center',
+            rotation=90,
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='black'),
+        )
+
+        # Width annotation (horizontal at the bottom, inside plotting area)
+        dim_y = -vehicle_length / 2 -0.35
+        ax.annotate(
+            '',
+            xy=(vehicle_width / 2, dim_y),
+            xytext=(-vehicle_width / 2, dim_y),
+            arrowprops=dict(arrowstyle='<->', color='black', lw=2.5),
+        )
+        ax.text(
+            0,
+            dim_y - 0.05,
+            f'{vehicle_width}m',
+            fontsize=12,
+            weight='bold',
+            ha='center',
+            va='top',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='black'),
+        )
         
         # Create legend
         from matplotlib.lines import Line2D
@@ -732,19 +1270,45 @@ class Visualization:
             patches.Rectangle((0, 0), 1, 1, facecolor='lightgray', edgecolor='black', linewidth=2, label='Vehicle Body'),
         ]
         
-        if ecus is not None:
+        if locations is not None and assignments is None:
+            legend_elements.append(
+                Line2D([0], [0], marker='s', color='w', markerfacecolor='lightgray', markersize=12,
+                       markeredgecolor='black', markeredgewidth=2, label='Candidate Site')
+            )
+        elif locations is not None and assignments is not None:
+            # Add location legend for active/inactive locations
+            legend_elements.extend([
+                Line2D([0], [0], marker='s', color='w', markerfacecolor='#FFE74C', markersize=12,
+                       markeredgecolor='#FF6B35', markeredgewidth=2, label='Active Location'),
+                Line2D([0], [0], marker='s', color='w', markerfacecolor='#D3D3D3', markersize=12,
+                       markeredgecolor='gray', markeredgewidth=1.5, alpha=0.5, label='Inactive Location'),
+            ])
+            # Add interface/bus type legend
+            legend_elements.extend([
+                Line2D([0], [0], color='#3498DB', linewidth=3, label='Bus: ETH (P2P)'),
+                Line2D([0], [0], color='#E74C3C', linewidth=3, label='Bus: CAN (Shared)'),
+                Line2D([0], [0], color='#2ECC71', linewidth=3, label='Bus: FLEXRAY (Shared)'),
+                Line2D([0], [0], color='#F39C12', linewidth=3, label='Bus: LIN (Shared)'),
+                Line2D([0], [0], color='#9B59B6', linewidth=3, label='Bus: UART'),
+                Line2D([0], [0], color='#4ECDC4', linewidth=3, label='Bus: SPI'),
+            ])
+            # Add ECU-ECU backbone legend
+            legend_elements.extend([
+                Line2D([0], [0], color='#3498DB', linewidth=3.5, linestyle='--', label='ECU-ECU: ETH'),
+            ])
+        elif ecus is not None:
             if assignments is None:
                 legend_elements.append(
-                    Line2D([0], [0], marker='s', color='w', markerfacecolor='lightgray', markersize=12, 
+                    Line2D([0], [0], marker='s', color='w', markerfacecolor='lightgray', markersize=12,
                            markeredgecolor='black', markeredgewidth=2, label='Candidate Site')
                 )
             else:
                 legend_elements.extend([
-                    Line2D([0], [0], marker='D', color='w', markerfacecolor='#FF6B6B', markersize=12, 
+                    Line2D([0], [0], marker='D', color='w', markerfacecolor='#FF6B6B', markersize=12,
                            markeredgecolor='black', markeredgewidth=2, label='ECU: HPC'),
-                    Line2D([0], [0], marker='D', color='w', markerfacecolor='#050370', markersize=12, 
+                    Line2D([0], [0], marker='D', color='w', markerfacecolor='#050370', markersize=12,
                            markeredgecolor='black', markeredgewidth=2, label='ECU: ZONE'),
-                    Line2D([0], [0], marker='D', color='w', markerfacecolor='#95E1D3', markersize=12, 
+                    Line2D([0], [0], marker='D', color='w', markerfacecolor='#95E1D3', markersize=12,
                            markeredgecolor='black', markeredgewidth=2, label='ECU: MCU'),
                 ])
 
@@ -760,16 +1324,34 @@ class Visualization:
             Line2D([0], [0], marker='^', color='w', markerfacecolor='#F39C12', markersize=12, markeredgecolor='black', markeredgewidth=2, label='HVAC'),
         ])
         
-        ax.legend(handles=legend_elements, loc='upper right', fontsize=11, ncol=2, framealpha=0.95, edgecolor='black', fancybox=True)
+        if show_legend:
+            legend_fontsize = 10 if latex_mode else 9
+            ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.01, 1.0),
+                fontsize=legend_fontsize, ncol=1, framealpha=0.95, edgecolor='black', fancybox=True,
+                borderaxespad=0.0)
         
         # Set labels and title
-        ax.set_xlabel('X (Left-Right) [meters]', fontsize=13, weight='bold')
-        ax.set_ylabel('Y (Front-Back) [meters]', fontsize=13, weight='bold')
-        
-        title = "Vehicle Layout - Bird's Eye View (Top-Down)"
-        if assignments:
-            title += f" - {len(set(assignments.values()))} ECUs Assigned"
-        ax.set_title(title, fontsize=16, weight='bold', pad=20)
+        if subplot_title is not None:
+            ax.set_xlabel('')
+            ax.set_ylabel('')
+            ax.set_title(subplot_title, fontsize=16, weight='bold', pad=10)
+            ax.tick_params(axis='both', labelsize=8)
+        elif latex_mode:
+            ax.set_xlabel('')
+            ax.set_ylabel('')
+            ax.set_title('')
+            ax.tick_params(axis='both', labelsize=8)
+        else:
+            ax.set_xlabel('X (Left-Right) [meters]', fontsize=13, weight='bold')
+            ax.set_ylabel('Y (Front-Back) [meters]', fontsize=13, weight='bold')
+
+            title = "Vehicle Layout - Bird's Eye View (Top-Down)"
+            if locations is not None and assignments is not None:
+                active_count = len(set(assignments.values()))
+                title += f" - {active_count} Active Locations"
+            elif assignments:
+                title += f" - {len(set(assignments.values()))} ECUs Assigned"
+            ax.set_title(title, fontsize=16, weight='bold', pad=20)
         
         # Set equal aspect ratio
         ax.set_aspect('equal')
@@ -784,26 +1366,411 @@ class Visualization:
                 ecu_y_min, ecu_y_max = min(ecu_y_coords), max(ecu_y_coords)
                 
                 # Set limits with padding around ECU spread
-                padding_x = max(1.5, abs(ecu_x_max - ecu_x_min) * 0.1)
-                padding_y = max(1.0, abs(ecu_y_max - ecu_y_min) * 0.1)
+                padding_x = max(0.55, abs(ecu_x_max - ecu_x_min) * 0.08)
+                padding_y = max(0.55, abs(ecu_y_max - ecu_y_min) * 0.08)
                 
                 ax.set_xlim(min(ecu_x_min, -vehicle_width/2) - padding_x, max(ecu_x_max, vehicle_width/2) + padding_x)
                 ax.set_ylim(min(ecu_y_min, -vehicle_length/2) - padding_y, max(ecu_y_max, vehicle_length/2) + padding_y)
             else:
                 # Default limits if no assigned ECUs
-                padding_x = 1.5
-                padding_y = 1.0
+                padding_x = 0.55
+                padding_y = 0.55
                 ax.set_xlim(-vehicle_width/2 - padding_x, vehicle_width/2 + padding_x)
                 ax.set_ylim(-vehicle_length/2 - padding_y, vehicle_length/2 + padding_y)
         else:
             # Default limits if no ECUs
-            padding_x = 1.5
-            padding_y = 1.0
+            padding_x = 0.55
+            padding_y = 0.55
             ax.set_xlim(-vehicle_width/2 - padding_x, vehicle_width/2 + padding_x)
             ax.set_ylim(-vehicle_length/2 - padding_y, vehicle_length/2 + padding_y)
         
         ax.grid(True, alpha=0.4, linestyle=':', linewidth=0.8)
         ax.set_facecolor('#F8F9F9')
         
-        plt.tight_layout()
+        if save_output:
+            layout_rect = [0, 0, 0.74, 1] if (latex_mode and show_legend) else ([0, 0, 0.73, 1] if show_legend else [0, 0, 1, 1])
+            fig.tight_layout(rect=layout_rect)
+            export_dpi = max(300, int(output_dpi))
+            pad_inches = 0.01 if latex_mode else 0.02
+            self.save_plot(filename, dpi=export_dpi, pad_inches=pad_inches)
+            if created_figure:
+                plt.close(fig)
+
+        return legend_elements
+
+    def plot_two_solutions_side_by_side_shared_legend(self, sensors, actuators, solution_a, solution_b, locations=None, scs=None, comm_matrix=None, cable_types=None, show_bus_utilization=False, show_peripheral_labels=True, latex_mode=True, output_dpi=600, filename="vehicle_layout_s1_s2_shared_legend.pdf", label_a="S1", label_b="S2"):
+        """Render two solutions side-by-side with one figure-level shared legend and export as a single file."""
+        fig_h = 7.2 if latex_mode else 8.6
+        fig, axes = plt.subplots(1, 2, figsize=(19.0, fig_h))
+
+        legend_elements = self.plot_vehicle_layout_topdown(
+            sensors,
+            actuators,
+            assignments=solution_a.get('assignment'),
+            locations=locations,
+            scs=scs,
+            comm_matrix=comm_matrix,
+            cable_types=cable_types,
+            comm_links=solution_a.get('comm_links'),
+            hw_features=solution_a.get('hw_features'),
+            interfaces_opened=solution_a.get('interfaces'),
+            comm_link_peak_load=solution_a.get('comm_link_peak_load'),
+            eth_sensor_attachments=solution_a.get('eth_sensor_attachments'),
+            eth_actuator_attachments=solution_a.get('eth_actuator_attachments'),
+            shared_sensor_attachments=solution_a.get('shared_sensor_attachments'),
+            shared_actuator_attachments=solution_a.get('shared_actuator_attachments'),
+            show_bus_utilization=show_bus_utilization,
+            show_peripheral_labels=show_peripheral_labels,
+            latex_mode=latex_mode,
+            output_dpi=output_dpi,
+            ax=axes[0],
+            show_legend=False,
+            save_output=False,
+            subplot_title=label_a,
+        )
+
+        self.plot_vehicle_layout_topdown(
+            sensors,
+            actuators,
+            assignments=solution_b.get('assignment'),
+            locations=locations,
+            scs=scs,
+            comm_matrix=comm_matrix,
+            cable_types=cable_types,
+            comm_links=solution_b.get('comm_links'),
+            hw_features=solution_b.get('hw_features'),
+            interfaces_opened=solution_b.get('interfaces'),
+            comm_link_peak_load=solution_b.get('comm_link_peak_load'),
+            eth_sensor_attachments=solution_b.get('eth_sensor_attachments'),
+            eth_actuator_attachments=solution_b.get('eth_actuator_attachments'),
+            shared_sensor_attachments=solution_b.get('shared_sensor_attachments'),
+            shared_actuator_attachments=solution_b.get('shared_actuator_attachments'),
+            show_bus_utilization=show_bus_utilization,
+            show_peripheral_labels=show_peripheral_labels,
+            latex_mode=latex_mode,
+            output_dpi=output_dpi,
+            ax=axes[1],
+            show_legend=False,
+            save_output=False,
+            subplot_title=label_b,
+        )
+
+        legend_fontsize = 10 if latex_mode else 9
+        fig.legend(
+            handles=legend_elements,
+            loc='lower center',
+            bbox_to_anchor=(0.5, -0.01),
+            ncol=7,
+            fontsize=legend_fontsize,
+            framealpha=0.95,
+            edgecolor='black',
+            fancybox=True,
+        )
+
+        fig.subplots_adjust(left=0.02, right=0.98, top=0.94, bottom=0.20, wspace=0.06)
+        export_dpi = max(300, int(output_dpi))
+        pad_inches = 0.01 if latex_mode else 0.02
+
+        if self.save_dir:
+            filepath = os.path.join(self.save_dir, filename)
+        else:
+            filepath = filename
+        fig.savefig(filepath, dpi=export_dpi, bbox_inches='tight', pad_inches=pad_inches)
+        print(f"Saved plot to: {filepath}")
+        plt.close(fig)
+
+    def plot_latex_topdown_comparison(self, sensors, actuators, pareto_solutions, locations=None, scs=None, comm_matrix=None, cable_types=None, solution_indices=None, show_bus_utilization=False, show_peripheral_labels=True, output_dpi=600, filename="vehicle_layout_latex_compare_shared_legend.pdf"):
+        """Render 2-3 selected Pareto solutions side-by-side with one shared legend in a single PDF."""
+        if not pareto_solutions or len(pareto_solutions) < 2:
+            print("Skipping LaTeX comparison plot: need at least 2 Pareto solutions.")
+            return
+
+        n_total = len(pareto_solutions)
+        if solution_indices is None:
+            # Default: first and last (two extremes)
+            selected = [0, n_total - 1] if n_total >= 2 else [0]
+        else:
+            selected = []
+            for idx in solution_indices:
+                if 0 <= idx < n_total and idx not in selected:
+                    selected.append(idx)
+
+        if len(selected) < 2:
+            # Fallback: always pick two extremes (first=min cable, last=min cost)
+            selected = [0, n_total - 1] if n_total >= 2 else [0]
+        if len(selected) > 3:
+            selected = selected[:3]
+
+        n_cols = len(selected)
+        fig_w = 4.2 * n_cols
+        fig_h = 7.0
+        fig, axes = plt.subplots(1, n_cols, figsize=(fig_w, fig_h))
+        axes = np.atleast_1d(axes).tolist()
+
+        legend_elements = None
+        for ax, idx in zip(axes, selected):
+            solution = pareto_solutions[idx]
+            label = f"S{idx + 1}"
+            current_legend = self.plot_vehicle_layout_topdown(
+                sensors,
+                actuators,
+                assignments=solution.get('assignment'),
+                locations=locations,
+                scs=scs,
+                comm_matrix=comm_matrix,
+                cable_types=cable_types,
+                comm_links=solution.get('comm_links'),
+                hw_features=solution.get('hw_features'),
+                interfaces_opened=solution.get('interfaces'),
+                comm_link_peak_load=solution.get('comm_link_peak_load'),
+                eth_sensor_attachments=solution.get('eth_sensor_attachments'),
+                eth_actuator_attachments=solution.get('eth_actuator_attachments'),
+                shared_sensor_attachments=solution.get('shared_sensor_attachments'),
+                shared_actuator_attachments=solution.get('shared_actuator_attachments'),
+                show_bus_utilization=show_bus_utilization,
+                show_peripheral_labels=show_peripheral_labels,
+                latex_mode=True,
+                output_dpi=output_dpi,
+                ax=ax,
+                show_legend=False,
+                save_output=False,
+                subplot_title=label,
+            )
+            if legend_elements is None:
+                legend_elements = current_legend
+
+        if legend_elements:
+            fig.legend(
+                handles=legend_elements,
+                loc='lower center',
+                bbox_to_anchor=(0.5, 0.04),
+                ncol=min(len(legend_elements), 10),
+                fontsize=7.5,
+                framealpha=0.95,
+                edgecolor='black',
+                fancybox=True,
+                markerscale=0.9,
+                handlelength=1.25,
+                handletextpad=0.4,
+                columnspacing=0.75,
+                labelspacing=0.3,
+                borderpad=0.28,
+            )
+
+        fig.subplots_adjust(left=0.01, right=0.99, top=0.96, bottom=0.12, wspace=0.005)
+        export_dpi = max(300, int(output_dpi))
+
+        if self.save_dir:
+            filepath = os.path.join(self.save_dir, filename)
+        else:
+            filepath = filename
+        fig.savefig(filepath, dpi=export_dpi, bbox_inches='tight', pad_inches=0.01)
+        print(f"Saved plot to: {filepath}")
+        plt.close(fig)
+
+    def visualize_solution_architecture(self, solution, scs, locations, partitions_config=None, filename="solution_architecture.png"):
+        """
+        Display the complete optimization solution architecture:
+        - Each location as a container
+        - Partitions within each location
+        - SWs assigned to each partition
+        - HW features and interfaces enabled at each location
+        - Partition utilization percentage
+        """
+        sc_dict = {s.id: s for s in scs}
+        location_dict = {l.id: l for l in locations}
+        cpu_cap = partitions_config.get('cpu_cap', 1) if partitions_config else 1
+        ram_cap = partitions_config.get('ram_cap', 1) if partitions_config else 1
+        rom_cap = partitions_config.get('rom_cap', 1) if partitions_config else 1
+        
+        assignment = solution['assignment']  # {SC_id: location_id}
+        partitions = solution['partitions']  # {SC_id: "LOC0_asil3_p0"}
+        hw_features = solution['hw_features']  # ["HW_ACC@LOC0", ...]
+        interfaces = solution['interfaces']  # ["ETH@LOC0", ...]
+        eth_sensor_attachments = solution.get('eth_sensor_attachments') or {}
+        eth_actuator_attachments = solution.get('eth_actuator_attachments') or {}
+        
+        # Group SCs by location and partition
+        loc_partition_sws = {}  # {location_id: {partition_name: [SC_ids]}}
+        loc_hw = {}  # {location_id: [hw_features]}
+        loc_if = {}  # {location_id: [interfaces]}
+        
+        for sc_id, loc_id in assignment.items():
+            if loc_id not in loc_partition_sws:
+                loc_partition_sws[loc_id] = {}
+            partition_name = partitions.get(sc_id, "unknown")
+            if partition_name not in loc_partition_sws[loc_id]:
+                loc_partition_sws[loc_id][partition_name] = []
+            loc_partition_sws[loc_id][partition_name].append(sc_id)
+        
+        # Group HW features by location
+        for hw_feat in hw_features:
+            if '@' not in hw_feat:
+                continue
+            hw_name, loc_id = hw_feat.rsplit('@', 1)
+            if loc_id not in loc_hw:
+                loc_hw[loc_id] = []
+            loc_hw[loc_id].append(hw_name)
+        
+        # Group interfaces by location
+        for iface in interfaces:
+            if '@' not in iface:
+                continue
+            iface_name, loc_id = iface.rsplit('@', 1)
+            if loc_id not in loc_if:
+                loc_if[loc_id] = []
+            loc_if[loc_id].append(iface_name)
+
+        # Ensure switch-only and attachment-only active locations also appear in the architecture.
+        switch_loc_ids = set(loc_hw.keys())
+        attachment_loc_ids = set(eth_sensor_attachments.values()) | set(eth_actuator_attachments.values())
+        for loc_id in sorted(switch_loc_ids | attachment_loc_ids):
+            if loc_id not in loc_partition_sws:
+                loc_partition_sws[loc_id] = {}
+        
+        # Create figure
+        from textwrap import fill
+        num_locs = max(1, len(loc_partition_sws))
+        fig_h = max(7.0, 2.35 * num_locs + 1.0)
+        fig, ax = plt.subplots(figsize=(11, fig_h))
+        
+        # Color schemes
+        asil_colors = {
+            'ASIL-A': '#FFE5E5',
+            'ASIL-B': '#FFD1D1',
+            'ASIL-C': '#FFB3B3',
+            'ASIL-D': '#FF9999',
+            'QM': '#E8F4E8',
+        }
+        
+        # Render locations and their contents
+        loc_width = 15.5
+        loc_height = 16.0
+        spacing_x = 24
+        spacing_y = loc_height + 2.2
+        
+        start_x = 2
+        start_y = (num_locs - 1) * spacing_y
+        
+        for loc_idx, (loc_id, partitions_dict) in enumerate(sorted(loc_partition_sws.items())):
+            x_pos = start_x
+            y_pos = start_y - loc_idx * spacing_y
+            
+            # Location box
+            loc_box = FancyBboxPatch((x_pos, y_pos), loc_width, loc_height,
+                                      boxstyle="round,pad=0.3",
+                                      edgecolor='darkblue', facecolor='#E8F8FF',
+                                      linewidth=3, alpha=0.9)
+            ax.add_patch(loc_box)
+
+            # Location title
+            title_text = f"{loc_id}"
+            ax.text(
+                x_pos + loc_width / 2,
+                y_pos + loc_height - 0.8,
+                title_text,
+                fontsize=14,
+                ha='center',
+                va='top',
+                weight='bold',
+            )
+
+            # HW Features section
+            hw_items = sorted(loc_hw.get(loc_id, ['None']))
+            hw_text = fill(f"Hardware: {', '.join(hw_items)}", width=42)
+            ax.text(
+                x_pos + 0.5,
+                y_pos + loc_height - 1.8,
+                hw_text,
+                fontsize=8,
+                ha='left',
+                va='top',
+                style='italic',
+                bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.6),
+            )
+
+            # Interfaces section
+            iface_items = sorted(loc_if.get(loc_id, ['None']))
+            if_text = fill(f"Interfaces: {', '.join(iface_items)}", width=42)
+            ax.text(
+                x_pos + 0.5,
+                y_pos + loc_height - 3.2,
+                if_text,
+                fontsize=8,
+                ha='left',
+                va='top',
+                style='italic',
+                bbox=dict(boxstyle='round', facecolor='lightcyan', alpha=0.6),
+            )
+
+            # Render partitions within location
+            partition_y_top = y_pos + loc_height - 5.3
+            partition_height = loc_height - 6.5
+            partition_width = (loc_width - 1.0) / max(len(partitions_dict), 1)
+
+            if len(partitions_dict) == 0:
+                ax.text(
+                    x_pos + loc_width / 2,
+                    y_pos + loc_height / 2,
+                    "(no partitions / no SW assignments)",
+                    fontsize=10,
+                    ha='center',
+                    va='center',
+                    color='gray',
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.7, edgecolor='gray'),
+                )
+            
+            for part_idx, (partition_name, sc_ids) in enumerate(sorted(partitions_dict.items())):
+                part_x = x_pos + 0.5 + part_idx * partition_width
+                
+                # Extract ASIL from partition name (e.g., "LOC0_asil3_p0")
+                asil_level = 'ASIL-' + partition_name.split('asil')[1][0].upper() if 'asil' in partition_name else 'QM'
+                asil_color = asil_colors.get(asil_level, '#E8E8E8')
+                
+                # Partition box
+                part_box = FancyBboxPatch((part_x, partition_y_top - partition_height), 
+                                         partition_width - 0.2, partition_height,
+                                         boxstyle="round,pad=0.1",
+                                         edgecolor='darkred', facecolor=asil_color,
+                                         linewidth=2, alpha=0.85)
+                ax.add_patch(part_box)
+                
+                # Calculate Resource utilization
+                total_cpu_used = sum(sc_dict[sc_id].cpu_req for sc_id in sc_ids)
+                total_ram_used = sum(sc_dict[sc_id].ram_req for sc_id in sc_ids)
+                total_rom_used = sum(sc_dict[sc_id].rom_req for sc_id in sc_ids)
+                
+                cpu_util = (total_cpu_used / cpu_cap) * 100
+                ram_util = (total_ram_used / ram_cap) * 100
+                rom_util = (total_rom_used / rom_cap) * 100
+                
+                # Partition header
+                part_header = f"{asil_level} - {partition_name.split('_')[-1]}"
+                ax.text(part_x + (partition_width-0.2)/2, partition_y_top - 0.5, part_header,
+                       fontsize=10, ha='center', va='top', weight='bold')
+
+                # Utilization text - Repositioned higher, bolder, and larger
+                # Using 1 decimal place to avoid 0% for small components
+                util_text = f"CPU:{cpu_util:.1f}% RAM:{ram_util:.1f}% ROM:{rom_util:.1f}%"
+                ax.text(part_x + (partition_width-0.2)/2, partition_y_top - 1.5, util_text,
+                       fontsize=8, ha='center', va='top', weight='bold', 
+                       color='black', bbox=dict(boxstyle='round,pad=0.1', fc='white', alpha=0.6, ec='none'))
+                
+                # SWs in partition - Pushed down slightly to make room
+                font_size = 7 if len(sc_ids) < 10 else 5
+                sw_list_text = "\n".join(sc_ids)
+                ax.text(part_x + (partition_width-0.2)/2, partition_y_top - 3.2, sw_list_text,
+                       fontsize=font_size, ha='center', va='top',
+                       bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='gray'))
+        
+        # Compact bounds to reduce excess whitespace
+        x_min = start_x - 0.8
+        x_max = start_x + loc_width + 0.8
+        y_max = start_y + loc_height + 0.8
+        y_min = start_y - (num_locs - 1) * spacing_y - 0.8
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(y_min, y_max)
+        ax.axis('off')
+        
+        plt.tight_layout(pad=0.4)
         self.save_plot(filename)

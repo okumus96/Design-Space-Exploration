@@ -94,14 +94,14 @@
     {
       "type": "IMU",
       "id": "IMU_Top_Center",
-      "interface": "CAN",
+      "interface": "SPI",
       "volume": 1.0,
       "location": {"x_ratio": 0.0, "y_ratio": -0.3}
     },
     {
       "type": "GPS",
       "id": "GPS_Center",
-      "interface": "CAN",
+      "interface": "UART",
       "volume": 2.0,
       "location": {"x_ratio": 0.0, "y_ratio": -0.4}
     }

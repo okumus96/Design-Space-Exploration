@@ -3,7 +3,7 @@
     {
       "type": "STEERING",
       "id": "ACT_Steering",
-      "interface": "FLEXRAY",
+      "interface": "CAN",
       "volume": 1.0,
       "location": {"x_ratio": 0.5, "y_ratio": 0.8}
     },

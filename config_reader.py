@@ -1,6 +1,6 @@
 import json
 import os
-from models import CableType
+from models import Interface
 
 
 class ConfigReader:
@@ -25,12 +25,8 @@ class ConfigReader:
         self.actuators_config = self._load_json('actuators.json')
         self.software_config = self._load_json('software.json')
         self.bus_config = self._load_json('buses.json')
-    
-    def _load_json(self, filename):
-        """Load a JSON file from config directory"""
-        filepath = os.path.join(self.config_dir, filename)
-        with open(filepath, 'r') as f:
-            return json.load(f)
+        self.partitions_config = self._load_json('partitions.json')
+        self.hardware_config = self._load_json('hardwares.json')
     
     def _load_json(self, filename):
         """Load a JSON file from config directory"""
@@ -42,7 +38,7 @@ class ConfigReader:
         """Get vehicle dimensions"""
         return self.vehicle_config['dimensions']
     
-    def get_cable_types(self):
+    def get_interfaces(self):
         """
         Get cable types from configuration
         
@@ -51,11 +47,13 @@ class ConfigReader:
         """
         cable_types = {}
         for name, specs in self.bus_config['cable_types'].items():
-            cable_types[name] = CableType(
+            cable_types[name] = Interface(
                 name=name,
                 cost_per_meter=specs['cost_per_meter'],
                 latency_per_meter=specs['latency_per_meter'],
-                weight_per_meter=specs['weight_per_meter']
+                weight_per_meter=specs['weight_per_meter'],
+                capacity=specs.get('capacity', float('inf')),
+                port_cost = specs.get('port_cost', 0)
             )
         return cable_types
     
@@ -93,3 +91,20 @@ class ConfigReader:
     def get_sc_communication_config(self):
         """Get software component communication configuration"""
         return self.software_config.get('sc_communication')
+
+    def get_partitions(self):
+        """Get partition resource capacity (cpu_cap, ram_cap, rom_cap)"""
+        partition = self.partitions_config.get('partition', {})
+        return {
+            'cpu_cap': partition.get('cpu_cap', 0),
+            'ram_cap': partition.get('ram_cap', 0),
+            'rom_cap': partition.get('rom_cap', 0),
+            "cost": partition.get('cost', 0)
+        }
+    
+    def get_hardwares(self):
+        """Get hardware feature costs (DSP, HSM, HW_ACC)"""
+        costs = {}
+        for hw_name, spec in self.hardware_config.get('hardware_costs', {}).items():
+            costs[hw_name] = spec.get('cost', 0)
+        return costs

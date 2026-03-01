@@ -2,8 +2,16 @@
 **/__pycache__/
 **/*.pyc
 .ipynb_checkpoints/
+.venv/
 .vscode/
 ECU optimization/
 results/
 *.lp
 *.ilp
+*.pdf
+*.png
+*.log
+*.csv
+*.xlsx
+*.zip
+*.txt
