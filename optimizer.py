@@ -1,10 +1,13 @@
 import os
 import numpy as np
-os.environ["GRB_LICENSE_FILE"] = "/path/to/your/gurobi.lic"
+os.environ.setdefault("GRB_LICENSE_FILE", os.path.expanduser("~/gurobi.lic"))
 import gurobipy as gp
 from gurobipy import GRB
 from optimizer_utils import (get_distance, build_sensor_lookup, build_actuator_lookup, 
                              precompute_latency_infeasible_pairs, build_cost_map, build_latency_map, extract_solution)
+
+# Uncertainty-aware constraint blocks, each switched on by its own CLI flag (parameters in configs/uncertainty.json)
+UNCERTAINTY_BLOCKS = ('sw_margin', 'derating', 'redundancy', 'ai_contention', 'robust_latency')
 
 
 class AssignmentOptimizer:
@@ -214,6 +217,7 @@ class AssignmentOptimizer:
         model.setParam('MIPFocus', 2)
         #model.setParam('Symmetry', 1)
         model.setParam("Method", 6)
+        model.setParam("Seed", 0)  # Fixed seed for reproducible results across runs
         #model.setParam("MIPGap", 0.001)  # 1% gap for faster solutions (adjust as needed)
         model.update()
         
@@ -487,7 +491,7 @@ class AssignmentOptimizer:
     def _add_constraints(self, model, y, z, hw_use, if_use, attach_s, attach_a, shared_attach_s, shared_attach_a, shared_trunk_len, shared_extra_trunk_len, comm, traffic_flows, flow, scs, locations, sensors, actuators, 
                               cable_types, comm_matrix, partitions, unique_asils, max_partitions_per_asil_per_loc,
                               feasible_locs_per_sc, feasible_scs_per_loc, enable_comm_bw_constraints=True,
-                              comm_bw_big_m=None, enable_uncertainty=False):
+                              comm_bw_big_m=None, uncertainty=None):
         """
         Add all constraints to the optimization model
         """
@@ -502,6 +506,7 @@ class AssignmentOptimizer:
             'c1b_unique_partition': 0,
             'c1d_z_y_relation': 0,
             'c1e_partition_used_only_if_assigned': 0,
+            'c1f_slot_symmetry': 0,
             'c2_capacity': 0,
             'c3_hw_required': 0,
             'c4_if_required': 0,
@@ -522,38 +527,47 @@ class AssignmentOptimizer:
             a_req = scs[i].asil_req
             return gp.quicksum(z[i, j, a_req, p] for p in range(max_partitions_per_asil_per_loc) if (i, j, a_req, p) in z)
 
+        # Uncertainty-aware constraint blocks: each one switched on separately (see configs/uncertainty.json)
+        unc = uncertainty or {}
+        unc_params = unc.get('params', {})
+        print(f"  Uncertainty blocks: " + ", ".join(f"{k}={bool(unc.get(k))}" for k in UNCERTAINTY_BLOCKS))
+
         # SW-based uncertainty (selective static margin / VIP list)
-        # Extra margin is applied only to ADAS and Infotainment domains.
-        asil_margins = {
-            0: 0.20,  # QM
-            1: 0.15,  # A
-            2: 0.10,  # B
-            3: 0.05,  # C
-            4: 0.00,  # D
-            'QM': 0.20,
-            'A': 0.15,
-            'B': 0.10,
-            'C': 0.05,
-            'D': 0.00,
-        }
+        # Extra margin is applied only to the configured domains.
+        sw_cfg = unc_params.get('sw_margin', {})
+        sw_domains = {str(d).strip().upper() for d in sw_cfg.get('domains', [])}
+        asil_margins = {int(k): float(v) for k, v in sw_cfg.get('asil_margins', {}).items()}
 
         def get_sw_multiplier(sc):
-            if not enable_uncertainty:
+            if not unc.get('sw_margin'):
                 return 1.0
 
             domain_norm = str(getattr(sc, 'domain', '') or '').strip().upper()
-            if domain_norm not in {'ADAS', 'INFOTAINMENT'}:
+            if domain_norm not in sw_domains:
                 return 1.0
 
-            asil_req = getattr(sc, 'asil_req', 0)
-            if isinstance(asil_req, str):
-                asil_key = asil_req.strip().upper()
-            else:
-                asil_key = int(asil_req)
-
-            m_asil = asil_margins.get(asil_key, 0.20)
-            m_ai = 0.25 if ('HW_ACC' in (getattr(sc, 'hw_required', None) or [])) else 0.0
+            m_asil = asil_margins.get(int(getattr(sc, 'asil_req', 0)), float(sw_cfg['default_asil_margin']))
+            m_ai = float(sw_cfg['ai_margin']) if (sw_cfg['ai_hw_feature'] in (getattr(sc, 'hw_required', None) or [])) else 0.0
             return 1.0 + m_asil + m_ai
+
+        # Data-derived bounds (replace arbitrary Big-M values)
+        # comm_ub: a backbone link never carries more than the total traffic volume, and extra parallel links only
+        # add cost; 2 keeps the "switch-only node has degree >= 2" rule satisfiable with one neighbour.
+        eth_capacity = float(cable_types['ETH'].capacity)
+        total_traffic_volume = sum(float(tr['volume']) for tr in traffic_flows)
+        comm_ub = max(2, int(np.ceil(total_traffic_volume / eth_capacity)))
+        for comm_var in comm.values():
+            comm_var.UB = comm_ub
+        print(f"  Backbone link upper bound: comm <= {comm_ub} (total traffic {total_traffic_volume:.1f}, ETH capacity {eth_capacity:.1f})")
+
+        # max_periph_dist[j, iface]: farthest peripheral of a shared bus from location j (upper bound of its trunk length)
+        max_periph_dist = {}
+        for j in range(n_locs):
+            for iface in ('CAN', 'LIN', 'FLEXRAY'):
+                dists = [get_distance(d.location, locations[j].location)
+                         for d in list(sensors) + list(actuators)
+                         if getattr(d, 'interface', None) == iface and getattr(d, 'location', None) is not None]
+                max_periph_dist[j, iface] = max(dists, default=0.0)
 
         def asil_safety_group(sc):
             a = getattr(sc, 'asil_req', 0)
@@ -605,9 +619,19 @@ class AssignmentOptimizer:
                     )
                     cstats['c1e_partition_used_only_if_assigned'] += 1
         
+        # Constraint 1f: Symmetry breaking on identical partition slots (fill p=0 first, then p=1, ...)
+        for j in range(n_locs):
+            for a in unique_asils:
+                for p in range(max_partitions_per_asil_per_loc - 1):
+                    model.addConstr(
+                        y[j, a, p] >= y[j, a, p + 1],
+                        name=f"partition_slot_order_{locations[j].id}_asil{a}_p{p}"
+                    )
+                    cstats['c1f_slot_symmetry'] += 1
+
         # Constraint 2: Capacity per location per ASIL partition
         for j in range(n_locs):
-            if enable_uncertainty:
+            if unc.get('derating'):
                 H_j = max(0.0, float(getattr(locations[j], 'health_factor', 1.0)))
             else:
                 H_j = 1.0
@@ -782,7 +806,7 @@ class AssignmentOptimizer:
 
                     # If ASIL split is active, second shared trunk length equals main trunk length.
                     if (j, i_name) in shared_extra_trunk_len and (j, i_name) in shared_trunk_len:
-                        split_m = 1e6
+                        split_m = max_periph_dist[j, i_name]
                         model.addConstr(
                             shared_extra_trunk_len[j, i_name] <= split_active * split_m,
                             name=f"shared_extra_trunk_gate_{locations[j].id}_{i_name}"
@@ -851,7 +875,7 @@ class AssignmentOptimizer:
 
                 cstats['c4_if_required'] += 1
         
-        if enable_uncertainty:
+        if unc.get('redundancy'):
             # Constraint 5: Redundancy Constraints
             sc_id_to_idx = {sc.id: i for i, sc in enumerate(scs)}
             for i, sc in enumerate(scs):
@@ -870,10 +894,13 @@ class AssignmentOptimizer:
                                 )
                                 cstats['c5_redundancy'] += 1
 
-            K_THRESHOLD = 2
+        if unc.get('ai_contention'):
+            # Constraint 6: AI accelerator contention limit per location
+            ai_cfg = unc_params.get('ai_contention', {})
+            K_THRESHOLD = int(ai_cfg['max_per_location'])
             ai_sc_indices = [
                 i for i, sc in enumerate(scs)
-                if 'HW_ACC' in (getattr(sc, 'hw_required', None) or [])
+                if ai_cfg['ai_hw_feature'] in (getattr(sc, 'hw_required', None) or [])
             ]
             ai_sc_set = set(ai_sc_indices)
             if ai_sc_indices:
@@ -890,15 +917,16 @@ class AssignmentOptimizer:
                     cstats['c6_ai_contention'] += 1
         
         # Constraint 6/7 (Sensor/Actuator max-latency): precomputed and enforced via sparse z creation.
-        NETWORK_SAFETY_FACTOR = 1.10
-        SYNC_ERROR_CONSTANT = 0.0005
-        PLATFORM_OVERHEAD = 0.002
+        lat_cfg = unc_params.get('robust_latency', {})
         latency_map = build_latency_map(cable_types)
 
         def robust_link_latency(iface, dist):
             nominal = dist * latency_map.get(iface, 0.0)
-            if not enable_uncertainty:
+            if not unc.get('robust_latency'):
                 return nominal
+            NETWORK_SAFETY_FACTOR = float(lat_cfg['network_safety_factor'])
+            SYNC_ERROR_CONSTANT = float(lat_cfg['sync_error_constant'])
+            PLATFORM_OVERHEAD = float(lat_cfg['platform_overhead'])
             return (nominal * NETWORK_SAFETY_FACTOR) + SYNC_ERROR_CONSTANT + PLATFORM_OVERHEAD
         
         # Constraint 8: Location-Location Communication Latency Constraints
@@ -941,7 +969,7 @@ class AssignmentOptimizer:
         #
         # Note: This is grouped near interface-activation constraints because all of these
         # constraints directly gate the same decision variable family: comm[j1,j2,*].
-        M = 1000  # Big-M value
+        M = comm_ub  # Big-M value: comm can never exceed its upper bound
         all_interfaces = list(cable_types.keys())
 
         # Build an "active node" expression per location.
@@ -1409,7 +1437,7 @@ class AssignmentOptimizer:
                                   cable_types, comm_matrix, partitions, hardwares, interfaces,
                                   n_locs, unique_asils, all_hw, all_interfaces, max_partitions_per_asil_per_loc,
                                   feasible_locs_per_sc, attach_s=None, attach_a=None, shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None, shared_extra_trunk_len=None,
-                                  minimize_cable_length=False, cable_length_limit=None):
+                                  minimize_cable_length=False, cable_length_limit=None, cost_limit=None):
         """
         Build and set the objective function for the optimization model
         
@@ -1449,24 +1477,32 @@ class AssignmentOptimizer:
             shared_trunk_len=shared_trunk_len, shared_extra_trunk_len=shared_extra_trunk_len
         )
 
+        total_cost = partition_cost_expr + hw_cost_expr + if_cost_expr + cable_cost_expr
+
         # Optional epsilon-constraint on total cable length for Pareto search
         if cable_length_limit is not None:
             model.addConstr(
                 cable_distance_expr <= float(cable_length_limit),
                 name="eps_cable_length_limit"
             )
-        
-        if minimize_cable_length:
-            model.setObjective(cable_distance_expr, GRB.MINIMIZE)
-            print("Objective: Total Cable Length (all cables)")
-        else:
-            total_cost = partition_cost_expr + hw_cost_expr + if_cost_expr + cable_cost_expr
-            model.setObjective(total_cost, GRB.MINIMIZE)
-            print("Objective: Partition + HW + Interface + Cable + Communication costs")
-        
-        return model
 
-    def optimize(self, scs, locations, sensors, actuators, cable_types, comm_matrix, partitions=None, hardwares=None, interfaces=None, enable_comm_bw_constraints=True, comm_bw_big_m=10000, minimize_cable_length=False, cable_length_limit=None, time_limit=None, enable_uncertainty=False):
+        # Optional epsilon-constraint on total cost for reverse Pareto sweep
+        if cost_limit is not None:
+            model.addConstr(
+                total_cost <= float(cost_limit),
+                name="eps_cost_limit"
+            )
+        
+        # Lexicographic objectives (solved in two phases in optimize()):
+        # the primary objective is minimized first, then the secondary one with the primary fixed at its optimum.
+        cost_obj = ('total_cost', gp.LinExpr() + total_cost)
+        cable_obj = ('cable_length', gp.LinExpr() + cable_distance_expr)
+        objectives = [cable_obj, cost_obj] if minimize_cable_length else [cost_obj, cable_obj]
+        print(f"Objective: {objectives[0][0]}, then {objectives[1][0]} (lexicographic)")
+
+        return model, objectives
+
+    def optimize(self, scs, locations, sensors, actuators, cable_types, comm_matrix, partitions=None, hardwares=None, interfaces=None, enable_comm_bw_constraints=True, comm_bw_big_m=10000, minimize_cable_length=False, cable_length_limit=None, cost_limit=None, time_limit=None, mip_gap=None, lp_path=None, uncertainty=None):
         """
         Dynamic selection of partitions + HW + interfaces + cables.
         
@@ -1521,7 +1557,7 @@ class AssignmentOptimizer:
             feasible_locs_per_sc, feasible_scs_per_loc,
             enable_comm_bw_constraints=enable_comm_bw_constraints,
             comm_bw_big_m=comm_bw_big_m,
-            enable_uncertainty=enable_uncertainty
+            uncertainty=uncertainty
         )
 
         print("\n[DEBUG] Variable breakdown:")
@@ -1560,14 +1596,15 @@ class AssignmentOptimizer:
 
         
         # ======================= BUILD OBJECTIVE =======================
-        model = self._build_objective_function(
+        model, objectives = self._build_objective_function(
             model, y, z, hw_use, if_use, comm, scs, locations, sensors, actuators,
             cable_types, comm_matrix, partitions, hardwares, interfaces,
             n_locs, unique_asils, all_hw, all_interfaces, max_partitions_per_asil_per_loc,
             feasible_locs_per_sc, attach_s=attach_s, attach_a=attach_a,
             shared_attach_s=shared_attach_s, shared_attach_a=shared_attach_a,
             shared_trunk_len=shared_trunk_len, shared_extra_trunk_len=shared_extra_trunk_len,
-            minimize_cable_length=minimize_cable_length, cable_length_limit=cable_length_limit
+            minimize_cable_length=minimize_cable_length, cable_length_limit=cable_length_limit,
+            cost_limit=cost_limit
         )
 
         model.update()
@@ -1583,15 +1620,50 @@ class AssignmentOptimizer:
                     print(f"  Time limit per solve: {tl:.1f} s")
             except Exception:
                 print(f"  [WARN] Ignoring invalid time_limit value: {time_limit}")
-        #return []
-        # ======================= SOLVE =======================
+        if mip_gap is not None:
+            model.setParam('MIPGap', float(mip_gap))
+            print(f"  MIPGap: {float(mip_gap)}")
+        # ======================= SOLVE (lexicographic, two phases) =======================
         print(f"\nSolving...")
-        model.write("model.lp")
+        (primary_name, primary_expr), (secondary_name, secondary_expr) = objectives
+        model.setObjective(primary_expr, GRB.MINIMIZE)
+        if lp_path:
+            model.write(lp_path)
+            print(f"  Model written to: {lp_path}")
+
+        phases = []
+        print(f"\n[Lexicographic] Phase 1: minimize {primary_name}")
         model.optimize()
-        
+        phases.append(self._phase_info(model, primary_name))
+
+        if model.SolCount > 0 and model.status in (GRB.OPTIMAL, GRB.TIME_LIMIT):
+            primary_val = primary_expr.getValue()
+            remaining = None
+            if time_limit is not None and float(time_limit) > 0:
+                remaining = float(time_limit) - model.Runtime
+            if remaining is not None and remaining <= 1.0:
+                print(f"\n[Lexicographic] No time left for phase 2; keeping phase-1 solution")
+            else:
+                # Fix the primary objective at its phase-1 value, then minimize the secondary one.
+                # The phase-1 solution stays feasible and is used by Gurobi as start solution.
+                model.addConstr(
+                    primary_expr <= primary_val + max(1e-6, 1e-9 * abs(primary_val)),
+                    name=f"lex_fix_{primary_name}"
+                )
+                model.setObjective(secondary_expr, GRB.MINIMIZE)
+                if remaining is not None:
+                    model.setParam('TimeLimit', remaining)
+                print(f"\n[Lexicographic] Phase 2: minimize {secondary_name} with {primary_name} <= {primary_val:.6f}")
+                model.optimize()
+                phases.append(self._phase_info(model, secondary_name))
+
         # ======================= RETURN FORMATTED SOLUTION =======================
-        if model.status == GRB.OPTIMAL:
-            print(f"\n✓ Optimal solution found!")
+        if model.SolCount > 0 and model.status in (GRB.OPTIMAL, GRB.TIME_LIMIT):
+            time_limited = any(ph['status'] != 'OPTIMAL' for ph in phases)
+            if time_limited:
+                print(f"\n⚠ Time limit reached; keeping best solution found (gaps: " + ", ".join(f"{ph['objective_name']} {100.0 * ph['mip_gap']:.4f}%" for ph in phases) + ")")
+            else:
+                print(f"\n✓ Optimal solution found!")
             # Extract and return formatted solution
             formatted_solution = extract_solution(
                 y, z, hw_use, if_use, comm, scs, locations, sensors, actuators,
@@ -1600,29 +1672,67 @@ class AssignmentOptimizer:
                 shared_attach_s=shared_attach_s, shared_attach_a=shared_attach_a,
                 shared_trunk_len=shared_trunk_len, shared_extra_trunk_len=shared_extra_trunk_len
             )
+            formatted_solution['solve_info'] = {
+                'objective_type': 'min_cable_length' if minimize_cable_length else 'min_cost',
+                'objectives': [primary_name, secondary_name],
+                'cable_length_limit': cable_length_limit,
+                'cost_limit': cost_limit,
+                'phases': phases,
+                'runtime_s': sum(ph['runtime_s'] for ph in phases),
+                'num_vars': int(model.NumVars),
+                'num_constrs': int(model.NumConstrs),
+                'num_bin_vars': int(model.NumBinVars),
+                'num_int_vars': int(model.NumIntVars),
+                'lp_file': lp_path,
+                'uncertainty': {k: bool((uncertainty or {}).get(k)) for k in UNCERTAINTY_BLOCKS},
+            }
+            formatted_solution['status'] = 'TIME_LIMIT' if time_limited else 'OPTIMAL'
             return formatted_solution
         elif model.status == GRB.TIME_LIMIT:
-            print(f"\n✗ Optimization reached time limit without OPTIMAL status. Skipping this Pareto point.")
+            print(f"\n✗ Optimization reached time limit without any feasible solution. Skipping this Pareto point.")
             return None
         else:
             print(f"\n✗ Optimization failed. Status: {model.status}")
             return None
 
+    @staticmethod
+    def _phase_info(model, objective_name):
+        """Solver statistics of one lexicographic phase."""
+        status_names = {GRB.OPTIMAL: 'OPTIMAL', GRB.TIME_LIMIT: 'TIME_LIMIT', GRB.INFEASIBLE: 'INFEASIBLE',
+                        GRB.INF_OR_UNBD: 'INF_OR_UNBD', GRB.UNBOUNDED: 'UNBOUNDED'}
+        has_sol = model.SolCount > 0
+        return {
+            'objective_name': objective_name,
+            'status': status_names.get(model.status, str(model.status)),
+            'objective': float(model.ObjVal) if has_sol else None,
+            'bound': float(model.ObjBound) if has_sol else None,
+            'mip_gap': float(model.MIPGap) if has_sol else None,
+            'runtime_s': float(model.Runtime),
+            'node_count': float(model.NodeCount),
+        }
+
     def optimize_pareto_epsilon_constraint(self, scs, locations, sensors, actuators, cable_types, comm_matrix,
                                            partitions=None, hardwares=None, interfaces=None,
                                            enable_comm_bw_constraints=True, comm_bw_big_m=10000, num_points=5,
-                                           solve_time_limit=None, enable_uncertainty=False):
+                                           solve_time_limit=None, mip_gap=None, lp_dir=None, uncertainty=None):
         """
         Build Pareto front between total_cost and cable_length via epsilon-constraint.
+
+        Auto-selects sweep axis: uses whichever objective (cost or cable_length)
+        has the wider relative range to maximize the chance of feasible intermediate points.
 
         Steps:
         1) Solve min total_cost (gives one extreme)
         2) Solve min cable_length (gives other extreme)
-        3) Sweep cable_length upper bound and minimize total_cost for intermediate points
+        3) Determine sweep axis based on relative range width
+        4) Sweep the chosen axis for intermediate points
         """
         print("=" * 80)
         print("PARETO OPTIMIZATION (total_cost vs cable_length)")
         print("=" * 80)
+
+        def _lp(name):
+            return os.path.join(lp_dir, f"model_{name}.lp.gz") if lp_dir else None
 
         # Extreme 1: minimum cost
         sol_min_cost = self.optimize(
@@ -1631,7 +1741,9 @@ class AssignmentOptimizer:
             enable_comm_bw_constraints=enable_comm_bw_constraints,
             comm_bw_big_m=comm_bw_big_m,
             time_limit=solve_time_limit,
-            enable_uncertainty=enable_uncertainty
+            mip_gap=mip_gap,
+            lp_path=_lp("min_cost"),
+            uncertainty=uncertainty
         )
 
         # Extreme 2: minimum cable length
@@ -1642,14 +1754,16 @@ class AssignmentOptimizer:
             comm_bw_big_m=comm_bw_big_m,
             minimize_cable_length=True,
             time_limit=solve_time_limit,
-            enable_uncertainty=enable_uncertainty
+            mip_gap=mip_gap,
+            lp_path=_lp("min_cable"),
+            uncertainty=uncertainty
         )
 
         pareto_solutions = []
         seen = set()
 
         def _add_unique(sol):
-            if not sol or sol.get('status') != 'OPTIMAL':
+            if not sol or sol.get('status') not in ('OPTIMAL', 'TIME_LIMIT'):
                 return
             key = (round(float(sol.get('total_cost', 0.0)), 4), round(float(sol.get('cable_length', 0.0)), 4))
             if key in seen:
@@ -1663,29 +1777,98 @@ class AssignmentOptimizer:
         if not sol_min_cost or not sol_min_len:
             return pareto_solutions
 
-        l_max = float(sol_min_cost.get('cable_length', 0.0))
-        l_min = float(sol_min_len.get('cable_length', 0.0))
+        # Extract objective values for both extremes
+        cost_at_min_cost  = float(sol_min_cost.get('total_cost', 0.0))
+        cable_at_min_cost = float(sol_min_cost.get('cable_length', 0.0))
+        cost_at_min_cable  = float(sol_min_len.get('total_cost', 0.0))
+        cable_at_min_cable = float(sol_min_len.get('cable_length', 0.0))
 
         if num_points is None:
             num_points = 5
         num_points = max(2, int(num_points))
 
-        # Epsilon sweep between extremes (skip endpoints; already solved)
-        if l_max > l_min + 1e-9 and num_points > 2:
-            eps_values = np.linspace(l_max, l_min, num_points)[1:-1]
-            for eps_len in eps_values:
-                sol_eps = self.optimize(
-                    scs, locations, sensors, actuators, cable_types, comm_matrix,
-                    partitions=partitions, hardwares=hardwares, interfaces=interfaces,
-                    enable_comm_bw_constraints=enable_comm_bw_constraints,
-                    comm_bw_big_m=comm_bw_big_m,
-                    cable_length_limit=float(eps_len) + 1e-6,
-                    time_limit=solve_time_limit,
-                    enable_uncertainty=enable_uncertainty
-                )
-                _add_unique(sol_eps)
+        # Compute relative range for each axis to decide sweep direction
+        cable_range = abs(cable_at_min_cost - cable_at_min_cable)
+        cost_range  = abs(cost_at_min_cable - cost_at_min_cost)
+        cable_mid   = max(1e-9, (cable_at_min_cost + cable_at_min_cable) / 2.0)
+        cost_mid    = max(1e-9, (cost_at_min_cost + cost_at_min_cable) / 2.0)
+
+        cable_relative = cable_range / cable_mid
+        cost_relative  = cost_range / cost_mid
+
+        print(f"\n[Pareto] Cable range: {cable_at_min_cable:.2f} - {cable_at_min_cost:.2f} (span={cable_range:.2f}, relative={cable_relative:.2%})")
+        print(f"[Pareto] Cost  range: {cost_at_min_cost:.2f} - {cost_at_min_cable:.2f} (span={cost_range:.2f}, relative={cost_relative:.2%})")
+
+        if num_points > 2:
+            if cost_relative > cable_relative:
+                # Sweep on COST axis (wider): constrain cost, minimize cable_length
+                c_min = cost_at_min_cost
+                c_max = cost_at_min_cable
+                print(f"[Pareto] → Sweeping on COST axis (relative {cost_relative:.2%} > {cable_relative:.2%})")
+                print(f"[Pareto]   cost_min={c_min:.2f}, cost_max={c_max:.2f}")
+                eps_values = np.linspace(c_min, c_max, num_points)[1:-1]
+                for k, eps_cost in enumerate(eps_values, 1):
+                    print(f"\n[Pareto] Solving with cost_limit={eps_cost:.2f} (minimize cable_length)...")
+                    sol_eps = self.optimize(
+                        scs, locations, sensors, actuators, cable_types, comm_matrix,
+                        partitions=partitions, hardwares=hardwares, interfaces=interfaces,
+                        enable_comm_bw_constraints=enable_comm_bw_constraints,
+                        comm_bw_big_m=comm_bw_big_m,
+                        minimize_cable_length=True,
+                        cost_limit=float(eps_cost) + 1e-2,
+                        time_limit=solve_time_limit,
+                        mip_gap=mip_gap,
+                        lp_path=_lp(f"eps_cost_{k}"),
+                        uncertainty=uncertainty
+                    )
+                    _add_unique(sol_eps)
+            else:
+                # Sweep on CABLE axis (wider or equal): constrain cable, minimize cost
+                l_max = cable_at_min_cost
+                l_min = cable_at_min_cable
+                print(f"[Pareto] → Sweeping on CABLE axis (relative {cable_relative:.2%} >= {cost_relative:.2%})")
+                print(f"[Pareto]   cable_min={l_min:.2f}, cable_max={l_max:.2f}")
+                eps_values = np.linspace(l_max, l_min, num_points)[1:-1]
+                for k, eps_len in enumerate(eps_values, 1):
+                    print(f"\n[Pareto] Solving with cable_length_limit={eps_len:.4f}...")
+                    sol_eps = self.optimize(
+                        scs, locations, sensors, actuators, cable_types, comm_matrix,
+                        partitions=partitions, hardwares=hardwares, interfaces=interfaces,
+                        enable_comm_bw_constraints=enable_comm_bw_constraints,
+                        comm_bw_big_m=comm_bw_big_m,
+                        cable_length_limit=float(eps_len) + 1e-6,
+                        time_limit=solve_time_limit,
+                        mip_gap=mip_gap,
+                        lp_path=_lp(f"eps_cable_{k}"),
+                        uncertainty=uncertainty
+                    )
+                    _add_unique(sol_eps)
 
         pareto_solutions.sort(key=lambda s: (float(s.get('cable_length', 0.0)), float(s.get('total_cost', 0.0))))
+
+        # Remove dominated solutions: a solution is dominated if another has both <= cost and <= cable_length
+        if len(pareto_solutions) > 1:
+            non_dominated = []
+            for sol in pareto_solutions:
+                c = float(sol.get('total_cost', 0.0))
+                l = float(sol.get('cable_length', 0.0))
+                dominated = False
+                for other in pareto_solutions:
+                    if other is sol:
+                        continue
+                    oc = float(other.get('total_cost', 0.0))
+                    ol = float(other.get('cable_length', 0.0))
+                    if oc <= c and ol <= l and (oc < c or ol < l):
+                        dominated = True
+                        break
+                if not dominated:
+                    non_dominated.append(sol)
+            if non_dominated:
+                removed = len(pareto_solutions) - len(non_dominated)
+                if removed > 0:
+                    print(f"[Pareto] Removed {removed} dominated solution(s)")
+                pareto_solutions = non_dominated
+
         print(f"Pareto solutions found: {len(pareto_solutions)}")
         return pareto_solutions
 

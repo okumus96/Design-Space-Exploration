@@ -4,7 +4,7 @@ import re
 from models import Point, Location, Sensor, Actuator, SoftwareComponent
 
 
-def _generate_locations(num_locs, vehicle_dimensions):
+def _generate_locations(num_locs, vehicle_dimensions, health_factor=1.0):
     ecu_bounds = vehicle_dimensions.get('ecu_placement_bounds', {})
     x_min = ecu_bounds.get('x_min', -0.5)
     x_max = ecu_bounds.get('x_max', 0.5)
@@ -29,7 +29,7 @@ def _generate_locations(num_locs, vehicle_dimensions):
                 Location(
                     id=f"LOC{loc_idx}",
                     location=Point(x_pos, y_pos),
-                    health_factor=0.85,
+                    health_factor=health_factor,
                 )
             )
             loc_idx += 1
@@ -51,7 +51,8 @@ def load_architecture_from_json(json_filepath, config_reader, num_locs=6):
 
     cable_types = config_reader.get_interfaces()
     vehicle_dimensions = config_reader.get_vehicle_dimensions()
-    locations = _generate_locations(num_locs, vehicle_dimensions)
+    health_factor = config_reader.get_uncertainty_config().get('derating', {}).get('health_factor', 1.0)
+    locations = _generate_locations(num_locs, vehicle_dimensions, health_factor=health_factor)
 
     hw = vehicle_dimensions['width'] / 2
     hl = vehicle_dimensions['length'] / 2

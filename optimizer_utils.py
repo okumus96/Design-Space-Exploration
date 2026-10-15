@@ -493,6 +493,15 @@ def extract_solution(y, z, hw_use, if_use, comm, scs, locations, sensors, actuat
         comm_cost = calculate_communication_cost(comm, locations, cable_types)
         comm_links = extract_communication_links(comm, locations)
 
+        # Backbone (ECU-ECU) cable length, counted in the model's cable_distance_expr as well
+        backbone_length = sum(
+            int(round(var.X)) * get_distance(locations[j1].location, locations[j2].location)
+            for (j1, j2, _iface), var in comm.items()
+            if var.X > 0.5
+        )
+        peripheral_cable_length = cable_length
+        cable_length = peripheral_cable_length + backbone_length
+
         # DEBUG: ETH peripheral attachments
         if attach_s:
             attached = []
@@ -827,6 +836,8 @@ def extract_solution(y, z, hw_use, if_use, comm, scs, locations, sensors, actuat
             'shared_sensor_attachments': shared_sensor_attachments,
             'shared_actuator_attachments': shared_actuator_attachments,
             'cable_length': cable_length,
+            'peripheral_cable_length': peripheral_cable_length,
+            'backbone_length': backbone_length,
             'total_cost': total_cost,
             'num_locations_used': num_locations_used,
             'num_ecus_used': num_locations_used,  # For visualizer compatibility

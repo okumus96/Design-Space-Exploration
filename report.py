@@ -312,6 +312,8 @@ class ReportGenerator:
         metrics_rows = [
             ["Locations Used", solution.get('num_locations_used', 0)],
             ["Total Cable Length", f"{solution.get('cable_length', 0):.2f} m"],
+            ["  Peripheral Cables", f"{solution.get('peripheral_cable_length', 0):.2f} m"],
+            ["  Backbone Cables", f"{solution.get('backbone_length', 0):.2f} m"],
             ["Optimization Status", solution.get('status', 'UNKNOWN')],
         ]
         

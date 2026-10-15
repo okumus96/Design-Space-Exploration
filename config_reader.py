@@ -27,7 +27,8 @@ class ConfigReader:
         self.bus_config = self._load_json('buses.json')
         self.partitions_config = self._load_json('partitions.json')
         self.hardware_config = self._load_json('hardwares.json')
-    
+        self.uncertainty_config = self._load_json('uncertainty.json')
+
     def _load_json(self, filename):
         """Load a JSON file from config directory"""
         filepath = os.path.join(self.config_dir, filename)
@@ -102,6 +103,10 @@ class ConfigReader:
             "cost": partition.get('cost', 0)
         }
     
+    def get_uncertainty_config(self):
+        """Get parameters of the uncertainty-aware constraints"""
+        return self.uncertainty_config
+
     def get_hardwares(self):
         """Get hardware feature costs (DSP, HSM, HW_ACC)"""
         costs = {}

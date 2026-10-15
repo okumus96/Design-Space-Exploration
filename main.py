@@ -11,19 +11,75 @@ import argparse
 from config_reader import ConfigReader
 from data_generator import VehicleDataGenerator
 from architecture_loader import load_architecture_from_json
-from optimizer import AssignmentOptimizer
+from optimizer import AssignmentOptimizer, UNCERTAINTY_BLOCKS
 from visualizer import Visualization
 from report import ReportGenerator
 from tabulate import tabulate
 import time
+import os
+import sys
+import json
+import socket
+import subprocess
+from datetime import datetime
+
+
+def _git_info():
+    """Return (commit hash, dirty flag) of the working tree, or (None, None) if unavailable."""
+    repo_dir = os.path.dirname(os.path.abspath(__file__))
+    try:
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo_dir, text=True).strip()
+        dirty = bool(subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"], cwd=repo_dir, text=True).strip())
+        return commit, dirty
+    except Exception:
+        return None, None
+
+
+def save_run_results(args, pareto_solutions, pareto_time_s):
+    """Save run metadata (run_info.json) and every Pareto solution (solution_<i>.json) to args.output_dir."""
+    import gurobipy as gp
+    commit, dirty = _git_info()
+    run_info = {
+        'timestamp': datetime.now().isoformat(timespec='seconds'),
+        'command': " ".join(sys.argv),
+        'args': vars(args),
+        'git_commit': commit,
+        'git_dirty': dirty,
+        'gurobi_version': ".".join(str(v) for v in gp.gurobi.version()),
+        'python_version': sys.version.split()[0],
+        'hostname': socket.gethostname(),
+        'slurm_job_id': os.environ.get('SLURM_JOB_ID'),
+        'pareto_time_s': pareto_time_s,
+        'num_solutions': len(pareto_solutions),
+        'solutions': [
+            {
+                'file': f"solution_{idx}.json",
+                'total_cost': sol.get('total_cost'),
+                'cable_length': sol.get('cable_length'),
+            }
+            for idx, sol in enumerate(pareto_solutions, 1)
+        ],
+    }
+    with open(os.path.join(args.output_dir, "run_info.json"), "w") as f:
+        json.dump(run_info, f, indent=2, default=str)
+    for idx, sol in enumerate(pareto_solutions, 1):
+        with open(os.path.join(args.output_dir, f"solution_{idx}.json"), "w") as f:
+            json.dump(sol, f, indent=2, default=str)
+    print(f"Saved run_info.json and {len(pareto_solutions)} solution JSON file(s) to: {args.output_dir}")
+
 
 def main(args):
     print("=" * 80)
     print("ECU OPTIMIZATION AND VISUALIZATION PIPELINE")
     print("=" * 80)
 
+    os.makedirs(args.output_dir, exist_ok=True)
     config_reader = ConfigReader(args.config_dir)
     partitions = config_reader.get_partitions()
+
+    # Uncertainty blocks: --uncertainty switches on all of them, otherwise each one by its own flag
+    uncertainty = {k: bool(args.uncertainty or getattr(args, k)) for k in UNCERTAINTY_BLOCKS}
+    uncertainty['params'] = config_reader.get_uncertainty_config()
     hardwares = config_reader.get_hardwares()
     interfaces = config_reader.get_interfaces()
     
@@ -78,12 +134,17 @@ def main(args):
         interfaces=interfaces,
         num_points=args.num_points,
         solve_time_limit=args.time_limit,
-        enable_uncertainty=args.uncertainty,
+        mip_gap=args.mip_gap,
+        lp_dir=args.output_dir if args.write_lp else None,
+        uncertainty=uncertainty,
     )
     end_time = time.time()
     print(f"#"*80)
     print(f"Pareto optimization completed in {end_time - start_time:.2f} seconds.")
     print(f"#"*80)
+
+    # Save results before plotting, so a plotting error does not lose them
+    save_run_results(args, pareto_solutions, end_time - start_time)
     
     # Display detailed solution analysis
     if pareto_solutions:
@@ -168,11 +229,17 @@ if __name__ == "__main__":
     argparser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     argparser.add_argument("--config_dir", type=str, default="configs", help="Directory containing configuration JSON files")
     argparser.add_argument("--solver", type=str, default="gurobi", choices=["gurobi", "z3"], help="Solver to use")
-    argparser.add_argument("--time_limit", type=int, default=None, help="Time limit in seconds")
-    argparser.add_argument("--uncertainty", "--uncertainity", dest="uncertainty", action="store_true", help="Enable uncertainty-aware constraints (robust latency, SW margins, health factor)")
+    argparser.add_argument("--time_limit", type=int, default=43200, help="Time limit per solve in seconds (default: 12 h)")
+    argparser.add_argument("--uncertainty", "--uncertainity", dest="uncertainty", action="store_true", help="Enable all uncertainty-aware constraint blocks below")
+    argparser.add_argument("--sw_margin", action="store_true", help="SW resource demand margins per ASIL / AI (configs/uncertainty.json: sw_margin)")
+    argparser.add_argument("--derating", action="store_true", help="Partition capacity derating by location health factor (configs/uncertainty.json: derating)")
+    argparser.add_argument("--redundancy", action="store_true", help="Redundant SC pairs must be placed at different locations")
+    argparser.add_argument("--ai_contention", action="store_true", help="Limit AI-accelerated SCs per location (configs/uncertainty.json: ai_contention)")
+    argparser.add_argument("--robust_latency", action="store_true", help="Robust link latency with safety factor and overheads (configs/uncertainty.json: robust_latency)")
     argparser.add_argument("--warm_start", action="store_true", help="Enable warm start for optimization")
-    argparser.add_argument("--mip_gap", type=float, default=None, help="MIP Gap for Gurobi optimizer")
+    argparser.add_argument("--mip_gap", type=float, default=None, help="MIP Gap for Gurobi optimizer (default: Gurobi's own, 1e-4)")
     argparser.add_argument("--output_dir", type=str, default="results", help="Directory to save visualization results")
+    argparser.add_argument("--write_lp", action="store_true", help="Write the Gurobi model of each solve as model_<point>.lp.gz into output_dir")
     argparser.add_argument("--num_points", type=int, default=5, help="Number of Pareto points to generate")
     argparser.add_argument("--verbose", action="store_true", help="Enable verbose output during optimization")
     argparser.add_argument("--show_bus_utilization", action="store_true", help="Show bus utilization summary on top-down layout")
