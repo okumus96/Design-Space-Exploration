@@ -104,6 +104,16 @@ def main(args):
         print(f"\n   Generating architecture visualization for Solution {solution_idx}...")
         visualizer.visualize_solution_architecture(solution, scs, locations, partitions_config=partitions,
                                                  filename=f"solution_architecture_{solution_idx}.png")
+
+        if args.latex_architecture_pdf:
+            print(f"   Generating LaTeX architecture PDF for Solution {solution_idx}...")
+            visualizer.visualize_solution_architecture_latex_pdf(
+                solution,
+                scs,
+                locations,
+                partitions_config=partitions,
+                filename=f"solution_architecture_{solution_idx}.pdf",
+            )
         
         # Generate vehicle layout with active locations and bus connections
         print(f"   Generating vehicle layout for Solution {solution_idx}...")
@@ -168,6 +178,7 @@ if __name__ == "__main__":
     argparser.add_argument("--show_bus_utilization", action="store_true", help="Show bus utilization summary on top-down layout")
     argparser.add_argument("--hide_peripheral_labels", action="store_true", help="Hide sensor and actuator labels in top-down vehicle layout plots")
     argparser.add_argument("--latex_topdown", action="store_true", help="Enable LaTeX-oriented top-down plotting and save initial/solution layouts as PDF")
+    argparser.add_argument("--latex_architecture_pdf", action="store_true", help="Enable LaTeX-friendly architecture PDF output per Pareto solution")
     argparser.add_argument("--latex_compare_solutions", type=str, default="1,3", help="Comma-separated 1-based Pareto solution indices for LaTeX shared-legend comparison (2 or 3 entries), e.g. 1,3 or 1,2,3")
     argparser.add_argument("--topdown_dpi", type=int, default=600, help="DPI for top-down figure export (used for PDF/PNG output)")
     args = argparser.parse_args()

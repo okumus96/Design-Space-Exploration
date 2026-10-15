@@ -1,3 +1,6 @@
+import matplotlib
+matplotlib.rcParams['pdf.fonttype'] = 42   # TrueType – no Type 3 fonts
+matplotlib.rcParams['ps.fonttype'] = 42
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import networkx as nx
@@ -323,27 +326,25 @@ class Visualization:
         x_mid = 0.5 * (x_min + x_max)
         y_mid = 0.5 * (y_min + y_max)
         ax1.text(
-            0.62,
-            0.30,
+            x_mid,
+            y_mid - 0.22 * (y_max - y_min),
             'Dominated Region',
             fontsize=20,
             fontweight='bold',
             color="#008622",
             ha='center',
             va='center',
-            transform=ax1.transAxes,
             bbox=dict(boxstyle='round,pad=0.25', facecolor='white', alpha=0.75, edgecolor='none')
         )
         ax1.text(
-            0.16,
-            0.28,
+            x_mid - 5.5,
+            y_mid - 0.24 * (y_max - y_min),
             'Infeasible',
             fontsize=20,
             fontweight='bold',
             color="#7A7A7A",
             ha='center',
             va='center',
-            transform=ax1.transAxes,
             bbox=dict(boxstyle='round,pad=0.25', facecolor='white', alpha=0.75, edgecolor='none')
         )
         ax1.grid(True, alpha=0.3)
@@ -896,22 +897,9 @@ class Visualization:
                         ux, uy = 0.0, 1.0
                     else:
                         ux, uy = dx / norm, dy / norm
-                    hub_dist = min(0.55, max(0.25, 0.50 * norm))
-
-                    # --- Change D: lateral offset per interface type so CAN/LIN/FLEXRAY
-                    # trunks from the same ECU don't overlap each other.
-                    iface_order = {'CAN': -1, 'FLEXRAY': 0, 'LIN': 1}
-                    n_shared = len(shared_bus_endpoints)
-                    if n_shared > 1:
-                        lateral_idx = iface_order.get(interface, 0)
-                        # perpendicular to the trunk direction
-                        perp_x, perp_y = -uy, ux
-                        lateral_sep = 0.12
-                        base_bus_x = loc.location.x + hub_dist * ux + lateral_idx * lateral_sep * perp_x
-                        base_bus_y = loc_y + hub_dist * uy + lateral_idx * lateral_sep * perp_y
-                    else:
-                        base_bus_x = loc.location.x + hub_dist * ux
-                        base_bus_y = loc_y + hub_dist * uy
+                    hub_dist = min(0.28, max(0.12, 0.35 * norm))
+                    base_bus_x = loc.location.x + hub_dist * ux
+                    base_bus_y = loc_y + hub_dist * uy
 
                     active_groups = []
                     if low_eps:
@@ -1130,21 +1118,54 @@ class Visualization:
                               label='Active Location' if not active_label_done else '')
                     active_label_done = True
 
-                    # Location label (only name inside the box)
-                    short_loc_id = loc.id.replace('LOC', 'L')
-                    ax.text(loc.location.x, y_pos, short_loc_id,
-                           fontsize=8, ha='center', va='center', fontweight='bold',
-                           color='black', zorder=10)
-
-                    # SC count badge – small circle at top-right corner
+                    # Show number of assigned SCs (0 for switch-only)
                     num_scs = len(active_locations.get(loc.id, []))
-                    badge_x = loc.location.x + 0.08
-                    badge_y = y_pos + 0.08
-                    ax.scatter(badge_x, badge_y, s=210, c='white',
-                              marker='o', edgecolor='#FF6B35', linewidth=1.5, zorder=11)
-                    ax.text(badge_x, badge_y, str(num_scs),
-                           fontsize=6, ha='center', va='center', fontweight='bold',
-                           color='#FF6B35', zorder=12)
+                    short_loc_id = loc.id.replace('LOC', 'L')
+                    badge_y_offset = -0.10 if short_loc_id in {'L4', 'L5'} else 0.10
+
+                    # Location label badge (top-left)
+                    badge_x = loc.location.x - 0.10
+                    badge_y = y_pos + badge_y_offset
+                    ax.text(
+                        badge_x,
+                        badge_y,
+                        short_loc_id,
+                        fontsize=6.5,
+                        ha='center',
+                        va='center',
+                        fontweight='bold',
+                        color='#FF6B35',
+                        zorder=12,
+                        bbox=dict(
+                            boxstyle='round,pad=0.16',
+                            facecolor='white',
+                            edgecolor='#FF6B35',
+                            linewidth=1.3,
+                            alpha=0.95,
+                        ),
+                    )
+
+                    # Assigned SW count badge (top-right)
+                    sw_badge_x = loc.location.x + 0.10
+                    sw_badge_y = y_pos + badge_y_offset
+                    ax.text(
+                        sw_badge_x,
+                        sw_badge_y,
+                        f"{num_scs}",
+                        fontsize=6.5,
+                        ha='center',
+                        va='center',
+                        fontweight='bold',
+                        color='#FF6B35',
+                        zorder=12,
+                        bbox=dict(
+                            boxstyle='round,pad=0.16',
+                            facecolor='white',
+                            edgecolor='#FF6B35',
+                            linewidth=1.3,
+                            alpha=0.95,
+                        ),
+                    )
                 else:
                     # Inactive location: grayed out
                     ax.scatter(loc.location.x, y_pos, s=300, c='#D3D3D3',
@@ -1153,9 +1174,28 @@ class Visualization:
                     inactive_label_done = True
                     
                     short_loc_id = loc.id.replace('LOC', 'L')
-                    ax.text(loc.location.x, y_pos, short_loc_id,
-                           fontsize=6, ha='center', va='center', fontweight='bold',
-                           color='gray', zorder=5, alpha=0.5)
+                    badge_y_offset = -0.10 if short_loc_id in {'L4', 'L5'} else 0.10
+                    badge_x = loc.location.x - 0.10
+                    badge_y = y_pos + badge_y_offset
+                    ax.text(
+                        badge_x,
+                        badge_y,
+                        short_loc_id,
+                        fontsize=6,
+                        ha='center',
+                        va='center',
+                        fontweight='bold',
+                        color='gray',
+                        zorder=6,
+                        alpha=0.8,
+                        bbox=dict(
+                            boxstyle='round,pad=0.14',
+                            facecolor='white',
+                            edgecolor='gray',
+                            linewidth=1.0,
+                            alpha=0.7,
+                        ),
+                    )
 
         elif ecus is not None:
             # Check mode: Candidate Sites (no assignments) or Assigned ECUs
@@ -1267,7 +1307,7 @@ class Visualization:
         # Create legend
         from matplotlib.lines import Line2D
         legend_elements = [
-            patches.Rectangle((0, 0), 1, 1, facecolor='lightgray', edgecolor='black', linewidth=2, label='Vehicle Body'),
+            patches.Rectangle((0, 0), 1, 1, facecolor='lightgray', edgecolor='black', linewidth=2, label='Vehicle'),
         ]
         
         if locations is not None and assignments is None:
@@ -1279,22 +1319,22 @@ class Visualization:
             # Add location legend for active/inactive locations
             legend_elements.extend([
                 Line2D([0], [0], marker='s', color='w', markerfacecolor='#FFE74C', markersize=12,
-                       markeredgecolor='#FF6B35', markeredgewidth=2, label='Active Location'),
+                       markeredgecolor='#FF6B35', markeredgewidth=2, label='Active Loc'),
                 Line2D([0], [0], marker='s', color='w', markerfacecolor='#D3D3D3', markersize=12,
-                       markeredgecolor='gray', markeredgewidth=1.5, alpha=0.5, label='Inactive Location'),
+                       markeredgecolor='gray', markeredgewidth=1.5, alpha=0.5, label='Inactive Loc'),
             ])
             # Add interface/bus type legend
             legend_elements.extend([
-                Line2D([0], [0], color='#3498DB', linewidth=3, label='Bus: ETH (P2P)'),
-                Line2D([0], [0], color='#E74C3C', linewidth=3, label='Bus: CAN (Shared)'),
-                Line2D([0], [0], color='#2ECC71', linewidth=3, label='Bus: FLEXRAY (Shared)'),
-                Line2D([0], [0], color='#F39C12', linewidth=3, label='Bus: LIN (Shared)'),
-                Line2D([0], [0], color='#9B59B6', linewidth=3, label='Bus: UART'),
-                Line2D([0], [0], color='#4ECDC4', linewidth=3, label='Bus: SPI'),
+                Line2D([0], [0], color='#3498DB', linewidth=3, label='ETH'),
+                Line2D([0], [0], color='#E74C3C', linewidth=3, label='CAN'),
+                Line2D([0], [0], color='#2ECC71', linewidth=3, label='FLEXRAY'),
+                Line2D([0], [0], color='#F39C12', linewidth=3, label='LIN'),
+                Line2D([0], [0], color='#9B59B6', linewidth=3, label='UART'),
+                Line2D([0], [0], color='#4ECDC4', linewidth=3, label='SPI'),
             ])
             # Add ECU-ECU backbone legend
             legend_elements.extend([
-                Line2D([0], [0], color='#3498DB', linewidth=3.5, linestyle='--', label='ECU-ECU: ETH'),
+                Line2D([0], [0], color='#3498DB', linewidth=3.5, linestyle='--', label='ECU-ECU'),
             ])
         elif ecus is not None:
             if assignments is None:
@@ -1487,8 +1527,7 @@ class Visualization:
 
         n_total = len(pareto_solutions)
         if solution_indices is None:
-            # Default: first and last (two extremes)
-            selected = [0, n_total - 1] if n_total >= 2 else [0]
+            selected = [0, 1, 3] if n_total >= 4 else [0, min(1, n_total - 1)]
         else:
             selected = []
             for idx in solution_indices:
@@ -1496,8 +1535,7 @@ class Visualization:
                     selected.append(idx)
 
         if len(selected) < 2:
-            # Fallback: always pick two extremes (first=min cable, last=min cost)
-            selected = [0, n_total - 1] if n_total >= 2 else [0]
+            selected = [0, 1, 3] if n_total >= 4 else [0, min(1, n_total - 1)]
         if len(selected) > 3:
             selected = selected[:3]
 
@@ -1543,8 +1581,8 @@ class Visualization:
             fig.legend(
                 handles=legend_elements,
                 loc='lower center',
-                bbox_to_anchor=(0.5, 0.04),
-                ncol=min(len(legend_elements), 10),
+                bbox_to_anchor=(0.5, 0.016),
+                ncol=8,
                 fontsize=7.5,
                 framealpha=0.95,
                 edgecolor='black',
@@ -1557,7 +1595,7 @@ class Visualization:
                 borderpad=0.28,
             )
 
-        fig.subplots_adjust(left=0.01, right=0.99, top=0.96, bottom=0.12, wspace=0.005)
+        fig.subplots_adjust(left=0.01, right=0.99, top=0.93, bottom=0.155, wspace=0.005)
         export_dpi = max(300, int(output_dpi))
 
         if self.save_dir:
@@ -1774,3 +1812,186 @@ class Visualization:
         
         plt.tight_layout(pad=0.4)
         self.save_plot(filename)
+
+    def visualize_solution_architecture_latex_pdf(self, solution, scs, locations, partitions_config=None, filename="solution_architecture_latex.pdf"):
+        """
+        Publication-quality table-style architecture diagram.
+        One row per partition, grouped by LOC.  ASIL color-coded.
+        Columns: LOC | HW | IF | Partition | ASIL | #SW | Domain Breakdown
+        """
+        _ = partitions_config
+        sc_dict = {s.id: s for s in scs}
+        assignment = solution['assignment']
+        partitions = solution['partitions']
+        hw_features = solution['hw_features']
+        interfaces = solution['interfaces']
+        eth_sensor_attachments = solution.get('eth_sensor_attachments') or {}
+        eth_actuator_attachments = solution.get('eth_actuator_attachments') or {}
+
+        # ── domain helpers ──────────────────────────────────────────
+        def _domain_bucket(sc_id):
+            sc_obj = sc_dict.get(sc_id)
+            domain = getattr(sc_obj, 'domain', None) if sc_obj is not None else None
+            if domain:
+                alias = {'ADAS': 'AW', 'BodyComfort': 'Body', 'DriveTrain': 'DT',
+                         'Infotainment': 'Info', 'Connectivity': 'Conn', 'Driver': 'Driver'}
+                return alias.get(str(domain), str(domain))
+            sid = str(sc_id)
+            for prefix, tag in [('AW_', 'AW'), ('BC_', 'Body'), ('DT_', 'DT'),
+                                ('INFO_', 'Info'), ('CONN_', 'Conn'), ('SC_', 'Driver')]:
+                if sid.startswith(prefix):
+                    return tag
+            return 'Other'
+
+        def _domain_str(sc_ids):
+            counts = {}
+            for sc_id in sc_ids:
+                b = _domain_bucket(sc_id)
+                counts[b] = counts.get(b, 0) + 1
+            ordered = sorted(counts.items(), key=lambda x: (-x[1], x[0]))
+            return ', '.join(f"{k}:{v}" for k, v in ordered)
+
+        # ── group data ──────────────────────────────────────────────
+        loc_partition_sws = {}
+        loc_hw = {}
+        loc_if = {}
+
+        for sc_id, loc_id in assignment.items():
+            loc_partition_sws.setdefault(loc_id, {})
+            pname = partitions.get(sc_id, 'unknown')
+            loc_partition_sws[loc_id].setdefault(pname, []).append(sc_id)
+
+        for hw_feat in hw_features:
+            if '@' in hw_feat:
+                hw_name, loc_id = hw_feat.rsplit('@', 1)
+                loc_hw.setdefault(loc_id, []).append(hw_name)
+
+        for iface in interfaces:
+            if '@' in iface:
+                iface_name, loc_id = iface.rsplit('@', 1)
+                loc_if.setdefault(loc_id, []).append(iface_name)
+
+        for loc_id in sorted(set(loc_hw) | set(eth_sensor_attachments.values()) | set(eth_actuator_attachments.values())):
+            loc_partition_sws.setdefault(loc_id, {})
+
+        # ── build flat row list ─────────────────────────────────────
+        # Each row: (loc_id, hw_str, if_str, part_label, asil_level, sw_count, domain_str)
+        # For LOCs with 0 partitions we still add one row marked "—"
+        table_rows = []
+        loc_row_spans = {}  # loc_id -> (first_row_idx, num_rows)
+
+        for loc_id in sorted(loc_partition_sws):
+            hw_str = ', '.join(sorted(loc_hw.get(loc_id, ['-'])))
+            if_str = ', '.join(sorted(loc_if.get(loc_id, ['-'])))
+            pdict = loc_partition_sws[loc_id]
+            first = len(table_rows)
+
+            if not pdict:
+                table_rows.append((loc_id, hw_str, if_str, '—', '—', 0, '—'))
+            else:
+                for pname in sorted(pdict):
+                    sc_ids = pdict[pname]
+                    # parse ASIL
+                    if 'asil' in pname:
+                        asil_tok = pname.split('asil', 1)[1].split('_', 1)[0]
+                        asil = f"ASIL-{asil_tok}"
+                    else:
+                        asil = 'QM'
+                    ptail = pname.split('_')[-1] if '_' in pname else pname
+                    table_rows.append((loc_id, hw_str, if_str, ptail, asil, len(sc_ids), _domain_str(sc_ids)))
+
+            loc_row_spans[loc_id] = (first, len(table_rows) - first)
+
+        n_rows = len(table_rows)
+
+        # ── table geometry ──────────────────────────────────────────
+        col_widths = [1.20, 1.80, 1.80, 0.55, 0.75, 0.45, 2.60]  # LOC HW IF Part ASIL #SW Domain
+        col_labels = ['LOC', 'Hardware', 'Interfaces', 'Part.', 'ASIL', '#SW', 'Domain Breakdown']
+        total_w = sum(col_widths)
+        row_h = 0.28
+        header_h = 0.34
+
+        fig_w = total_w + 0.30
+        fig_h = max(1.5, header_h + n_rows * row_h + 0.25)
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+
+        asil_bg = {
+            'ASIL-0': '#F0F0F0', 'ASIL-1': '#FDEDEC', 'ASIL-2': '#FADBD8',
+            'ASIL-3': '#F5C6C3', 'ASIL-4': '#EFB0AA', 'QM': '#EBF5FB', '—': '#FFFFFF',
+        }
+        loc_bg_alt = ['#EAF3F8', '#F7FBFF']  # alternating LOC group background
+
+        origin_x = 0.15
+        origin_y = fig_h - 0.12 - header_h
+
+        # ── draw header ─────────────────────────────────────────────
+        cx = origin_x
+        for ci, (cw, label) in enumerate(zip(col_widths, col_labels)):
+            rect = patches.Rectangle((cx, origin_y), cw, header_h,
+                                     linewidth=0.8, edgecolor='#2C3E50', facecolor='#2C3E50')
+            ax.add_patch(rect)
+            ax.text(cx + cw / 2, origin_y + header_h / 2, label,
+                    fontsize=6.5, ha='center', va='center', weight='bold', color='white')
+            cx += cw
+
+        # ── draw data rows ──────────────────────────────────────────
+        loc_index = 0
+        drawn_loc_cells = set()
+
+        for ri, (loc_id, hw_str, if_str, ptail, asil, sw_n, dom_str) in enumerate(table_rows):
+            y = origin_y - (ri + 1) * row_h
+            cx = origin_x
+            first_ri, span = loc_row_spans[loc_id]
+            loc_bg = loc_bg_alt[list(loc_row_spans.keys()).index(loc_id) % 2]
+
+            cell_texts = [loc_id, hw_str, if_str, ptail, asil, str(sw_n) if sw_n else '—', dom_str]
+
+            for ci, (cw, txt) in enumerate(zip(col_widths, cell_texts)):
+                # Columns 0-2 (LOC, HW, IF) are merged per LOC group
+                if ci <= 2:
+                    if loc_id not in drawn_loc_cells or ci > 0:
+                        if ci == 0 and loc_id in drawn_loc_cells:
+                            cx += cw
+                            continue
+                        if ci <= 2 and ri != first_ri:
+                            # skip drawing, already merged
+                            cx += cw
+                            continue
+
+                    # draw merged cell spanning all rows for this LOC
+                    merged_h = span * row_h
+                    merged_y = origin_y - (first_ri + span) * row_h
+                    fc = loc_bg if ci == 0 else '#FFFFFF'
+                    rect = patches.Rectangle((cx, merged_y), cw, merged_h,
+                                             linewidth=0.6, edgecolor='#BDC3C7', facecolor=fc)
+                    ax.add_patch(rect)
+                    fs = 7.0 if ci == 0 else 5.0
+                    fw = 'bold' if ci == 0 else 'normal'
+                    ax.text(cx + cw / 2, merged_y + merged_h / 2, txt,
+                            fontsize=fs, ha='center', va='center', weight=fw, color='#1B2631')
+                else:
+                    # per-row cells
+                    fc = asil_bg.get(asil, '#FFFFFF') if ci == 4 else '#FFFFFF'
+                    rect = patches.Rectangle((cx, y), cw, row_h,
+                                             linewidth=0.6, edgecolor='#BDC3C7', facecolor=fc)
+                    ax.add_patch(rect)
+                    fs = 5.5 if ci <= 5 else 5.0
+                    fw = 'bold' if ci in (4, 5) else 'normal'
+                    ax.text(cx + cw / 2, y + row_h / 2, txt,
+                            fontsize=fs, ha='center', va='center', weight=fw, color='#1B2631')
+                cx += cw
+
+            drawn_loc_cells.add(loc_id)
+
+        # ── outer border ────────────────────────────────────────────
+        table_h = header_h + n_rows * row_h
+        outer = patches.Rectangle((origin_x, origin_y - n_rows * row_h), total_w, table_h,
+                                  linewidth=1.2, edgecolor='#2C3E50', facecolor='none')
+        ax.add_patch(outer)
+
+        ax.set_xlim(0, fig_w)
+        ax.set_ylim(0, fig_h)
+        ax.axis('off')
+
+        plt.tight_layout(pad=0.05)
+        self.save_plot(filename, dpi=600, pad_inches=0.01)
