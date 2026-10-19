@@ -1,9 +1,18 @@
 {
   "partition": {
     "cost": 500,
-      "cpu_cap": 100000,
-      "ram_cap": 32000,
-      "rom_cap": 64000,
-    "description": "Infrastructure cost to open/establish a partition at a location. Supports all ASIL levels (0-4)."
+    "cpu_cap": 100000,
+    "ram_cap": 32000,
+    "rom_cap": 64000,
+    "max_per_asil_per_site": 3,
+    "description": "Infrastructure cost to open/establish a partition at a location. Supports all ASIL levels (0-4). max_per_asil_per_site bounds the partitions of one ASIL at one site (3 = the slot count of the v1 model)."
+  },
+  "site": {
+    "max_partitions": null,
+    "cpu_cap": null,
+    "ram_cap": null,
+    "rom_cap": null,
+    "fixed_cost": 0,
+    "description": "Caps and fixed activation cost of the control unit at a site. null = unlimited, fixed_cost 0 = free: this reproduces the v1 model. Capacity caps are totals over all partitions of the site (same units as partition capacities)."
   }
 }

@@ -5,7 +5,6 @@ This module contains helper functions used by the optimizer module,
 including geometry distance calculations and lookup dictionary builders.
 """
 
-from collections import deque
 
 # Cable length table (shortest path on the harness channel graph), keyed by the Point.ref ids.
 # Loaded by set_distance_table(); without it, distances fall back to the Manhattan metric.
@@ -159,19 +158,120 @@ def precompute_latency_infeasible_pairs(scs, locations, sensors, actuators, cabl
 
 
 # ============================================================================
+# UNCERTAINTY HELPERS AND PARTITION PACKING
+# ============================================================================
+
+def sw_multiplier(sc, uncertainty):
+    """SW resource demand multiplier of --sw_margin (1.0 when the block is off or the SC's domain is not listed)."""
+    unc = uncertainty or {}
+    if not unc.get('sw_margin'):
+        return 1.0
+    cfg = unc.get('params', {}).get('sw_margin', {})
+    domains = {str(d).strip().upper() for d in cfg.get('domains', [])}
+    if str(getattr(sc, 'domain', '') or '').strip().upper() not in domains:
+        return 1.0
+    margins = {int(k): float(v) for k, v in cfg.get('asil_margins', {}).items()}
+    m_asil = margins.get(int(getattr(sc, 'asil_req', 0)), float(cfg['default_asil_margin']))
+    m_ai = float(cfg['ai_margin']) if (cfg['ai_hw_feature'] in (getattr(sc, 'hw_required', None) or [])) else 0.0
+    return 1.0 + m_asil + m_ai
+
+
+def site_derating(location, uncertainty):
+    """Capacity derating of a site under --derating (its thermal-class factor), else 1.0."""
+    if not (uncertainty or {}).get('derating'):
+        return 1.0
+    return max(0.0, float(getattr(location, 'health_factor', 1.0)))
+
+
+def _first_fit_decreasing(members, demand, bin_cap, n_bins):
+    """Pack items (dict of resource demands) into n_bins bins; returns {item: bin} or None."""
+    active = [r for r in bin_cap if bin_cap[r] > 0]
+
+    def largest(i):
+        return max((demand[i][r] / bin_cap[r] for r in active), default=0.0)
+
+    load = [{r: 0.0 for r in active} for _ in range(n_bins)]
+    slots = {}
+    for i in sorted(members, key=largest, reverse=True):
+        for b in range(n_bins):
+            if all(load[b][r] + demand[i][r] <= bin_cap[r] * (1.0 + 1e-9) + 1e-9 for r in active):
+                for r in active:
+                    load[b][r] += demand[i][r]
+                slots[i] = b
+                break
+        else:
+            return None
+    return slots
+
+
+def _exact_packing(members, demand, bin_cap, n_bins):
+    """Exact vector bin packing (small MILP); returns {item: bin} or None if no packing exists."""
+    import gurobipy as gp
+    from gurobipy import GRB
+    if n_bins <= 0:
+        return None
+    m = gp.Model("partition_packing")
+    m.setParam('OutputFlag', 0)
+    u = {(i, b): m.addVar(vtype=GRB.BINARY) for i in members for b in range(n_bins)}
+    for i in members:
+        m.addConstr(gp.quicksum(u[i, b] for b in range(n_bins)) == 1)
+    for b in range(n_bins):
+        for r, cap in bin_cap.items():
+            if cap > 0:
+                m.addConstr(gp.quicksum(demand[i][r] * u[i, b] for i in members) <= cap)
+    m.optimize()
+    if m.SolCount == 0:
+        return None
+    return {i: next(b for b in range(n_bins) if u[i, b].X > 0.5) for i in members}
+
+
+def pack_partitions(x, P, scs, locations, partitions, uncertainty=None):
+    """
+    Give every hosted SC a concrete partition slot "<site>_asil<a>_p<k>" inside the P[j, a] partitions the model
+    opened. The model's capacity constraint pools the partitions of one ASIL at a site (demand <= P * capacity),
+    which is a relaxation of bin packing; this function checks it with first-fit decreasing and, if that fails,
+    an exact packing model.
+
+    Returns (partition_map, failed): failed lists (j, a, sc_indices, P_value) of groups that no packing fits;
+    the optimiser adds a cut for each and solves again.
+    """
+    caps = {res: float(partitions.get(f'{res}_cap', 0) or 0) for res in ('cpu', 'ram', 'rom')}
+    groups = {}
+    for (i, j), var in x.items():
+        if var.X > 0.5:
+            groups.setdefault((j, scs[i].asil_req), []).append(i)
+    partition_map, failed = {}, []
+    for (j, a), members in sorted(groups.items()):
+        n_bins = int(round(P[j, a].X))
+        h = site_derating(locations[j], uncertainty)
+        bin_cap = {res: caps[res] * h for res in caps}
+        demand = {i: {res: float(getattr(scs[i], f'{res}_req', 0) or 0) * sw_multiplier(scs[i], uncertainty) for res in caps}
+                  for i in members}
+        slots = _first_fit_decreasing(members, demand, bin_cap, n_bins)
+        if slots is None:
+            slots = _exact_packing(members, demand, bin_cap, n_bins)
+        if slots is None:
+            failed.append((j, a, list(members), n_bins))
+            slots = {i: 0 for i in members}
+        for i, b in slots.items():
+            partition_map[scs[i].id] = f"{locations[j].id}_asil{a}_p{b}"
+    return partition_map, failed
+
+
+# ============================================================================
 # COST CALCULATION UTILITIES
 # ============================================================================
 
-def calculate_sensor_actuator_cable_costs(z, scs, locations, sensors, actuators, cable_types, attach_s=None, attach_a=None, shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None, shared_extra_trunk_len=None):
+def calculate_sensor_actuator_cable_costs(x, scs, locations, sensors, actuators, cable_types, attach_s=None, attach_a=None, shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None, shared_extra_trunk_len=None):
     """
     Calculate total cable costs and distances for sensor/actuator connections.
     
-    Iterates through all assigned software components (z variables) and calculates
+    Iterates through all hosted software components (x variables) and calculates
     the cost and distance of cables connecting sensors and actuators to their
     assigned locations.
     
     Args:
-        z: Dict of z variables with keys (sc_idx, loc_idx, asil, partition)
+        x: Dict of placement variables with keys (sc_idx, loc_idx)
         scs: List of software component objects, each with 'sensors' and 'actuators' attributes
         locations: List of location/ECU objects
         sensors: List of sensor objects with 'id', 'location', and 'interface' attributes
@@ -191,7 +291,7 @@ def calculate_sensor_actuator_cable_costs(z, scs, locations, sensors, actuators,
     
     shared_bus_ifaces = {'CAN', 'LIN', 'FLEXRAY'}
 
-    for (i, j, a, p), var in z.items():
+    for (i, j), var in x.items():
         if var.X > 0.5:
             sc = scs[i]
             
@@ -288,24 +388,19 @@ def calculate_sensor_actuator_cable_costs(z, scs, locations, sensors, actuators,
     return cable_length, cable_cost
 
 
-def calculate_partition_cost(y, partitions):
+def calculate_partition_cost(P, partitions):
     """
-    Calculate total partition cost based on number of opened partitions.
-    
+    Calculate total partition cost from the partition count variables.
+
     Args:
-        y: Dict of y variables with keys (location_idx, asil, partition)
+        P: Dict of P variables with keys (location_idx, asil)
         partitions: Dict with key 'cost' representing the cost per partition
-    
+
     Returns:
         float: Total partition cost
     """
-    num_partitions_opened = 0
-    for (j, a, p), var in y.items():
-        if var.X > 0.5:
-            num_partitions_opened += 1
-    
-    partition_cost = num_partitions_opened * partitions.get('cost', 0)
-    return partition_cost
+    num_partitions_opened = sum(int(round(var.X)) for var in P.values())
+    return num_partitions_opened * partitions.get('cost', 0)
 
 
 def calculate_hardware_cost(hw_use, hardwares, locations):
@@ -400,10 +495,11 @@ def extract_communication_links(comm, locations, min_link_value=0.5):
 # ============================================================================
 # SOLUTION EXTRACTION AND FORMATTING
 # ============================================================================
-def extract_solution(y, z, hw_use, if_use, comm, scs, locations, sensors, actuators,
+def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, actuators,
                      cable_types, partitions, hardwares, interfaces, comm_matrix=None,
-                     traffic_flows=None, flow=None, attach_s=None, attach_a=None,
-                     shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None, shared_extra_trunk_len=None):
+                     traffic_flows=None, net=None, attach_s=None, attach_a=None,
+                     shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None, shared_extra_trunk_len=None,
+                     partition_map=None):
         """
         Extract formatted solution dict from raw Gurobi model variables.
         
@@ -411,8 +507,10 @@ def extract_solution(y, z, hw_use, if_use, comm, scs, locations, sensors, actuat
         into a human-readable solution dictionary for visualization and reporting.
         
         Args:
-            y: Dict of partition opening variables
-            z: Dict of SC assignment variables  
+            x: Dict of SC placement variables x[i, j]
+            P: Dict of partition count variables P[j, a]
+            y: Dict of site activation variables y[j]
+            partition_map: {SC_id: partition_name} from pack_partitions (optional)
             hw_use: Dict of hardware opening variables
             if_use: Dict of interface opening variables
             comm: Dict of communication backbone variables
@@ -437,15 +535,14 @@ def extract_solution(y, z, hw_use, if_use, comm, scs, locations, sensors, actuat
                 - status: 'OPTIMAL'
         """
         assignment_map = {}
-        partition_map = {}
+        partition_map = dict(partition_map or {})
         num_locations_used = 0
-        num_partitions_opened = 0
-        
-        # Extract SC assignments and partitions from z
-        for (i, j, a, p), var in z.items():
+
+        # Extract SC assignments from x; partition slots come from pack_partitions (fallback: slot 0)
+        for (i, j), var in x.items():
             if var.X > 0.5:
                 assignment_map[scs[i].id] = locations[j].id
-                partition_map[scs[i].id] = f"{locations[j].id}_asil{a}_p{p}"
+                partition_map.setdefault(scs[i].id, f"{locations[j].id}_asil{scs[i].asil_req}_p0")
         
         # DEBUG: Print SC placements and communication requirements
         print(f"\n[DEBUG] SC Placement Analysis:")
@@ -461,10 +558,10 @@ def extract_solution(y, z, hw_use, if_use, comm, scs, locations, sensors, actuat
                 same_loc = (src_loc == dst_loc)
                 print(f"    {src_id} ({src_loc}) -> {dst_id} ({dst_loc}) vol={vol} {'[SAME_LOC]' if same_loc else '[DIFFERENT_LOC]'}")
         
-        # Extract partitions opened
-        for (j, a, p), var in y.items():
-            if var.X > 0.5:
-                num_partitions_opened += 1
+        # Partitions opened and fixed site cost
+        num_partitions_opened = sum(int(round(var.X)) for var in P.values())
+        site_fixed_cost = float(partitions.get('site_fixed_cost', 0) or 0)
+        site_cost = site_fixed_cost * sum(1 for var in y.values() if var.X > 0.5)
         
         # Extract HW and interfaces opened
         hw_cost, hw_opened = calculate_hardware_cost(hw_use, hardwares, locations)
@@ -481,14 +578,14 @@ def extract_solution(y, z, hw_use, if_use, comm, scs, locations, sensors, actuat
         
         # Count locations used
         locs_used = set()
-        for (i, j, a, p), var in z.items():
+        for (i, j), var in x.items():
             if var.X > 0.5:
                 locs_used.add(j)
         num_locations_used = len(locs_used)
         
         # Calculate cable costs and distances
         cable_length, cable_cost = calculate_sensor_actuator_cable_costs(
-            z, scs, locations, sensors, actuators, cable_types,
+            x, scs, locations, sensors, actuators, cable_types,
             attach_s=attach_s, attach_a=attach_a,
             shared_attach_s=shared_attach_s, shared_attach_a=shared_attach_a,
             shared_trunk_len=shared_trunk_len,
@@ -496,7 +593,7 @@ def extract_solution(y, z, hw_use, if_use, comm, scs, locations, sensors, actuat
         )
         
         # Calculate partition and communication costs
-        partition_cost = calculate_partition_cost(y, partitions)
+        partition_cost = calculate_partition_cost(P, partitions)
         comm_cost = calculate_communication_cost(comm, locations, cable_types)
         comm_links = extract_communication_links(comm, locations)
 
@@ -565,244 +662,51 @@ def extract_solution(y, z, hw_use, if_use, comm, scs, locations, sensors, actuat
                 else:
                     print(f"  {src_id} <-> {dst_id} iface={iface} count={count}")
 
+        # Backbone routing: chosen candidate path and routed volume per site pair
         comm_link_peak_load = {}
-
-        # DEBUG: Traffic flow routing analysis (multi-hop detection)
-        print(f"\n[DEBUG] Traffic Flow Routing Analysis:")
-        if not traffic_flows or not flow:
-            print("  Routing analysis unavailable (flow variables not provided to extract_solution)")
+        backbone_routes = []
+        print(f"\n[DEBUG] Backbone routing (site pairs with traffic):")
+        if not net:
+            print("  Routing unavailable (net not provided to extract_solution)")
         else:
-            # Map SC index -> location index for quick lookup
-            sc_idx_to_loc = {}
-            for (i, j, _a, _p), var in z.items():
-                if var.X > 0.5:
-                    sc_idx_to_loc[i] = j
-
-            # Map location index -> has SWITCH
-            loc_has_switch = {j: False for j in range(len(locations))}
-            for (j, h), var in hw_use.items():
-                if h == 'SWITCH' and var.X > 0.5:
-                    loc_has_switch[j] = True
-
-            # Build adjacency per traffic id once (only active arcs)
-            adj_by_t = {tr['id']: {j: [] for j in range(len(locations))} for tr in traffic_flows if 'id' in tr}
-            for (tt, u, v), fvar in flow.items():
-                if fvar.X <= 0.5:
-                    continue
-                if tt not in adj_by_t:
-                    continue
-                adj_by_t[tt][u].append(v)
-
-            def _shortest_path_nodes(adj, src, dst):
-                if src == dst:
-                    return [src]
-                q = deque([src])
-                prev = {src: None}
-                while q:
-                    u = q.popleft()
-                    for v in adj.get(u, []):
-                        if v in prev:
-                            continue
-                        prev[v] = u
-                        if v == dst:
-                            q.clear()
-                            break
-                        q.append(v)
-                if dst not in prev:
-                    return None
-                # reconstruct
-                path = []
-                cur = dst
-                while cur is not None:
-                    path.append(cur)
-                    cur = prev[cur]
-                path.reverse()
-                return path
-
-            # Detailed per-traffic routing table (SC_SC + ETH sensor/actuator)
-            print("  Traffic routes (only DIFFERENT_LOC):")
-
-            total = 0
-            different_loc = 0
-            multi_hop = 0
-            missing_paths = 0
-            transit_nodes = set()
-            transit_switch_nodes = set()
-
-            # Optional edge-load summary (directed) for quick sanity checks
-            edge_load = {}  # (u,v) -> total volume
-
-            # Helpers to resolve peripheral attachment locations
-            def _sensor_attach_loc(si):
-                if not attach_s:
-                    return None
-                for j in range(len(locations)):
-                    v = attach_s.get((si, j))
-                    if v is not None and v.X > 0.5:
-                        return j
-                return None
-
-            def _act_attach_loc(ai):
-                if not attach_a:
-                    return None
-                for j in range(len(locations)):
-                    v = attach_a.get((ai, j))
-                    if v is not None and v.X > 0.5:
-                        return j
-                return None
-
-            for tr in traffic_flows:
-                if tr.get('type') not in ('SC_SC', 'SENS_SC', 'SC_ACT'):
-                    continue
-                total += 1
-
-                t_id = tr.get('id')
-                vol = tr.get('volume', 0)
-                if t_id is None:
-                    continue
-
-                ttype = tr.get('type')
-                src_loc = None
-                dst_loc = None
-                label = None
-
-                if ttype == 'SC_SC':
-                    src_i = tr.get('src_idx')
-                    dst_i = tr.get('dst_idx')
-                    if src_i is None or dst_i is None:
+            paths, sel, f = net['paths'], net['sel'], net['f']
+            arc_load = {}
+            relayed = 0
+            pair_dir_vol = {}
+            if net.get('lazy'):   # no volume variables: pair volumes from the placement of the flow endpoints
+                for t, (src, dst) in net['flow_ends'].items():
+                    u = next((k for k, var in src.items() if var.X > 0.5), None)
+                    v = next((k for k, var in dst.items() if var.X > 0.5), None)
+                    if u is None or v is None or u == v:
                         continue
-                    src_loc = sc_idx_to_loc.get(src_i)
-                    dst_loc = sc_idx_to_loc.get(dst_i)
-                    if src_loc is None or dst_loc is None:
-                        continue
-                    label = f"SC_SC {scs[src_i].id}@{locations[src_loc].id} -> {scs[dst_i].id}@{locations[dst_loc].id}"
-
-                elif ttype == 'SENS_SC':
-                    si = tr.get('sensor_idx')
-                    dst_i = tr.get('dst_idx')
-                    if si is None or dst_i is None:
-                        continue
-                    src_loc = _sensor_attach_loc(si)
-                    dst_loc = sc_idx_to_loc.get(dst_i)
-                    if src_loc is None or dst_loc is None:
-                        continue
-                    label = f"SENS_SC {sensors[si].id}@{locations[src_loc].id} -> {scs[dst_i].id}@{locations[dst_loc].id}"
-
-                else:  # SC_ACT
-                    src_i = tr.get('src_idx')
-                    ai = tr.get('act_idx')
-                    if src_i is None or ai is None:
-                        continue
-                    src_loc = sc_idx_to_loc.get(src_i)
-                    dst_loc = _act_attach_loc(ai)
-                    if src_loc is None or dst_loc is None:
-                        continue
-                    label = f"SC_ACT {scs[src_i].id}@{locations[src_loc].id} -> {actuators[ai].id}@{locations[dst_loc].id}"
-
-                if src_loc == dst_loc:
+                    pair = (min(u, v), max(u, v))
+                    pair_dir_vol.setdefault(pair, [0.0, 0.0])[0 if (u, v) == pair else 1] += net['volumes'][t]
+            for (u, v), plist in paths.items():
+                chosen = [p for p in range(len(plist)) if sel[u, v, p].X > 0.5]
+                if not chosen:
                     continue
-
-                different_loc += 1
-                adj = adj_by_t.get(t_id)
-                path = _shortest_path_nodes(adj, src_loc, dst_loc) if adj else None
-                if not path:
-                    missing_paths += 1
-                    print(
-                        f"    t={t_id} {label} vol={vol} iface=ETH path=UNREACHABLE"
-                    )
-                    continue
-
-                # Accumulate edge loads along the chosen path
-                for u, v in zip(path, path[1:]):
-                    edge_load[(u, v)] = edge_load.get((u, v), 0) + vol
-
-                is_multihop = len(path) > 2
-                if is_multihop:
-                    multi_hop += 1
-                    for mid in path[1:-1]:
-                        transit_nodes.add(mid)
-                        if loc_has_switch.get(mid, False):
-                            transit_switch_nodes.add(mid)
-
-                path_ids = [locations[j].id for j in path]
-                via = []
-                for mid in path[1:-1]:
-                    if loc_has_switch.get(mid, False):
-                        via.append(f"SWITCH@{locations[mid].id}")
-                via_txt = (" via " + ", ".join(via)) if via else ""
-
-                print(
-                    f"    t={t_id} {label} vol={vol} iface=ETH path={' -> '.join(path_ids)}{via_txt}"
-                )
-
-            # Summary
-            if different_loc == 0:
-                print("  No modeled traffics across different locations")
-            else:
-                if multi_hop == 0:
-                    print(f"  Summary: multi-hop=0 / different_loc={different_loc} (total traffics={total})")
+                p = chosen[0]
+                path = plist[p]
+                if net.get('lazy'):
+                    vol_fwd, vol_rev = pair_dir_vol.get((u, v), [0.0, 0.0])
                 else:
-                    print(f"  Summary: multi-hop={multi_hop} / different_loc={different_loc} (total traffics={total})")
-                    if transit_nodes:
-                        transit_ids = [locations[j].id for j in sorted(transit_nodes)]
-                        print(f"  Transit nodes used: {transit_ids}")
-                    if transit_switch_nodes:
-                        transit_switch_ids = [locations[j].id for j in sorted(transit_switch_nodes)]
-                        print(f"  Transit SWITCH nodes: {transit_switch_ids}")
+                    vol_fwd, vol_rev = float(f[u, v, p, 0].X), float(f[u, v, p, 1].X)
+                if vol_fwd + vol_rev <= 1e-3:   # a selected path without traffic carries nothing (no cable needed)
+                    continue
+                for vol, seq in ((vol_fwd, path), (vol_rev, path[::-1])):
+                    for a, b in zip(seq, seq[1:]):
+                        arc_load[(a, b)] = arc_load.get((a, b), 0.0) + vol
+                ids = [locations[j].id for j in path]
+                relayed += int(len(path) > 2)
+                backbone_routes.append({'src_loc': ids[0], 'dst_loc': ids[-1], 'path': ids,
+                                        'volume_fwd': round(vol_fwd, 3), 'volume_rev': round(vol_rev, 3)})
+                print(f"  {ids[0]} <-> {ids[-1]}: {' -> '.join(ids)}  volume {vol_fwd:.1f} / {vol_rev:.1f}" + ("  (relayed)" if len(path) > 2 else ""))
+            print(f"  Summary: {len(backbone_routes)} site pairs with traffic, {relayed} relayed")
+            for (a, b), load in arc_load.items():
+                key = f"{locations[min(a, b)].id}|{locations[max(a, b)].id}|ETH"
+                comm_link_peak_load[key] = max(comm_link_peak_load.get(key, 0.0), float(load))
 
-                if missing_paths > 0:
-                    print(f"  WARNING: {missing_paths} different-loc traffics had no reachable path in flow vars")
-
-            # Edge load summary (print only if multi-hop or if links exist)
-            if comm_links and edge_load:
-                print("  Directed edge load summary (vol units):")
-                # Sort by descending load
-                for (u, v), load in sorted(edge_load.items(), key=lambda kv: (-kv[1], locations[kv[0][0]].id, locations[kv[0][1]].id))[:25]:
-                    print(f"    {locations[u].id} -> {locations[v].id}: load={load}")
-
-                # Build undirected peak load per physical ETH link for visualization/utilization.
-                tmp_peak = {}
-                for (u, v), load in edge_load.items():
-                    a, b = (u, v) if u < v else (v, u)
-                    key = (a, b, 'ETH')
-                    prev = tmp_peak.get(key, 0.0)
-                    if load > prev:
-                        tmp_peak[key] = float(load)
-
-                # Sanity clamp: visualization load for a physical ETH link should not exceed
-                # opened link capacity (count * ETH capacity). If it does due route-reconstruction
-                # artifacts, cap it to the physical maximum for plotting consistency.
-                eth_cap = None
-                eth_obj = cable_types.get('ETH') if cable_types else None
-                if eth_obj is not None:
-                    try:
-                        eth_cap = float(getattr(eth_obj, 'capacity', None))
-                    except Exception:
-                        eth_cap = None
-
-                eth_count_by_pair = {}
-                for lk in comm_links:
-                    if lk.get('iface') != 'ETH':
-                        continue
-                    src_id = lk.get('src_loc')
-                    dst_id = lk.get('dst_loc')
-                    if not src_id or not dst_id:
-                        continue
-                    a_id, b_id = sorted((src_id, dst_id))
-                    eth_count_by_pair[(a_id, b_id)] = max(1, int(lk.get('count', 1) or 1))
-
-                for (a, b, iface), load in tmp_peak.items():
-                    a_id = locations[a].id
-                    b_id = locations[b].id
-                    if eth_cap is not None and eth_cap > 0 and eth_cap != float('inf') and iface == 'ETH':
-                        cnt = eth_count_by_pair.get(tuple(sorted((a_id, b_id))), 1)
-                        max_load = eth_cap * cnt
-                        if load > max_load + 1e-6:
-                            print(f"  WARNING: peak ETH load {load:.2f} exceeds capacity {max_load:.2f} on {a_id}<->{b_id}; clamped for visualization")
-                            load = max_load
-                    comm_link_peak_load[f"{a_id}|{b_id}|{iface}"] = load
-        
-        total_cost = partition_cost + hw_cost + if_cost + cable_cost + comm_cost
+        total_cost = partition_cost + site_cost + hw_cost + if_cost + cable_cost + comm_cost
 
         eth_sensor_attachments = {}
         if attach_s:
@@ -838,6 +742,7 @@ def extract_solution(y, z, hw_use, if_use, comm, scs, locations, sensors, actuat
             'comm_cost': comm_cost,
             'comm_links': comm_links,
             'comm_link_peak_load': comm_link_peak_load,
+            'backbone_routes': backbone_routes,
             'eth_sensor_attachments': eth_sensor_attachments,
             'eth_actuator_attachments': eth_actuator_attachments,
             'shared_sensor_attachments': shared_sensor_attachments,
@@ -847,11 +752,13 @@ def extract_solution(y, z, hw_use, if_use, comm, scs, locations, sensors, actuat
             'backbone_length': backbone_length,
             'total_cost': total_cost,
             'num_locations_used': num_locations_used,
+            'num_candidate_sites': len(locations),
             'num_ecus_used': num_locations_used,  # For visualizer compatibility
             'num_partitions': num_partitions_opened,
             'hw_features': hw_opened,
             'interfaces': if_opened,
             'partition_cost': partition_cost,
+            'site_cost': site_cost,
             'objective': 'LEGO Total Cost',
             'status': 'OPTIMAL'
         }

@@ -69,6 +69,7 @@ def main():
 
     used_sites = sorted(set(sol.get('assignment', {}).values()))
     res = {'solution': os.path.abspath(args.solution), 'used_sites': used_sites, 'cables': out,
+           'num_candidate_sites': sol.get('num_candidate_sites', len(json.load(open(os.path.join(args.config_dir, 'sites.json')))['sites'])),
            'total_routed_length_m': round(sum(c['length_m'] for c in out), 2)}
     dst = os.path.splitext(args.solution)[0] + '_cables.json'
     json.dump(res, open(dst, 'w'), indent=1)

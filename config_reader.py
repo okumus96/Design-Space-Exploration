@@ -77,6 +77,10 @@ class ConfigReader:
             )
         return cable_types
     
+    def get_backbone_config(self):
+        """Backbone routing parameters (configs/buses.json: backbone), e.g. candidate_paths per site pair"""
+        return dict(self.bus_config.get('backbone', {}))
+
     def get_sensors_config(self):
         """Get sensors configuration"""
         return self.sensors_config['sensors']
@@ -113,13 +117,21 @@ class ConfigReader:
         return self.software_config.get('sc_communication')
 
     def get_partitions(self):
-        """Get partition resource capacity (cpu_cap, ram_cap, rom_cap)"""
+        """Partition capacity/cost and the per-site caps of a control unit (configs/partitions.json)"""
         partition = self.partitions_config.get('partition', {})
+        site = self.partitions_config.get('site', {})
         return {
             'cpu_cap': partition.get('cpu_cap', 0),
             'ram_cap': partition.get('ram_cap', 0),
             'rom_cap': partition.get('rom_cap', 0),
-            "cost": partition.get('cost', 0)
+            'cost': partition.get('cost', 0),
+            'max_per_asil_per_site': partition.get('max_per_asil_per_site', 3),
+            # null = unlimited / 0 = free: the v1 model
+            'site_max_partitions': site.get('max_partitions'),
+            'site_cpu_cap': site.get('cpu_cap'),
+            'site_ram_cap': site.get('ram_cap'),
+            'site_rom_cap': site.get('rom_cap'),
+            'site_fixed_cost': site.get('fixed_cost', 0),
         }
     
     def get_uncertainty_config(self):

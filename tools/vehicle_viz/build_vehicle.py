@@ -1091,7 +1091,7 @@ def compose(args):
     ch = C['channels']
     if C['cables'] is not None:
         sol = C['solution']
-        subtitle = (f"optimisation result: {len(C['cables']['used_sites'])} ECUs on {len(C['sites'])} candidate cells  |  "
+        subtitle = (f"optimisation result: {len(C['cables']['used_sites'])} ECUs on {C['cables'].get('num_candidate_sites', len(C['sites']))} candidate cells  |  "
                     f"{len(C['cables']['cables'])} cables, {C['cables']['total_routed_length_m']} m routed  |  "
                     f"total cost {sol.get('total_cost', 0):.0f}  |  {len(present)} cable types")
     else:

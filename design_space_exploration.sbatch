@@ -15,6 +15,6 @@ cd "$SLURM_SUBMIT_DIR"  # submit from the repository root: sbatch design_space_e
 echo "Starting Design Space Exploration on $(hostname) with ${SLURM_CPUS_PER_TASK} CPUs..."
 
 source ./dse/bin/activate
-python main.py --verbose --show_bus_utilization --hide_peripheral_labels --latex_architecture_pdf --num_points 5 --write_lp --architecture_json ./configs/full_architecture_v2.json --latex_topdown --topdown_dpi 600 --output_dir "results/experiment_${SLURM_JOB_ID}"
+python main.py --verbose --num_points 5 --write_lp --architecture_json ./configs/full_architecture_v2.json --output_dir "results/experiment_${SLURM_JOB_ID}"
 
 echo "All experiments completed."

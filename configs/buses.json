@@ -1,4 +1,5 @@
-{"cable_types": {
+{
+  "cable_types": {
     "ETH": {
       "cost_per_meter": 100.0,
       "latency_per_meter": 0.1,
@@ -41,5 +42,12 @@
       "capacity": 50,
       "port_cost": 5
     }
+  },
+  "backbone": {
+    "candidate_paths": 3,
+    "_comment": "Candidate backbone paths per site pair handed to the optimiser: the direct link plus the (candidate_paths - 1) shortest routes over one relaying site (needs a SWITCH there). All traffic of a site pair uses one path. lazy_traffic (on): no per-flow traffic variables; a callback adds the 'pair needs a selected path' and link-capacity constraints as lazy cuts (33 cells: gap 1.4 % after 30 min instead of 9 %). path_link_cut (on): a selected path has a cable on each of its links (static). conservation_cut (off): aggregated flow conservation of the explicit-traffic model; slower in tests.",
+    "conservation_cut": false,
+    "path_link_cut": true,
+    "lazy_traffic": true
   }
 }

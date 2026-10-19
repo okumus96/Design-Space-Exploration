@@ -21,7 +21,7 @@ It generates Pareto-optimal architectures by simultaneously minimizing:
   * System Reliability (Redundancy Monitors ensuring fail-operational states)
   * Network Topologies (Domains, Zones, Central Compute boundaries)
 * **Uncertainty & Robustness:** Integrates configuration parameters reflecting predictive AI contention thresholds and safety margins (`--uncertainty`).
-* **Automated Publication-ready Visualizations:** Automatically generates spatial architecture diagrams, Pareto curves, and top-down hierarchical layout PDFs specifically tailored for IEEE/ACM publication standards (`--latex_topdown`).
+* **Figures:** Pareto front (`pareto_front_analysis.pdf`) per run; every Pareto solution can be drawn inside the reference vehicle with its routed cables (`tools/vehicle_layout/solution_paths.py` + `tools/vehicle_viz/build_vehicle.py --solution`, Blender).
 
 ---
 
@@ -95,8 +95,6 @@ python main.py \
   --num_points 5 \
   --uncertainty \
   --time_limit 600 \
-  --latex_topdown \
-  --topdown_dpi 600 \
   --output_dir results/local_experiment
 ```
 
@@ -115,11 +113,11 @@ sbatch design_space_exploration.sbatch
 
 Upon solver convergence or timing out limits, the pipeline yields analytical artifacts in the specified `--output_dir`:
 
-1. **`pareto_front_analysis.pdf`**: The synthesized Pareto curve demonstrating Cost vs. Cable Length.
-2. **`pareto_front_analysis_points.dat`**: The unformatted raw data coordinates corresponding to the Pareto front endpoints.
-3. **`solution_architecture_*.png`**: Bipartite schematic representations demonstrating mapped assignments between Software Components and chosen ECUs.
-4. **`vehicle_layout_solution_*.pdf`**: A top-down spatial map representing the physical installation footprint of the E/E design within the vehicle topology.
-5. **`vehicle_layout_latex_compare_shared_legend.pdf`**: A side-by-side comparative layout graph explicitly designed for double-column publication templates.
+1. **`run_info.json`**: command line, arguments, git commit, solver version and the list of Pareto solutions of the run.
+2. **`solution_<i>.json`**: every Pareto solution (placement, partitions, hardware, ports, backbone links, peripheral attachments, costs, cable length) with the solver statistics of both lexicographic phases (`solve_info`).
+3. **`pareto_front_analysis.pdf`** / **`pareto_front_analysis_points.dat`**: the Pareto curve cost vs. cable length and its raw points.
+4. **`model_<point>.lp.gz`** (with `--write_lp`): the Gurobi model of each solve.
+5. Figures inside the reference vehicle: `python tools/vehicle_layout/solution_paths.py <output_dir>/solution_<i>.json` routes the cables of a solution through the installation space, then `tools/vehicle_viz/build_vehicle.py --solution <that file> --render` (Blender, headless) renders the ECUs and cables in the car.
 
 ---
 
