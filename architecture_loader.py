@@ -1,39 +1,31 @@
 import json
-import math
 import re
 from models import Point, Location, Sensor, Actuator, SoftwareComponent
+from optimizer_utils import set_distance_table
 
 
-def _generate_locations(num_locs, vehicle_dimensions, health_factor=1.0):
-    ecu_bounds = vehicle_dimensions.get('ecu_placement_bounds', {})
-    x_min = ecu_bounds.get('x_min', -0.5)
-    x_max = ecu_bounds.get('x_max', 0.5)
-    y_min = ecu_bounds.get('y_min', -1.0)
-    y_max = ecu_bounds.get('y_max', 1.0)
+def _load_locations(config_reader, num_locs=None):
+    """Candidate ECU sites from configs/sites.json; num_locs keeps an evenly spread subset (None = all)."""
+    sites = config_reader.get_sites()
+    if num_locs is not None and 0 < num_locs < len(sites):
+        step = len(sites) / float(num_locs)
+        sites = [sites[int(i * step)] for i in range(num_locs)]
+        print(f"  Using {num_locs} of the candidate sites")
+    return [
+        Location(
+            id=s['id'],
+            location=Point(s['position']['x'], s['position']['y'], s['position']['z'], ref=s['id']),
+            health_factor=float(s.get('derating', 1.0)),
+            zone=s.get('zone'),
+            thermal_class=s.get('thermal_class'),
+        )
+        for s in sites
+    ]
 
-    cols = int(math.sqrt(num_locs))
-    rows = (num_locs + cols - 1) // cols
 
-    x_step = (x_max - x_min) / max(1, cols - 1) if cols > 1 else 0
-    y_step = (y_max - y_min) / max(1, rows - 1) if rows > 1 else 0
-
-    locations = []
-    loc_idx = 0
-    for r in range(rows):
-        for c in range(cols):
-            if loc_idx >= num_locs:
-                break
-            x_pos = x_min + c * x_step
-            y_pos = y_max - r * y_step
-            locations.append(
-                Location(
-                    id=f"LOC{loc_idx}",
-                    location=Point(x_pos, y_pos),
-                    health_factor=health_factor,
-                )
-            )
-            loc_idx += 1
-    return locations
+def _position(item):
+    p = item['position']
+    return Point(p['x'], p['y'], p['z'], ref=item['id'])
 
 
 def _extract_device_id_from_driver_sc(sc_id):
@@ -43,19 +35,20 @@ def _extract_device_id_from_driver_sc(sc_id):
     return match.group(1)
 
 
-def load_architecture_from_json(json_filepath, config_reader, num_locs=6):
+def load_architecture_from_json(json_filepath, config_reader, num_locs=None):
     with open(json_filepath, 'r') as f:
         architecture = json.load(f)
 
     components = architecture.get('software_components', [])
 
     cable_types = config_reader.get_interfaces()
-    vehicle_dimensions = config_reader.get_vehicle_dimensions()
-    health_factor = config_reader.get_uncertainty_config().get('derating', {}).get('health_factor', 1.0)
-    locations = _generate_locations(num_locs, vehicle_dimensions, health_factor=health_factor)
-
-    hw = vehicle_dimensions['width'] / 2
-    hl = vehicle_dimensions['length'] / 2
+    locations = _load_locations(config_reader, num_locs)
+    table = config_reader.get_distance_table()
+    if table is not None:
+        set_distance_table(*table)
+        print(f"  Cable lengths from the channel graph ({len(table[0])} entities)")
+    else:
+        print("  WARNING: configs/distances.json not found, using Manhattan distances")
 
     sensors = []
     sensor_by_id = {}
@@ -65,7 +58,7 @@ def load_architecture_from_json(json_filepath, config_reader, num_locs=6):
             type=item['type'],
             interface=item['interface'],
             volume=float(item.get('volume', 1.0)),
-            location=Point(item['location']['x_ratio'] * hw, item['location']['y_ratio'] * hl),
+            location=_position(item),
             max_latency=item.get('max_latency', None),
         )
         sensors.append(s)
@@ -79,7 +72,7 @@ def load_architecture_from_json(json_filepath, config_reader, num_locs=6):
             type=item['type'],
             interface=item['interface'],
             volume=float(item.get('volume', 1.0)),
-            location=Point(item['location']['x_ratio'] * hw, item['location']['y_ratio'] * hl),
+            location=_position(item),
             max_latency=item.get('max_latency', None),
         )
         actuators.append(a)

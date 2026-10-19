@@ -46,8 +46,7 @@ class VehicleDataGenerator:
         sensors_config = self.config_reader.get_sensors_config()
         for sensor_config in sensors_config:
             location = Point(
-                sensor_config['location']['x_ratio'] * hw,
-                sensor_config['location']['y_ratio'] * hl
+                sensor_config['position']['x'], sensor_config['position']['y'], sensor_config['position']['z']
             )
             sensor = Sensor(
                 id=sensor_config['id'],
@@ -67,8 +66,7 @@ class VehicleDataGenerator:
         actuators_config = self.config_reader.get_actuators_config()
         for actuator_config in actuators_config:
             location = Point(
-                actuator_config['location']['x_ratio'] * hw,
-                actuator_config['location']['y_ratio'] * hl
+                actuator_config['position']['x'], actuator_config['position']['y'], actuator_config['position']['z']
             )
             actuator = Actuator(
                 id=actuator_config['id'],

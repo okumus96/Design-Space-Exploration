@@ -1,109 +1,184 @@
 {
+  "_comment": "Positions in metres in the vehicle frame of configs/vehicle.json (x right, y front, z up from ground). Source: nuPlan suite layout on IONIQ 5 geometry (assumption until nuPlan extrinsics are transferred).",
   "sensors": [
     {
       "type": "CAMERA",
       "id": "CAM_Rear_Left_Corner",
       "interface": "ETH",
       "volume": 80.0,
-      "location": {"x_ratio": -0.9, "y_ratio": -0.8}
+      "position": {
+        "x": -0.561,
+        "y": -1.321,
+        "z": 1.476
+      },
+      "snapped": "moved 0.16 m onto the car skin of the reference model"
     },
     {
       "type": "CAMERA",
       "id": "CAM_Front_Center",
       "interface": "ETH",
       "volume": 80.0,
-      "location": {"x_ratio": 0.0, "y_ratio": 0.5}
+      "position": {
+        "x": -0.0,
+        "y": 0.388,
+        "z": 1.447
+      },
+      "snapped": "moved 0.17 m onto the car skin of the reference model"
     },
     {
       "type": "CAMERA",
       "id": "CAM_Rear_Right_Corner",
       "interface": "ETH",
       "volume": 80.0,
-      "location": {"x_ratio": 0.9, "y_ratio": -0.8}
+      "position": {
+        "x": 0.561,
+        "y": -1.321,
+        "z": 1.476
+      },
+      "snapped": "moved 0.16 m onto the car skin of the reference model"
     },
     {
       "type": "CAMERA",
       "id": "CAM_Front_Left",
       "interface": "ETH",
       "volume": 80.0,
-      "location": {"x_ratio": -0.9, "y_ratio": 0.45}
+      "position": {
+        "x": -0.559,
+        "y": 0.36,
+        "z": 1.407
+      },
+      "snapped": "moved 0.22 m onto the car skin of the reference model"
     },
     {
       "type": "CAMERA",
       "id": "CAM_Front_Right",
       "interface": "ETH",
       "volume": 80.0,
-      "location": {"x_ratio": 0.9, "y_ratio": 0.45}
+      "position": {
+        "x": 0.559,
+        "y": 0.36,
+        "z": 1.407
+      },
+      "snapped": "moved 0.22 m onto the car skin of the reference model"
     },
     {
       "type": "CAMERA",
       "id": "CAM_Left_Side",
       "interface": "ETH",
       "volume": 80.0,
-      "location": {"x_ratio": -0.9, "y_ratio": 0.0}
+      "position": {
+        "x": -0.618,
+        "y": -0.302,
+        "z": 1.493
+      },
+      "snapped": "moved 0.15 m onto the car skin of the reference model"
     },
     {
       "type": "CAMERA",
       "id": "CAM_Right_Side",
       "interface": "ETH",
       "volume": 80.0,
-      "location": {"x_ratio": 0.9, "y_ratio": 0.0}
+      "position": {
+        "x": 0.617,
+        "y": -0.302,
+        "z": 1.494
+      },
+      "snapped": "moved 0.15 m onto the car skin of the reference model"
     },
     {
       "type": "CAMERA",
       "id": "CAM_Rear_Center",
       "interface": "ETH",
       "volume": 80.0,
-      "location": {"x_ratio": 0.0, "y_ratio": -0.85}
+      "position": {
+        "x": -0.0,
+        "y": -1.319,
+        "z": 1.512
+      },
+      "snapped": "moved 0.16 m onto the car skin of the reference model"
     },
     {
       "type": "LIDAR",
       "id": "LIDAR_Front",
       "interface": "ETH",
       "volume": 15.0,
-      "location": {"x_ratio": 0.0, "y_ratio": 0.95}
+      "position": {
+        "x": -0.0,
+        "y": 2.297,
+        "z": 0.555
+      },
+      "snapped": "moved 0.06 m onto the car skin of the reference model"
     },
     {
       "type": "LIDAR",
       "id": "LIDAR_Left_Pillar",
       "interface": "ETH",
       "volume": 15.0,
-      "location": {"x_ratio": -0.9, "y_ratio": 0.6}
+      "position": {
+        "x": -0.749,
+        "y": 0.83,
+        "z": 1.131
+      },
+      "snapped": "moved 0.26 m onto the car skin of the reference model"
     },
     {
       "type": "LIDAR",
       "id": "LIDAR_Right_Pillar",
       "interface": "ETH",
       "volume": 15.0,
-      "location": {"x_ratio": 0.9, "y_ratio": 0.6}
+      "position": {
+        "x": 0.745,
+        "y": 0.831,
+        "z": 1.132
+      },
+      "snapped": "moved 0.26 m onto the car skin of the reference model"
     },
     {
       "type": "LIDAR",
       "id": "LIDAR_Rear",
       "interface": "ETH",
       "volume": 15.0,
-      "location": {"x_ratio": 0.0, "y_ratio": -0.95}
+      "position": {
+        "x": -0.0,
+        "y": -2.267,
+        "z": 0.609
+      },
+      "snapped": "moved 0.03 m onto the car skin of the reference model"
     },
     {
       "type": "LIDAR",
       "id": "LIDAR_Top",
       "interface": "ETH",
       "volume": 15.0,
-      "location": {"x_ratio": 0.0, "y_ratio": 0.25}
+      "position": {
+        "x": -0.0,
+        "y": -0.305,
+        "z": 1.549
+      },
+      "snapped": "moved 0.16 m onto the car skin of the reference model"
     },
     {
       "type": "IMU",
       "id": "IMU_Top_Center",
       "interface": "SPI",
       "volume": 1.0,
-      "location": {"x_ratio": 0.0, "y_ratio": -0.3}
+      "position": {
+        "x": 0.0,
+        "y": 0.1,
+        "z": 0.62
+      }
     },
     {
       "type": "GPS",
       "id": "GPS_Center",
       "interface": "UART",
       "volume": 2.0,
-      "location": {"x_ratio": 0.0, "y_ratio": -0.4}
+      "position": {
+        "x": -0.001,
+        "y": -1.204,
+        "z": 1.586
+      },
+      "snapped": "moved 0.02 m onto the car skin of the reference model"
     }
   ]
 }

@@ -1,12 +1,1601 @@
 {
+  "_comment": "Reference vehicle: Hyundai IONIQ 5 (E-GMP). Coordinate frame: x lateral (+ right), y longitudinal (+ front), z up; origin at mid-length, mid-width, on the ground. All lengths in metres. 'source' values: spec = manufacturer data, reference = measured on the private IONIQ 5 N reference model (HANDOFF §15.1), assumption = engineering estimate. Candidate ECU sites (sites.json) and the cable channel graph (channels.json) are GENERATED from 'ecu_zones' and 'cable_channels' by tools/vehicle_layout/generate_layout.py; do not edit the generated files by hand.",
+  "name": "Hyundai IONIQ 5",
   "dimensions": {
-    "length": 4.5,
-    "width": 1.8,
+    "length": 4.635,
+    "width": 1.89,
+    "height": 1.605,
+    "wheelbase": 3.0,
+    "track": 1.64,
+    "ground_clearance": 0.16,
+    "source": "spec (Hyundai IONIQ 5 technical data; track and ground clearance approximate)",
     "ecu_placement_bounds": {
-      "x_min": -0.5,
-      "x_max": 0.5,
-      "y_min": -1.0,
-      "y_max": 1.0
+      "_legacy": "used only by data_generator.py (synthetic data)",
+      "x_min": -0.8,
+      "x_max": 0.8,
+      "y_min": -2.1,
+      "y_max": 2.1
     }
+  },
+  "axles": {
+    "front_y": 1.44,
+    "rear_y": -1.57,
+    "source": "reference: wheel-arch liner centres of the reference model (wheelbase 3.01 m vs spec 3.00 m)"
+  },
+  "thermal_classes": {
+    "cabin": {
+      "derating": 1.0,
+      "description": "passenger compartment, climate controlled"
+    },
+    "roof": {
+      "derating": 0.95,
+      "description": "headliner, solar load"
+    },
+    "trunk": {
+      "derating": 0.95,
+      "description": "luggage compartment, side trims"
+    },
+    "underbody": {
+      "derating": 0.9,
+      "description": "below trunk floor / near rear drive unit"
+    },
+    "engine_bay": {
+      "derating": 0.85,
+      "description": "front drive unit bay, hot and humid"
+    },
+    "_source": "assumption; replaces the single health_factor 0.85 of v1"
+  },
+  "fixed_blocks": [
+    {
+      "id": "battery_pack",
+      "kind": "battery",
+      "bbox": {
+        "x": [
+          -0.7,
+          0.7
+        ],
+        "y": [
+          -0.95,
+          0.95
+        ],
+        "z": [
+          0.18,
+          0.33
+        ]
+      },
+      "source": "spec: E-GMP pack under the floor between the axles, ending ahead of the subframes (0.3 m to the drive units); bottom flush with the underbody; 1.9 x 1.4 x 0.15 m assumption"
+    },
+    {
+      "id": "motor_front",
+      "kind": "motor",
+      "bbox": {
+        "x": [
+          -0.35,
+          0.35
+        ],
+        "y": [
+          1.25,
+          1.75
+        ],
+        "z": [
+          0.35,
+          0.8
+        ]
+      },
+      "source": "assumption: front e-drive unit on the front axle (AWD); the reference model also contains the unit and its covers"
+    },
+    {
+      "id": "motor_rear",
+      "kind": "motor",
+      "bbox": {
+        "x": [
+          -0.35,
+          0.35
+        ],
+        "y": [
+          -1.75,
+          -1.25
+        ],
+        "z": [
+          0.35,
+          0.8
+        ]
+      },
+      "source": "assumption: rear e-drive unit on the rear axle"
+    },
+    {
+      "id": "cabin_floor",
+      "kind": "structure",
+      "bbox": {
+        "x": [
+          -0.76,
+          0.76
+        ],
+        "y": [
+          -1.28,
+          1.08
+        ],
+        "z": [
+          0.34,
+          0.36
+        ]
+      },
+      "source": "reference: floor top at z 0.20 above underbody + 0.16 ground clearance"
+    },
+    {
+      "id": "dashboard",
+      "kind": "interior",
+      "bbox": {
+        "x": [
+          -0.75,
+          0.75
+        ],
+        "y": [
+          0.62,
+          1.26
+        ],
+        "z": [
+          0.62,
+          1.06
+        ]
+      },
+      "source": "reference"
+    },
+    {
+      "id": "cross_car_beam",
+      "kind": "structure",
+      "bbox": {
+        "x": [
+          -0.8,
+          0.8
+        ],
+        "y": [
+          0.7,
+          0.75
+        ],
+        "z": [
+          0.9,
+          0.94
+        ]
+      },
+      "source": "reference: steel beam inside the dashboard"
+    },
+    {
+      "id": "center_console",
+      "kind": "interior",
+      "bbox": {
+        "x": [
+          -0.13,
+          0.13
+        ],
+        "y": [
+          -0.21,
+          1.07
+        ],
+        "z": [
+          0.3,
+          0.75
+        ]
+      },
+      "source": "reference"
+    },
+    {
+      "id": "seat_front_left",
+      "kind": "seat",
+      "bbox": {
+        "x": [
+          -0.65,
+          -0.15
+        ],
+        "y": [
+          -0.15,
+          0.55
+        ],
+        "z": [
+          0.46,
+          1.2
+        ]
+      },
+      "source": "assumption (front seats missing in the reference model); z from 0.46 so that the under-seat harness band stays free"
+    },
+    {
+      "id": "seat_front_right",
+      "kind": "seat",
+      "bbox": {
+        "x": [
+          0.15,
+          0.65
+        ],
+        "y": [
+          -0.15,
+          0.55
+        ],
+        "z": [
+          0.46,
+          1.2
+        ]
+      },
+      "source": "assumption; z from 0.46 so that the under-seat harness band stays free"
+    },
+    {
+      "id": "seat_rear",
+      "kind": "seat",
+      "bbox": {
+        "x": [
+          -0.66,
+          0.66
+        ],
+        "y": [
+          -1.26,
+          -0.46
+        ],
+        "z": [
+          0.46,
+          1.22
+        ]
+      },
+      "source": "reference; z from 0.46 so that the under-seat harness band stays free"
+    },
+    {
+      "id": "pillar_a_left",
+      "kind": "pillar",
+      "bbox": {
+        "x": [
+          -0.93,
+          -0.78
+        ],
+        "y": [
+          0.4,
+          1.0
+        ],
+        "z": [
+          0.95,
+          1.58
+        ]
+      },
+      "source": "reference: door jamb front edge y 0.98, roof front corner y 0.40 (slanted member approximated by its box)"
+    },
+    {
+      "id": "pillar_a_right",
+      "kind": "pillar",
+      "bbox": {
+        "x": [
+          0.78,
+          0.93
+        ],
+        "y": [
+          0.4,
+          1.0
+        ],
+        "z": [
+          0.95,
+          1.58
+        ]
+      },
+      "source": "reference"
+    },
+    {
+      "id": "pillar_b_left",
+      "kind": "pillar",
+      "bbox": {
+        "x": [
+          -0.93,
+          -0.8
+        ],
+        "y": [
+          -0.28,
+          -0.12
+        ],
+        "z": [
+          0.36,
+          1.58
+        ]
+      },
+      "source": "reference: between front and rear door jambs, y -0.20"
+    },
+    {
+      "id": "pillar_b_right",
+      "kind": "pillar",
+      "bbox": {
+        "x": [
+          0.8,
+          0.93
+        ],
+        "y": [
+          -0.28,
+          -0.12
+        ],
+        "z": [
+          0.36,
+          1.58
+        ]
+      },
+      "source": "reference"
+    },
+    {
+      "id": "pillar_c_left",
+      "kind": "pillar",
+      "bbox": {
+        "x": [
+          -0.93,
+          -0.8
+        ],
+        "y": [
+          -1.5,
+          -1.34
+        ],
+        "z": [
+          0.36,
+          1.58
+        ]
+      },
+      "source": "reference: rear door jamb rear edge y -1.42"
+    },
+    {
+      "id": "pillar_c_right",
+      "kind": "pillar",
+      "bbox": {
+        "x": [
+          0.8,
+          0.93
+        ],
+        "y": [
+          -1.5,
+          -1.34
+        ],
+        "z": [
+          0.36,
+          1.58
+        ]
+      },
+      "source": "reference"
+    },
+    {
+      "id": "roof",
+      "kind": "structure",
+      "bbox": {
+        "x": [
+          -0.75,
+          0.75
+        ],
+        "y": [
+          -1.45,
+          0.4
+        ],
+        "z": [
+          1.55,
+          1.6
+        ]
+      },
+      "source": "reference: roof height; spec height 1.605"
+    },
+    {
+      "id": "windscreen",
+      "kind": "glass",
+      "bbox": {
+        "x": [
+          -0.79,
+          0.79
+        ],
+        "y": [
+          0.38,
+          1.34
+        ],
+        "z": [
+          0.97,
+          1.45
+        ]
+      },
+      "source": "reference (glass plane approximated by its box)"
+    },
+    {
+      "id": "rear_glass",
+      "kind": "glass",
+      "bbox": {
+        "x": [
+          -0.71,
+          0.71
+        ],
+        "y": [
+          -2.05,
+          -1.43
+        ],
+        "z": [
+          1.1,
+          1.41
+        ]
+      },
+      "source": "reference"
+    },
+    {
+      "id": "wheel_well_fl",
+      "kind": "wheel",
+      "bbox": {
+        "x": [
+          -0.95,
+          -0.6
+        ],
+        "y": [
+          1.04,
+          1.84
+        ],
+        "z": [
+          0.16,
+          0.8
+        ]
+      },
+      "source": "reference: arch liner centre; well size assumption"
+    },
+    {
+      "id": "wheel_well_fr",
+      "kind": "wheel",
+      "bbox": {
+        "x": [
+          0.6,
+          0.95
+        ],
+        "y": [
+          1.04,
+          1.84
+        ],
+        "z": [
+          0.16,
+          0.8
+        ]
+      },
+      "source": "reference: arch liner centre; well size assumption"
+    },
+    {
+      "id": "wheel_well_rl",
+      "kind": "wheel",
+      "bbox": {
+        "x": [
+          -0.95,
+          -0.6
+        ],
+        "y": [
+          -1.97,
+          -1.17
+        ],
+        "z": [
+          0.16,
+          0.8
+        ]
+      },
+      "source": "reference: arch liner centre; well size assumption"
+    },
+    {
+      "id": "wheel_well_rr",
+      "kind": "wheel",
+      "bbox": {
+        "x": [
+          0.6,
+          0.95
+        ],
+        "y": [
+          -1.97,
+          -1.17
+        ],
+        "z": [
+          0.16,
+          0.8
+        ]
+      },
+      "source": "reference: arch liner centre; well size assumption"
+    },
+    {
+      "id": "trunk_floor",
+      "kind": "structure",
+      "bbox": {
+        "x": [
+          -0.68,
+          0.68
+        ],
+        "y": [
+          -2.1,
+          -1.1
+        ],
+        "z": [
+          0.63,
+          0.66
+        ]
+      },
+      "source": "reference"
+    },
+    {
+      "id": "bumper_front",
+      "kind": "structure",
+      "bbox": {
+        "x": [
+          -0.95,
+          0.95
+        ],
+        "y": [
+          2.2,
+          2.32
+        ],
+        "z": [
+          0.3,
+          0.8
+        ]
+      },
+      "source": "spec length; depth assumption"
+    },
+    {
+      "id": "bumper_rear",
+      "kind": "structure",
+      "bbox": {
+        "x": [
+          -0.95,
+          0.95
+        ],
+        "y": [
+          -2.32,
+          -2.2
+        ],
+        "z": [
+          0.3,
+          0.8
+        ]
+      },
+      "source": "spec length; depth assumption"
+    },
+    {
+      "id": "hvac_unit",
+      "kind": "aux",
+      "bbox": {
+        "x": [
+          -0.35,
+          0.35
+        ],
+        "y": [
+          0.72,
+          1.12
+        ],
+        "z": [
+          0.45,
+          0.95
+        ]
+      },
+      "source": "assumption: HVAC box behind the centre of the dashboard"
+    },
+    {
+      "id": "aux_battery_12v",
+      "kind": "aux",
+      "bbox": {
+        "x": [
+          -0.6,
+          -0.36
+        ],
+        "y": [
+          1.08,
+          1.36
+        ],
+        "z": [
+          0.6,
+          0.85
+        ]
+      },
+      "source": "assumption: 12 V battery at the rear-left of the engine bay between the wheel well and the drive unit (LHD)"
+    },
+    {
+      "id": "iccu_charger",
+      "kind": "aux",
+      "bbox": {
+        "x": [
+          -0.3,
+          0.3
+        ],
+        "y": [
+          -2.05,
+          -1.8
+        ],
+        "z": [
+          0.45,
+          0.62
+        ]
+      },
+      "source": "assumption: integrated charging control unit / on-board charger under the trunk floor behind the rear drive unit"
+    }
+  ],
+  "ecu_zones": {
+    "_comment": "FALLBACK ONLY (no reference model): hand-defined permissible volumes. With the reference model, candidate sites are scanned automatically by tools/vehicle_layout/routing_space.py (ECU space) and these zones are ignored.",
+    "grid_spacing": 0.35,
+    "zones": [
+      {
+        "id": "bay_top_centre",
+        "thermal_class": "engine_bay",
+        "max_sites": 1,
+        "bbox": {
+          "x": [
+            -0.06,
+            0.06
+          ],
+          "y": [
+            1.52,
+            1.64
+          ],
+          "z": [
+            0.83,
+            0.91
+          ]
+        },
+        "source": "reference: clearance maximum (>= 10 cm free radius) measured in the engine bay of the reference model (tools: bay_candidates, 2026-10-16)"
+      },
+      {
+        "id": "cowl_left",
+        "thermal_class": "engine_bay",
+        "max_sites": 1,
+        "bbox": {
+          "x": [
+            -0.27,
+            -0.15
+          ],
+          "y": [
+            0.97,
+            1.09
+          ],
+          "z": [
+            0.86,
+            0.94
+          ]
+        },
+        "source": "reference: clearance maximum (>= 10 cm free radius) measured in the engine bay of the reference model (tools: bay_candidates, 2026-10-16)"
+      },
+      {
+        "id": "cowl_right",
+        "thermal_class": "engine_bay",
+        "max_sites": 1,
+        "bbox": {
+          "x": [
+            0.24,
+            0.36
+          ],
+          "y": [
+            0.97,
+            1.09
+          ],
+          "z": [
+            0.86,
+            0.94
+          ]
+        },
+        "source": "reference: clearance maximum (>= 10 cm free radius) measured in the engine bay of the reference model (tools: bay_candidates, 2026-10-16)"
+      },
+      {
+        "id": "strut_left",
+        "thermal_class": "engine_bay",
+        "max_sites": 1,
+        "bbox": {
+          "x": [
+            -0.66,
+            -0.54
+          ],
+          "y": [
+            1.1,
+            1.22
+          ],
+          "z": [
+            0.74,
+            0.82
+          ]
+        },
+        "source": "reference: clearance maximum (>= 10 cm free radius) measured in the engine bay of the reference model (tools: bay_candidates, 2026-10-16)"
+      },
+      {
+        "id": "strut_right",
+        "thermal_class": "engine_bay",
+        "max_sites": 1,
+        "bbox": {
+          "x": [
+            0.66,
+            0.78
+          ],
+          "y": [
+            1.1,
+            1.22
+          ],
+          "z": [
+            0.74,
+            0.82
+          ]
+        },
+        "source": "reference: clearance maximum (>= 10 cm free radius) measured in the engine bay of the reference model (tools: bay_candidates, 2026-10-16)"
+      },
+      {
+        "id": "bay_front_right",
+        "thermal_class": "engine_bay",
+        "max_sites": 1,
+        "bbox": {
+          "x": [
+            0.42,
+            0.54
+          ],
+          "y": [
+            1.88,
+            2.0
+          ],
+          "z": [
+            0.41,
+            0.49
+          ]
+        },
+        "source": "reference: clearance maximum (>= 10 cm free radius) measured in the engine bay of the reference model (tools: bay_candidates, 2026-10-16)"
+      },
+      {
+        "id": "dash_left",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "bbox": {
+          "x": [
+            -0.72,
+            -0.35
+          ],
+          "y": [
+            0.95,
+            1.22
+          ],
+          "z": [
+            0.62,
+            0.88
+          ]
+        },
+        "source": "reference: void behind the instrument panel"
+      },
+      {
+        "id": "dash_center",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "bbox": {
+          "x": [
+            -0.3,
+            0.3
+          ],
+          "y": [
+            0.95,
+            1.22
+          ],
+          "z": [
+            0.62,
+            0.88
+          ]
+        },
+        "source": "reference"
+      },
+      {
+        "id": "dash_right",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "bbox": {
+          "x": [
+            0.35,
+            0.72
+          ],
+          "y": [
+            0.95,
+            1.22
+          ],
+          "z": [
+            0.62,
+            0.88
+          ]
+        },
+        "source": "reference"
+      },
+      {
+        "id": "footwell_left",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "bbox": {
+          "x": [
+            -0.78,
+            -0.45
+          ],
+          "y": [
+            0.55,
+            0.95
+          ],
+          "z": [
+            0.36,
+            0.58
+          ]
+        },
+        "source": "assumption: kick panel area"
+      },
+      {
+        "id": "footwell_right",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "bbox": {
+          "x": [
+            0.45,
+            0.78
+          ],
+          "y": [
+            0.55,
+            0.95
+          ],
+          "z": [
+            0.36,
+            0.58
+          ]
+        },
+        "source": "assumption"
+      },
+      {
+        "id": "console",
+        "thermal_class": "cabin",
+        "max_sites": 2,
+        "bbox": {
+          "x": [
+            -0.12,
+            0.12
+          ],
+          "y": [
+            -0.2,
+            0.6
+          ],
+          "z": [
+            0.36,
+            0.58
+          ]
+        },
+        "source": "reference: inside the centre console"
+      },
+      {
+        "id": "under_seat_left",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "bbox": {
+          "x": [
+            -0.62,
+            -0.18
+          ],
+          "y": [
+            -0.1,
+            0.5
+          ],
+          "z": [
+            0.36,
+            0.5
+          ]
+        },
+        "source": "assumption"
+      },
+      {
+        "id": "under_seat_right",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "bbox": {
+          "x": [
+            0.18,
+            0.62
+          ],
+          "y": [
+            -0.1,
+            0.5
+          ],
+          "z": [
+            0.36,
+            0.5
+          ]
+        },
+        "source": "assumption"
+      },
+      {
+        "id": "b_pillar_left",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "bbox": {
+          "x": [
+            -0.8,
+            -0.72
+          ],
+          "y": [
+            -0.4,
+            -0.05
+          ],
+          "z": [
+            0.4,
+            0.95
+          ]
+        },
+        "source": "assumption: lower B-pillar trim"
+      },
+      {
+        "id": "b_pillar_right",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "bbox": {
+          "x": [
+            0.72,
+            0.8
+          ],
+          "y": [
+            -0.4,
+            -0.05
+          ],
+          "z": [
+            0.4,
+            0.95
+          ]
+        },
+        "source": "assumption"
+      },
+      {
+        "id": "under_rear_seat",
+        "thermal_class": "cabin",
+        "max_sites": 2,
+        "bbox": {
+          "x": [
+            -0.6,
+            0.6
+          ],
+          "y": [
+            -1.25,
+            -0.55
+          ],
+          "z": [
+            0.36,
+            0.5
+          ]
+        },
+        "source": "reference"
+      },
+      {
+        "id": "trunk_side_left",
+        "thermal_class": "trunk",
+        "max_sites": 2,
+        "bbox": {
+          "x": [
+            -0.8,
+            -0.6
+          ],
+          "y": [
+            -2.05,
+            -1.2
+          ],
+          "z": [
+            0.68,
+            1.1
+          ]
+        },
+        "source": "reference: behind the side trim"
+      },
+      {
+        "id": "trunk_side_right",
+        "thermal_class": "trunk",
+        "max_sites": 2,
+        "bbox": {
+          "x": [
+            0.6,
+            0.8
+          ],
+          "y": [
+            -2.05,
+            -1.2
+          ],
+          "z": [
+            0.68,
+            1.1
+          ]
+        },
+        "source": "reference"
+      },
+      {
+        "id": "sub_trunk",
+        "thermal_class": "underbody",
+        "max_sites": 2,
+        "bbox": {
+          "x": [
+            -0.55,
+            0.55
+          ],
+          "y": [
+            -2.1,
+            -1.8
+          ],
+          "z": [
+            0.4,
+            0.62
+          ]
+        },
+        "source": "assumption: below the trunk floor behind the rear drive unit"
+      },
+      {
+        "id": "roof_front",
+        "thermal_class": "roof",
+        "max_sites": 1,
+        "bbox": {
+          "x": [
+            -0.25,
+            0.25
+          ],
+          "y": [
+            0.15,
+            0.4
+          ],
+          "z": [
+            1.45,
+            1.54
+          ]
+        },
+        "source": "reference: headliner behind the mirror"
+      },
+      {
+        "id": "roof_rear",
+        "thermal_class": "roof",
+        "max_sites": 1,
+        "bbox": {
+          "x": [
+            -0.25,
+            0.25
+          ],
+          "y": [
+            -1.45,
+            -1.15
+          ],
+          "z": [
+            1.45,
+            1.54
+          ]
+        },
+        "source": "reference"
+      }
+    ]
+  },
+  "cable_channels": {
+    "_comment": "Harness channels where cables may run (industrial practice: wires follow a predefined routing graph, Lin et al. DAC 2014). Polylines; generate_layout.py subdivides them every 'node_spacing' m and joins coincident end points. Sites and peripherals are attached to their nearest channel node by a straight drop.",
+    "node_spacing": 0.25,
+    "channels": [
+      {
+        "id": "sill_left",
+        "kind": "sill",
+        "points": [
+          [
+            -0.8,
+            1.0,
+            0.38
+          ],
+          [
+            -0.8,
+            -1.45,
+            0.38
+          ]
+        ],
+        "source": "reference: rocker panel line"
+      },
+      {
+        "id": "sill_right",
+        "kind": "sill",
+        "points": [
+          [
+            0.8,
+            1.0,
+            0.38
+          ],
+          [
+            0.8,
+            -1.45,
+            0.38
+          ]
+        ],
+        "source": "reference"
+      },
+      {
+        "id": "tunnel",
+        "kind": "tunnel",
+        "points": [
+          [
+            0.0,
+            0.72,
+            0.92
+          ],
+          [
+            0.0,
+            0.95,
+            0.5
+          ],
+          [
+            0.0,
+            -1.3,
+            0.42
+          ],
+          [
+            0.0,
+            -1.45,
+            0.45
+          ]
+        ],
+        "source": "reference: console / tunnel, from the cross-car beam to the rear bulkhead"
+      },
+      {
+        "id": "cross_car_beam",
+        "kind": "beam",
+        "points": [
+          [
+            -0.8,
+            0.72,
+            0.92
+          ],
+          [
+            0.8,
+            0.72,
+            0.92
+          ]
+        ],
+        "source": "reference"
+      },
+      {
+        "id": "a_pillar_left",
+        "kind": "pillar",
+        "points": [
+          [
+            -0.8,
+            1.0,
+            0.38
+          ],
+          [
+            -0.8,
+            0.72,
+            0.92
+          ],
+          [
+            -0.76,
+            0.42,
+            1.55
+          ]
+        ],
+        "source": "reference"
+      },
+      {
+        "id": "a_pillar_right",
+        "kind": "pillar",
+        "points": [
+          [
+            0.8,
+            1.0,
+            0.38
+          ],
+          [
+            0.8,
+            0.72,
+            0.92
+          ],
+          [
+            0.76,
+            0.42,
+            1.55
+          ]
+        ],
+        "source": "reference"
+      },
+      {
+        "id": "b_pillar_left",
+        "kind": "pillar",
+        "points": [
+          [
+            -0.8,
+            -0.2,
+            0.38
+          ],
+          [
+            -0.76,
+            -0.2,
+            1.55
+          ]
+        ],
+        "source": "reference"
+      },
+      {
+        "id": "b_pillar_right",
+        "kind": "pillar",
+        "points": [
+          [
+            0.8,
+            -0.2,
+            0.38
+          ],
+          [
+            0.76,
+            -0.2,
+            1.55
+          ]
+        ],
+        "source": "reference"
+      },
+      {
+        "id": "c_pillar_left",
+        "kind": "pillar",
+        "points": [
+          [
+            -0.8,
+            -1.45,
+            0.38
+          ],
+          [
+            -0.76,
+            -1.45,
+            1.55
+          ]
+        ],
+        "source": "reference"
+      },
+      {
+        "id": "c_pillar_right",
+        "kind": "pillar",
+        "points": [
+          [
+            0.8,
+            -1.45,
+            0.38
+          ],
+          [
+            0.76,
+            -1.45,
+            1.55
+          ]
+        ],
+        "source": "reference"
+      },
+      {
+        "id": "roof_rail_left",
+        "kind": "roof",
+        "points": [
+          [
+            -0.76,
+            0.42,
+            1.55
+          ],
+          [
+            -0.76,
+            -1.45,
+            1.55
+          ]
+        ],
+        "source": "assumption: headliner edge"
+      },
+      {
+        "id": "roof_rail_right",
+        "kind": "roof",
+        "points": [
+          [
+            0.76,
+            0.42,
+            1.55
+          ],
+          [
+            0.76,
+            -1.45,
+            1.55
+          ]
+        ],
+        "source": "assumption"
+      },
+      {
+        "id": "roof_cross_front",
+        "kind": "roof",
+        "points": [
+          [
+            -0.76,
+            0.42,
+            1.55
+          ],
+          [
+            0.76,
+            0.42,
+            1.55
+          ]
+        ],
+        "source": "assumption: headliner front edge (mirror / camera area)"
+      },
+      {
+        "id": "roof_cross_rear",
+        "kind": "roof",
+        "points": [
+          [
+            -0.76,
+            -1.45,
+            1.55
+          ],
+          [
+            0.76,
+            -1.45,
+            1.55
+          ]
+        ],
+        "source": "assumption"
+      },
+      {
+        "id": "roof_spine",
+        "kind": "roof",
+        "points": [
+          [
+            0.0,
+            0.42,
+            1.55
+          ],
+          [
+            0.0,
+            -1.45,
+            1.55
+          ]
+        ],
+        "source": "assumption: centre headliner (roof sensors, antenna)"
+      },
+      {
+        "id": "firewall_left",
+        "kind": "pass",
+        "points": [
+          [
+            -0.8,
+            1.0,
+            0.38
+          ],
+          [
+            -0.55,
+            1.05,
+            0.6
+          ],
+          [
+            -0.55,
+            1.3,
+            0.6
+          ]
+        ],
+        "source": "assumption: left bulkhead grommet"
+      },
+      {
+        "id": "firewall_right",
+        "kind": "pass",
+        "points": [
+          [
+            0.8,
+            1.0,
+            0.38
+          ],
+          [
+            0.55,
+            1.05,
+            0.6
+          ],
+          [
+            0.55,
+            1.3,
+            0.6
+          ]
+        ],
+        "source": "assumption: right bulkhead grommet"
+      },
+      {
+        "id": "front_bay_left",
+        "kind": "bay",
+        "points": [
+          [
+            -0.55,
+            1.3,
+            0.6
+          ],
+          [
+            -0.7,
+            1.95,
+            0.65
+          ],
+          [
+            -0.75,
+            2.15,
+            0.6
+          ]
+        ],
+        "source": "assumption: along the left inner fender"
+      },
+      {
+        "id": "front_bay_right",
+        "kind": "bay",
+        "points": [
+          [
+            0.55,
+            1.3,
+            0.6
+          ],
+          [
+            0.7,
+            1.95,
+            0.65
+          ],
+          [
+            0.75,
+            2.15,
+            0.6
+          ]
+        ],
+        "source": "assumption"
+      },
+      {
+        "id": "front_cross",
+        "kind": "cross",
+        "points": [
+          [
+            -0.75,
+            2.15,
+            0.6
+          ],
+          [
+            0.75,
+            2.15,
+            0.6
+          ]
+        ],
+        "source": "assumption: behind the front bumper (radiator support)"
+      },
+      {
+        "id": "front_motor_branch",
+        "kind": "bay",
+        "points": [
+          [
+            -0.55,
+            1.3,
+            0.6
+          ],
+          [
+            0.0,
+            1.5,
+            0.8
+          ],
+          [
+            0.55,
+            1.3,
+            0.6
+          ]
+        ],
+        "source": "assumption: over the front drive unit"
+      },
+      {
+        "id": "rear_cross",
+        "kind": "cross",
+        "points": [
+          [
+            -0.8,
+            -1.45,
+            0.38
+          ],
+          [
+            0.0,
+            -1.45,
+            0.45
+          ],
+          [
+            0.8,
+            -1.45,
+            0.38
+          ]
+        ],
+        "source": "assumption: rear bulkhead below the seat back"
+      },
+      {
+        "id": "rear_motor_branch",
+        "kind": "bay",
+        "points": [
+          [
+            0.0,
+            -1.45,
+            0.45
+          ],
+          [
+            0.0,
+            -1.8,
+            0.5
+          ]
+        ],
+        "source": "assumption: to the rear drive unit"
+      },
+      {
+        "id": "trunk_left",
+        "kind": "trunk",
+        "points": [
+          [
+            -0.8,
+            -1.45,
+            0.38
+          ],
+          [
+            -0.7,
+            -1.6,
+            0.7
+          ],
+          [
+            -0.7,
+            -2.1,
+            0.7
+          ]
+        ],
+        "source": "assumption: left trunk side trim"
+      },
+      {
+        "id": "trunk_right",
+        "kind": "trunk",
+        "points": [
+          [
+            0.8,
+            -1.45,
+            0.38
+          ],
+          [
+            0.7,
+            -1.6,
+            0.7
+          ],
+          [
+            0.7,
+            -2.1,
+            0.7
+          ]
+        ],
+        "source": "assumption"
+      },
+      {
+        "id": "rear_bumper_cross",
+        "kind": "cross",
+        "points": [
+          [
+            -0.7,
+            -2.1,
+            0.7
+          ],
+          [
+            0.7,
+            -2.1,
+            0.7
+          ]
+        ],
+        "source": "assumption: behind the rear bumper"
+      }
+    ]
+  },
+  "roof_structure": {
+    "_comment": "The reference model has only the roof skin; real harnesses are clipped to the roof structure. Inside the roof cavity (z >= z_min) cables are restricted to strips: two side rails, a centre line and transverse bows. 'virtual_headers': windscreen / rear-window header beams that the reference model lacks (only glass there); added as routable roof structure so that the A- and C-pillars connect to the roof.",
+    "z_min": 1.3,
+    "rail_min_abs_x": 0.6,
+    "centre_half_width": 0.1,
+    "bows_y": [
+      0.4,
+      -0.2,
+      -0.85,
+      -1.42
+    ],
+    "bow_half_width": 0.08,
+    "source": "assumption: typical roof structure (side rails at the roof edge, header beams above the windscreen and rear window, bows at the B pillar and mid roof, centre harness run)",
+    "virtual_headers": [
+      {
+        "y": 0.36,
+        "half_width": 0.06,
+        "half_span": 0.78,
+        "z": [
+          1.33,
+          1.48
+        ]
+      },
+      {
+        "y": -1.4,
+        "half_width": 0.06,
+        "half_span": 0.76,
+        "z": [
+          1.33,
+          1.48
+        ]
+      }
+    ]
+  },
+  "installation_space": {
+    "_comment": "One scan of the free volume behind trims / under the floor / in the bay and trunk. Every mountable voxel gets a clearance (radius of the largest free sphere). A cable may use a voxel if clearance >= cable_bundle_diameter/2; a control unit may be placed where clearance >= ecu_fit_radius (half of the middle dimension of ecu_size, a conservative sphere test). Thresholds can be changed without rescanning.",
+    "cable_bundle_diameter": 0.03,
+    "ecu_size": [
+      0.3,
+      0.2,
+      0.06
+    ],
+    "mount_reach": 0.15,
+    "floor_mount_height": 0.12,
+    "source": "assumption: harness bundle up to 30 mm; one ECU size = the largest unit (HPC class, 300 x 200 x 60 mm)"
   }
 }

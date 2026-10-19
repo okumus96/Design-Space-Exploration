@@ -223,7 +223,7 @@ def main(args):
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description="ECU Optimization and Visualization Pipeline")
-    argparser.add_argument("--num_locs", type=int, default=20, help="Number of locations to generate")
+    argparser.add_argument("--num_locs", type=int, default=None, help="Use only this many of the candidate sites in configs/sites.json (default: all)")
     argparser.add_argument("--num_scs", type=int, default=20, help="Number of software components to generate")
     argparser.add_argument("--architecture_json", type=str, default=None, help="Load complete architecture from JSON and bypass data_generator")
     argparser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")

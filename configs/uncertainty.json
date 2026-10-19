@@ -2,15 +2,23 @@
   "_comment": "Parameters of the uncertainty-aware constraints. Each block is switched on by its own CLI flag (--sw_margin, --derating, --redundancy, --ai_contention, --robust_latency); --uncertainty switches on all of them. Values are the ones previously hard-coded in optimizer.py / architecture_loader.py.",
   "sw_margin": {
     "_comment": "SW resource demand multiplier = 1 + asil_margin + ai_margin, applied only to SCs of the listed domains.",
-    "domains": ["ADAS", "INFOTAINMENT"],
-    "asil_margins": {"0": 0.20, "1": 0.15, "2": 0.10, "3": 0.05, "4": 0.00},
-    "default_asil_margin": 0.20,
+    "domains": [
+      "ADAS",
+      "INFOTAINMENT"
+    ],
+    "asil_margins": {
+      "0": 0.2,
+      "1": 0.15,
+      "2": 0.1,
+      "3": 0.05,
+      "4": 0.0
+    },
+    "default_asil_margin": 0.2,
     "ai_margin": 0.25,
     "ai_hw_feature": "HW_ACC"
   },
   "derating": {
-    "_comment": "Partition capacity at a location is multiplied by its health factor. Applied to every generated location.",
-    "health_factor": 0.85
+    "_comment": "Partition capacity at a site is multiplied by the derating of its thermal class (configs/vehicle.json: thermal_classes)."
   },
   "redundancy": {
     "_comment": "SCs with 'redundant_with' must not be placed at the same location. No parameters."
@@ -22,7 +30,7 @@
   },
   "robust_latency": {
     "_comment": "Robust link latency = nominal * network_safety_factor + sync_error_constant + platform_overhead.",
-    "network_safety_factor": 1.10,
+    "network_safety_factor": 1.1,
     "sync_error_constant": 0.0005,
     "platform_overhead": 0.002
   }

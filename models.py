@@ -12,19 +12,22 @@ from dataclasses import dataclass
 class Point:
     x: float
     y: float
+    z: float = 0.0
+    ref: str = None  # id of the site / peripheral this point belongs to (key of the cable distance table)
 
     def dist(self, other):
-        """Calculate Manhattan and Euclidean distances."""
-        manhattan = abs(self.x - other.x) + abs(self.y - other.y)
-        euclidean = math.sqrt((self.x - other.x)**2 + (self.y - other.y)**2)
-        return manhattan, euclidean
+        """Calculate Manhattan and Euclidean distances (3D)."""
+        dx, dy, dz = abs(self.x - other.x), abs(self.y - other.y), abs(self.z - other.z)
+        return dx + dy + dz, math.sqrt(dx * dx + dy * dy + dz * dz)
 
 @dataclass
 class Location:
     """Represents a physical location in the vehicle where components can be deployed."""
-    id: str        # e.g., 'LOC0', 'LOC1'
+    id: str        # e.g., 'dash_center', 'trunk_side_left_1'
     location: 'Point' = None
-    health_factor: float = 1.0
+    health_factor: float = 1.0   # capacity derating of the site's thermal class (used by --derating)
+    zone: str = None
+    thermal_class: str = None
 
 @dataclass
 class Interface:

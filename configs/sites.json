@@ -1,0 +1,503 @@
+{
+  "_generated_by": "tools/vehicle_layout/generate_layout.py (voxel routing space)",
+  "vehicle": "Hyundai IONIQ 5",
+  "_comment": "Generated file, do not edit; change configs/vehicle.json / routing_space.npz and re-run the generator.",
+  "grid_spacing": 0.12,
+  "sites": [
+    {
+      "id": "S01",
+      "zone": "engine_bay",
+      "thermal_class": "engine_bay",
+      "derating": 0.85,
+      "clearance": 0.117,
+      "position": {
+        "x": -0.69,
+        "y": 0.96,
+        "z": 0.912
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v853",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S02",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.136,
+      "position": {
+        "x": -0.57,
+        "y": -2.16,
+        "z": 0.432
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v1118",
+      "drop_length": 0.001
+    },
+    {
+      "id": "S03",
+      "zone": "cabin",
+      "thermal_class": "cabin",
+      "derating": 1.0,
+      "clearance": 0.103,
+      "position": {
+        "x": -0.57,
+        "y": 0.84,
+        "z": 0.792
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v1364",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S04",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.109,
+      "position": {
+        "x": -0.45,
+        "y": -2.16,
+        "z": 0.552
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v1824",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S05",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.119,
+      "position": {
+        "x": -0.45,
+        "y": -2.04,
+        "z": 0.552
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v1837",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S06",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.119,
+      "position": {
+        "x": -0.45,
+        "y": -1.92,
+        "z": 0.552
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v1846",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S07",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.112,
+      "position": {
+        "x": -0.45,
+        "y": -1.8,
+        "z": 0.552
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v1860",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S08",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.127,
+      "position": {
+        "x": -0.45,
+        "y": -1.44,
+        "z": 0.912
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v1906",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S09",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.114,
+      "position": {
+        "x": -0.33,
+        "y": -2.16,
+        "z": 0.552
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v2382",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S10",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.103,
+      "position": {
+        "x": -0.33,
+        "y": -1.8,
+        "z": 1.152
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v2418",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S11",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.11,
+      "position": {
+        "x": -0.21,
+        "y": -2.16,
+        "z": 0.552
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v2764",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S12",
+      "zone": "engine_bay",
+      "thermal_class": "engine_bay",
+      "derating": 0.85,
+      "clearance": 0.107,
+      "position": {
+        "x": -0.21,
+        "y": 2.16,
+        "z": 0.552
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v2910",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S13",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.1,
+      "position": {
+        "x": -0.09,
+        "y": -2.16,
+        "z": 0.552
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v3109",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S14",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.103,
+      "position": {
+        "x": -0.09,
+        "y": -1.8,
+        "z": 1.152
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v3131",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S15",
+      "zone": "engine_bay",
+      "thermal_class": "engine_bay",
+      "derating": 0.85,
+      "clearance": 0.11,
+      "position": {
+        "x": -0.09,
+        "y": 2.16,
+        "z": 0.552
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v3339",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S16",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.103,
+      "position": {
+        "x": 0.03,
+        "y": -1.8,
+        "z": 1.152
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v3653",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S17",
+      "zone": "engine_bay",
+      "thermal_class": "engine_bay",
+      "derating": 0.85,
+      "clearance": 0.11,
+      "position": {
+        "x": 0.03,
+        "y": 2.16,
+        "z": 0.552
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v3869",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S18",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.11,
+      "position": {
+        "x": 0.15,
+        "y": -2.16,
+        "z": 0.552
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v4142",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S19",
+      "zone": "engine_bay",
+      "thermal_class": "engine_bay",
+      "derating": 0.85,
+      "clearance": 0.109,
+      "position": {
+        "x": 0.15,
+        "y": 2.16,
+        "z": 0.552
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v4301",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S20",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.11,
+      "position": {
+        "x": 0.27,
+        "y": -2.16,
+        "z": 0.552
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v4507",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S21",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.103,
+      "position": {
+        "x": 0.27,
+        "y": -1.8,
+        "z": 1.152
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v4533",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S22",
+      "zone": "engine_bay",
+      "thermal_class": "engine_bay",
+      "derating": 0.85,
+      "clearance": 0.106,
+      "position": {
+        "x": 0.27,
+        "y": 2.16,
+        "z": 0.552
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v4679",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S23",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.115,
+      "position": {
+        "x": 0.39,
+        "y": -2.16,
+        "z": 0.552
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v4908",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S24",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.103,
+      "position": {
+        "x": 0.39,
+        "y": -1.8,
+        "z": 1.152
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v4949",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S25",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.149,
+      "position": {
+        "x": 0.51,
+        "y": -2.16,
+        "z": 0.432
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v5468",
+      "drop_length": 0.001
+    },
+    {
+      "id": "S26",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.102,
+      "position": {
+        "x": 0.51,
+        "y": -2.16,
+        "z": 0.552
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v5470",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S27",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.114,
+      "position": {
+        "x": 0.51,
+        "y": -2.04,
+        "z": 0.432
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v5491",
+      "drop_length": 0.001
+    },
+    {
+      "id": "S28",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.114,
+      "position": {
+        "x": 0.51,
+        "y": -2.04,
+        "z": 0.552
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v5493",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S29",
+      "zone": "cabin",
+      "thermal_class": "cabin",
+      "derating": 1.0,
+      "clearance": 0.146,
+      "position": {
+        "x": 0.51,
+        "y": 0.84,
+        "z": 0.792
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v5707",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S30",
+      "zone": "cabin",
+      "thermal_class": "cabin",
+      "derating": 1.0,
+      "clearance": 0.112,
+      "position": {
+        "x": 0.51,
+        "y": 0.84,
+        "z": 0.912
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v5709",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S31",
+      "zone": "engine_bay",
+      "thermal_class": "engine_bay",
+      "derating": 0.85,
+      "clearance": 0.118,
+      "position": {
+        "x": 0.51,
+        "y": 0.96,
+        "z": 0.912
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v5721",
+      "drop_length": 0.0
+    },
+    {
+      "id": "S32",
+      "zone": "trunk",
+      "thermal_class": "trunk",
+      "derating": 0.95,
+      "clearance": 0.121,
+      "position": {
+        "x": 0.63,
+        "y": -2.16,
+        "z": 0.432
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v6178",
+      "drop_length": 0.001
+    },
+    {
+      "id": "S33",
+      "zone": "engine_bay",
+      "thermal_class": "engine_bay",
+      "derating": 0.85,
+      "clearance": 0.116,
+      "position": {
+        "x": 0.63,
+        "y": 0.96,
+        "z": 0.912
+      },
+      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
+      "attach_node": "v6357",
+      "drop_length": 0.0
+    }
+  ]
+}

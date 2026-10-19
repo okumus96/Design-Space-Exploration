@@ -38,6 +38,25 @@ class ConfigReader:
     def get_vehicle_dimensions(self):
         """Get vehicle dimensions"""
         return self.vehicle_config['dimensions']
+
+    def get_vehicle_config(self):
+        """Get the full vehicle description (blocks, ECU zones, cable channels)"""
+        return self.vehicle_config
+
+    def get_sites(self):
+        """Get the generated candidate ECU sites (configs/sites.json)"""
+        path = os.path.join(self.config_dir, 'sites.json')
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"{path} not found: run tools/vehicle_layout/generate_layout.py first")
+        return self._load_json('sites.json')['sites']
+
+    def get_distance_table(self):
+        """Get the generated cable length table (configs/distances.json) as (ids, matrix), or None"""
+        path = os.path.join(self.config_dir, 'distances.json')
+        if not os.path.exists(path):
+            return None
+        d = self._load_json('distances.json')
+        return d['ids'], d['matrix']
     
     def get_interfaces(self):
         """

@@ -16,3 +16,7 @@ results/
 *.zip
 *.txt
 dse/
+assets/
+configs/routing_space.*
+configs/bay_candidates.json
+.mcp.json
