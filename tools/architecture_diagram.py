@@ -44,7 +44,9 @@ def unit_data(sol, arch, devices):
     units = defaultdict(lambda: {'partitions': defaultdict(list), 'hw': [], 'ports': [], 'periph': []})
     for sc, part in sol['partitions'].items():
         site = sol['assignment'][sc]
-        units[site]['partitions'][part].append(sc)
+        units[site]['partitions'][part].append((sc, ''))
+    for sc, sb in sol.get('standby', {}).items():
+        units[sb['cell']]['partitions'][sb['partition']].append((sc, sb['type']))
     for h in sol.get('hw_features', []):
         name, site = h.split('@')
         units[site]['hw'].append(name)
@@ -62,9 +64,10 @@ def unit_data(sol, arch, devices):
 
 def part_label(part, scs, arch, caps):
     asil = int(part.split('_asil')[1].split('_')[0])
-    cpu = sum(arch[s]['cpu_req'] for s in scs) / caps['cpu_cap'] * 100
-    ram = sum(arch[s]['ram_req'] for s in scs) / caps['ram_cap'] * 100
-    rom = sum(arch[s]['rom_req'] for s in scs) / caps['rom_cap'] * 100
+    live = [s for s, tag in scs if tag != 'cold']   # cold standbys reserve, they do not consume in the nominal state
+    cpu = sum(arch[s]['cpu_req'] for s in live) / caps['cpu_cap'] * 100
+    ram = sum(arch[s]['ram_req'] for s in live) / caps['ram_cap'] * 100
+    rom = sum(arch[s]['rom_req'] for s in live) / caps['rom_cap'] * 100
     return f"partition ASIL {ASIL_NAME.get(asil, asil)}  ·  CPU {cpu:.0f} %  RAM {ram:.0f} %  ROM {rom:.0f} %"
 
 
@@ -119,13 +122,14 @@ def draw(sol, arch, sites, devices, caps, out, title):
             ax.add_patch(FancyBboxPatch((x + 0.1, y - ph), COLW - 0.2, ph - 0.04, boxstyle='round,pad=0.01,rounding_size=0.04',
                                         fc='white', ec='#8a2b2b', lw=1.0))
             ax.text(x + 0.18, y - 0.15, part_label(part, scs, arch, caps), fontsize=7.2, fontweight='bold', va='center', color='#8a2b2b')
-            for k, sc in enumerate(sorted(scs, key=lambda i: (arch[i]['domain'], i))):
+            for k, (sc, tag) in enumerate(sorted(scs, key=lambda e: (e[1] != '', arch[e[0]]['domain'], e[0]))):
                 col, row = (k % 2, k // 2) if two else (0, k)
                 cx = x + 0.18 + col * (COLW - 0.36) / 2
                 cy = y - part_head - 0.02 - row * LINE
                 ax.add_patch(plt.Rectangle((cx, cy - LINE * 0.42), (COLW - 0.36) / 2 - 0.06, LINE * 0.84,
-                                           fc=DOMAIN_COLOUR.get(arch[sc]['domain'], '#eee'), ec='none'))
-                ax.text(cx + 0.04, cy, sc, fontsize=5.4, va='center', family='DejaVu Sans Mono')
+                                           fc=DOMAIN_COLOUR.get(arch[sc]['domain'], '#eee'), ec='#8a2b2b' if tag else 'none',
+                                           lw=0.6, ls='--' if tag == 'cold' else '-'))
+                ax.text(cx + 0.04, cy, sc + (f" [{tag}]" if tag else ''), fontsize=5.4, va='center', family='DejaVu Sans Mono')
             y -= ph
     # peripherals under each unit
     for s in order:
@@ -193,9 +197,10 @@ def main():
     sol, arch, sites, devices, caps = load(args)
     out = args.out or os.path.splitext(args.solution)[0] + '_architecture'
     info = sol.get('solve_info', {})
+    growth = f", growth level {info['growth_alpha']:g}" if info.get('growth_alpha') is not None else ''
     title = (f"{os.path.basename(os.path.dirname(os.path.abspath(args.solution)))} / {os.path.basename(args.solution)}:  "
              f"{sol['num_locations_used']} control units on {sol.get('num_candidate_sites', '?')} candidate cells, "
-             f"{sol['num_partitions']} partitions, cost {sol['total_cost']:.0f}, cable {sol['cable_length']:.1f} m, {sol.get('status')}")
+             f"{sol['num_partitions']} partitions, cost {sol['total_cost']:.0f}, cable {sol['cable_length']:.1f} m, {sol.get('status')}{growth}")
     files = draw(sol, arch, sites, devices, caps, out, title)
     print('written:', *files)
 

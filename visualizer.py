@@ -22,6 +22,30 @@ class Visualization:
         else:
             plt.show()
 
+    def visualize_growth_curve(self, solutions, filename="cost_vs_growth.pdf"):
+        """Minimum cost against the software growth level alpha, annotated with the number of control units."""
+        pts = [(s['solve_info'].get('growth_alpha'), s['total_cost'], s['num_locations_used'], s['num_partitions'])
+               for s in solutions if s.get('solve_info', {}).get('growth_alpha') is not None]
+        if not pts:
+            print("No growth-sweep solutions to visualize")
+            return
+        pts.sort()
+        fig, ax = plt.subplots(figsize=(7, 4.2))
+        ax.plot([p[0] for p in pts], [p[1] for p in pts], '-o', color='#2a3f6f', lw=1.8, ms=6)
+        for a, c, n, k in pts:
+            ax.annotate(f"{n} units\n{k} partitions", (a, c), textcoords='offset points', xytext=(0, 9), ha='center', fontsize=8)
+        ax.set_xlabel('software growth level $\\alpha$  (demand = today $\\times$ (1 + $\\alpha$ $\\cdot$ g[domain]))')
+        ax.set_ylabel('minimum cost')
+        ax.grid(alpha=0.3)
+        ax.margins(y=0.2)
+        fig.tight_layout()
+        self.save_plot(filename)
+        with open(os.path.join(self.save_dir, filename.replace('.pdf', '.dat')), 'w') as f:
+            f.write("alpha cost units partitions\n")
+            for a, c, n, k in pts:
+                f.write(f"{a} {c:.2f} {n} {k}\n")
+        plt.close(fig)
+
     def visualize_pareto_front(self, pareto_solutions, filename="pareto_front_analysis.pdf"):
         """
         Create a visualization of the Pareto front showing trade-offs.

@@ -5,10 +5,10 @@ import gurobipy as gp
 from gurobipy import GRB
 from optimizer_utils import (get_distance, build_sensor_lookup, build_actuator_lookup,
                              build_cost_map, build_latency_map, extract_solution,
-                             sw_multiplier, site_derating, pack_partitions, flow_routes, crossing_latency_ms)
+                             sw_multiplier, site_derating, pack_partitions, flow_routes, crossing_latency_ms, chain_latencies)
 
 # Uncertainty-aware constraint blocks, each switched on by its own CLI flag (parameters in configs/uncertainty.json)
-UNCERTAINTY_BLOCKS = ('sw_margin', 'derating', 'redundancy', 'ai_contention', 'robust_latency')
+UNCERTAINTY_BLOCKS = ('sw_margin', 'derating', 'redundancy', 'ai_contention', 'robust_latency', 'growth', 'failures')
 
 # Packing check of the pooled (site, ASIL) capacity constraint: cuts added before giving up (see optimize())
 MAX_PACKING_CUTS = 10
@@ -198,7 +198,7 @@ class AssignmentOptimizer:
             
         return cable_cost_expr, cable_distance_expr, latency_expr
     
-    def _create_model_and_variables(self, n_sc, n_locs, scs, locations, unique_asils, all_hw, sensors, actuators, all_interfaces, infeasible_ij=None, comm_matrix=None, partitions=None, backbone=None, cable_types=None):
+    def _create_model_and_variables(self, n_sc, n_locs, scs, locations, unique_asils, all_hw, sensors, actuators, all_interfaces, infeasible_ij=None, comm_matrix=None, partitions=None, backbone=None, cable_types=None, uncertainty=None, chains=None):
         """
         Create Gurobi model and define all decision variables
 
@@ -253,6 +253,31 @@ class AssignmentOptimizer:
 
         # y[j] = site j hosts a control unit with at least one partition
         y = {j: model.addVar(vtype=GRB.BINARY, name=f"y_{locations[j].id}") for j in range(n_locs)}
+
+        # --- Standby instances of the critical components (configs/uncertainty.json: failures) ---
+        # r[i,j]: standby of SC i at cell j (another cell than the primary's); hot[i]: the standby runs permanently (1)
+        # or is a cold standby activated after a failure (0); cold is admissible only when the smallest FTTI of the
+        # chains of i covers the platform recovery time (hot[i] is None = hot forced). hr[i,j] = r[i,j] AND hot[i].
+        fail_on = bool((uncertainty or {}).get('failures'))
+        fail_cfg = (uncertainty or {}).get('params', {}).get('failures', {}) if fail_on else {}
+        r, hot, hr, critical = {}, {}, {}, []
+        if fail_on:
+            asil_min = int(fail_cfg.get('critical_asil_min', 3))
+            recovery = float(fail_cfg.get('recovery_ms', 50.0))
+            critical = [i for i in range(n_sc) if int(scs[i].asil_req) >= asil_min]
+            ftti = {}
+            for ch in (chains or []):
+                for sid in ch.get('swcs', []):
+                    ftti[sid] = min(ftti.get(sid, float('inf')), float(ch.get('ftti_ms', float('inf'))))
+            for i in critical:
+                cold_ok = ftti.get(scs[i].id, float('inf')) >= recovery
+                hot[i] = model.addVar(vtype=GRB.BINARY, name=f"hot_{scs[i].id}") if cold_ok else None
+                for j in feasible_locs_per_sc[i]:
+                    r[i, j] = model.addVar(vtype=GRB.BINARY, name=f"r_{scs[i].id}_{locations[j].id}")
+                    hr[i, j] = (model.addVar(vtype=GRB.CONTINUOUS, lb=0.0, ub=1.0, name=f"hr_{scs[i].id}_{locations[j].id}")
+                                if cold_ok else r[i, j])
+            print(f"  Failures: {len(critical)} critical SCs (ASIL >= {asil_min}), cold standby admissible for "
+                  f"{sum(1 for i in critical if hot[i] is not None)} of them (recovery {recovery:.0f} ms)")
 
         # hw_use[j,h] = HW feature h is used at location j (binary)
         hw_use = {}
@@ -399,6 +424,30 @@ class AssignmentOptimizer:
                 })
                 t_idx += 1
 
+        # Standby flows (failures): a standby instance exchanges the flows of its primary with the primary partners
+        # and, for critical partners, with their standbys. 'src_inst' / 'dst_inst': 'x' primary, 'r' standby,
+        # 'a' peripheral attachment; the endpoints come from the matching variables (flow_ends).
+        if critical:
+            crit = set(critical)
+            for tr in list(traffic_flows):
+                variants = []
+                if tr['type'] == 'SC_SC':
+                    s, d = tr['src_idx'], tr['dst_idx']
+                    if s in crit:
+                        variants.append(('r', 'x'))
+                    if d in crit:
+                        variants.append(('x', 'r'))
+                    if s in crit and d in crit:
+                        variants.append(('r', 'r'))
+                elif tr['type'] == 'SENS_SC' and tr['dst_idx'] in crit:
+                    variants.append(('a', 'r'))
+                elif tr['type'] == 'SC_ACT' and tr['src_idx'] in crit:
+                    variants.append(('r', 'a'))
+                for si, di in variants:
+                    traffic_flows.append({**tr, 'id': t_idx, 'src_inst': si, 'dst_inst': di, 'base': tr['id']})
+                    t_idx += 1
+            print(f"  Standby flows: {sum(1 for tr in traffic_flows if 'base' in tr)} added to {sum(1 for tr in traffic_flows if 'base' not in tr)} base flows")
+
         # --- BACKBONE: aggregated traffic per site pair on candidate paths ---
         # lnk[t,u,v] (continuous, 0..1) is forced to 1 when flow t starts at site u and ends at site v; it only
         # consumes link capacity, so the LP sets it to max(0, start + end - 1). The per-flow routing binaries of v1
@@ -417,15 +466,18 @@ class AssignmentOptimizer:
                 for n in elig:
                     w[tr['id'], n] = model.addVar(vtype=GRB.BINARY, name=f"w_{tr['id']}_{n}")
         lnk, lnk_terms, pair_vol, flow_ends = {}, [], {}, {}
+        if critical and not lazy:
+            raise ValueError("failure scenarios need backbone.lazy_traffic (configs/buses.json)")
         for tr in traffic_flows:
+            si, di = tr.get('src_inst', 'x'), tr.get('dst_inst', 'x')
             if tr['type'] == 'SC_SC':
-                src = {u: x[tr['src_idx'], u] for u in feasible_locs_per_sc[tr['src_idx']]}
-                dst = {v: x[tr['dst_idx'], v] for v in feasible_locs_per_sc[tr['dst_idx']]}
+                src = {u: (r if si == 'r' else x)[tr['src_idx'], u] for u in feasible_locs_per_sc[tr['src_idx']]}
+                dst = {v: (r if di == 'r' else x)[tr['dst_idx'], v] for v in feasible_locs_per_sc[tr['dst_idx']]}
             elif tr['type'] == 'SENS_SC':
                 src = {u: attach_s[tr['sensor_idx'], u] for u in range(n_locs) if (tr['sensor_idx'], u) in attach_s}
-                dst = {v: x[tr['dst_idx'], v] for v in feasible_locs_per_sc[tr['dst_idx']]}
+                dst = {v: (r if di == 'r' else x)[tr['dst_idx'], v] for v in feasible_locs_per_sc[tr['dst_idx']]}
             else:  # SC_ACT
-                src = {u: x[tr['src_idx'], u] for u in feasible_locs_per_sc[tr['src_idx']]}
+                src = {u: (r if si == 'r' else x)[tr['src_idx'], u] for u in feasible_locs_per_sc[tr['src_idx']]}
                 dst = {v: attach_a[tr['act_idx'], v] for v in range(n_locs) if (tr['act_idx'], v) in attach_a}
             flow_ends[tr['id']] = (src, dst)
             for u, sv in src.items():
@@ -457,6 +509,9 @@ class AssignmentOptimizer:
                         f[u, v, w_if, p, d] = model.addVar(vtype=GRB.CONTINUOUS, lb=0.0, name=f"f_{locations[u].id}_{locations[v].id}_{w_if}_p{p}_d{d}")
         net = {'paths': paths, 'sel': sel, 'f': f, 'lnk': lnk, 'lnk_terms': lnk_terms, 'pair_vol': pair_vol, 'flow_ends': flow_ends,
                'bb_ifaces': bb_ifaces, 'cap_of': cap_of, 'w': w, 'flow_elig': flow_elig,
+               'r': r, 'hot': hot, 'hr': hr, 'critical': critical, 'fail_cfg': fail_cfg,
+               'x_vars': x, 'y_vars': y, 'switch_vars': {j: hw_use.get((j, 'SWITCH')) for j in range(n_locs)},
+               'flow_meta': {tr['id']: tr for tr in traffic_flows},
                'k_paths': k_paths, 'lazy': lazy, 'volumes': {tr['id']: float(tr['volume']) for tr in traffic_flows},
                'kbit': {tr['id']: float(tr.get('kbit', 0.0)) for tr in traffic_flows},
                'site_ids': [loc.id for loc in locations],
@@ -481,6 +536,8 @@ class AssignmentOptimizer:
             'lnk': len(lnk),
             'sel': len(sel),
             'w': len(w),
+            'r': len(r),
+            'hot': sum(1 for v in hot.values() if v is not None),
             'f': len(f),
             'pairs_with_paths': len(paths),
         }
@@ -500,6 +557,8 @@ class AssignmentOptimizer:
             + var_stats['lnk']
             + var_stats['sel']
             + var_stats['w']
+            + var_stats['r']
+            + var_stats['hot']
             + var_stats['f']
         )
 
@@ -525,6 +584,7 @@ class AssignmentOptimizer:
             'c1c_partitions_le_scs': 0,
             'c1d_site_caps': 0,
             'c1e_x_le_P': 0,
+            'c1g_standby': 0,
             'c2_capacity': 0,
             'c3_hw_required': 0,
             'c4_if_required': 0,
@@ -549,6 +609,8 @@ class AssignmentOptimizer:
         unc = uncertainty or {}
         unc_params = unc.get('params', {})
         print(f"  Uncertainty blocks: " + ", ".join(f"{k}={bool(unc.get(k))}" for k in UNCERTAINTY_BLOCKS))
+        if unc.get('growth'):
+            print(f"  Growth level alpha = {float(unc.get('growth_alpha', 0.0)):.2f} (profiles {unc.get('params', {}).get('growth', {}).get('profiles')})")
 
         # SW-based uncertainty (selective static margin, configs/uncertainty.json: sw_margin)
         def get_sw_multiplier(sc):
@@ -561,6 +623,7 @@ class AssignmentOptimizer:
         comm_ub = {n: max(2, int(np.ceil(total_traffic_volume / cap))) if cap < float('inf') else 2 for n, cap in net['cap_of'].items()}
         for (_j1, _j2, w_if), comm_var in comm.items():
             comm_var.UB = comm_ub[w_if]
+        net['comm_ub'] = comm_ub
         print(f"  Backbone cable upper bounds per type: {comm_ub} (total traffic {total_traffic_volume:.1f})")
 
         # max_periph_dist[j, iface]: farthest peripheral of a shared bus from location j (upper bound of its trunk length)
@@ -589,7 +652,8 @@ class AssignmentOptimizer:
             for i in feasible_scs_per_loc[j]:
                 model.addConstr(x[i, j] <= y[j], name=f"x_le_y_{scs[i].id}_{locations[j].id}")
                 cstats['c1b_x_le_y'] += 1
-            model.addConstr(y[j] <= gp.quicksum(x[i, j] for i in feasible_scs_per_loc[j]), name=f"y_le_sum_x_{locations[j].id}")
+            model.addConstr(y[j] <= gp.quicksum(x[i, j] for i in feasible_scs_per_loc[j])
+                            + gp.quicksum(net['r'][i, j] for i in net['critical'] if (i, j) in net['r']), name=f"y_le_sum_x_{locations[j].id}")
             cstats['c1b_x_le_y'] += 1
 
         # Constraint 1f: an active site has at least one partition. Implied for integer solutions (y = 1 => an SC is
@@ -605,7 +669,8 @@ class AssignmentOptimizer:
         for j in range(n_locs):
             for a in unique_asils:
                 model.addConstr(
-                    P[j, a] <= gp.quicksum(x[i, j] for i in feasible_scs_per_loc[j] if scs[i].asil_req == a),
+                    P[j, a] <= gp.quicksum(x[i, j] for i in feasible_scs_per_loc[j] if scs[i].asil_req == a)
+                    + gp.quicksum(net['r'][i, j] for i in net['critical'] if (i, j) in net['r'] and scs[i].asil_req == a),
                     name=f"partitions_le_scs_{locations[j].id}_asil{a}"
                 )
                 cstats['c1c_partitions_le_scs'] += 1
@@ -640,12 +705,33 @@ class AssignmentOptimizer:
                 for res in ('cpu', 'ram', 'rom'):
                     demand = gp.quicksum(
                         x[i, j] * getattr(scs[i], f'{res}_req') * get_sw_multiplier(scs[i]) for i in scs_ja
+                    ) + gp.quicksum(
+                        net['hr'][i, j] * getattr(scs[i], f'{res}_req') * get_sw_multiplier(scs[i])
+                        for i in scs_ja if (i, j) in net['hr']   # hot standbys consume their resources permanently
                     )
                     model.addConstr(
                         demand <= P[j, a] * partitions.get(f'{res}_cap', float('inf')) * H_j,
                         name=f"{res}_capacity_{locations[j].id}_asil{a}"
                     )
                     cstats['c2_capacity'] += 1
+
+        # Constraint 1g (failures): one standby per critical SC on another cell, with a partition of its ASIL and its
+        # hardware there; hr = r AND hot for the SCs that may use a cold standby
+        for i in net['critical']:
+            model.addConstr(gp.quicksum(net['r'][i, j] for j in feasible_locs_per_sc[i]) == 1, name=f"standby_{scs[i].id}")
+            for j in feasible_locs_per_sc[i]:
+                rv = net['r'][i, j]
+                model.addConstr(rv + x[i, j] <= 1, name=f"standby_other_cell_{scs[i].id}_{locations[j].id}")
+                model.addConstr(rv <= y[j], name=f"standby_site_{scs[i].id}_{locations[j].id}")
+                model.addConstr(rv <= P[j, scs[i].asil_req], name=f"standby_partition_{scs[i].id}_{locations[j].id}")
+                for h in (scs[i].hw_required or []):
+                    model.addConstr(rv <= hw_use[j, h], name=f"standby_hw_{scs[i].id}_{h}_{locations[j].id}")
+                if net['hot'][i] is not None:
+                    hv = net['hr'][i, j]
+                    model.addConstr(hv <= rv, name=f"hr_le_r_{scs[i].id}_{locations[j].id}")
+                    model.addConstr(hv <= net['hot'][i], name=f"hr_le_hot_{scs[i].id}_{locations[j].id}")
+                    model.addConstr(hv >= rv + net['hot'][i] - 1, name=f"hr_ge_{scs[i].id}_{locations[j].id}")
+                cstats['c1g_standby'] += 1
 
         # Constraint 3: HW feature required
         for i in range(n_sc):
@@ -1369,7 +1455,7 @@ class AssignmentOptimizer:
         # ======================= CREATE MODEL & VARIABLES =======================
         model, x, P, y, hw_use, if_use, attach_s, attach_a, shared_attach_s, shared_attach_a, shared_trunk_len, shared_extra_trunk_len, comm, traffic_flows, net, feasible_locs_per_sc, feasible_scs_per_loc, var_stats = self._create_model_and_variables(
             n_sc, n_locs, scs, locations, unique_asils, all_hw, sensors, actuators, all_interfaces, infeasible_ij=infeasible_ij, comm_matrix=comm_matrix,
-            partitions=partitions, backbone=backbone, cable_types=cable_types
+            partitions=partitions, backbone=backbone, cable_types=cable_types, uncertainty=uncertainty, chains=chains
         )
         
         # ======================= ADD CONSTRAINTS =======================
@@ -1463,16 +1549,18 @@ class AssignmentOptimizer:
                       'factor': float(unc_lat.get('network_safety_factor', 1.0)),
                       'sync': float(unc_lat.get('sync_ms', 0.0)), 'platform': float(unc_lat.get('platform_ms', 0.0))}
         sc_index = {sc.id: i for i, sc in enumerate(scs)}
-        flow_of_pair = {(tr['src_idx'], tr['dst_idx']): tr['id'] for tr in traffic_flows if tr['type'] == 'SC_SC'}
-        flow_into = {tr['dst_idx']: tr['id'] for tr in traffic_flows if tr['type'] == 'SENS_SC'}
-        flow_from = {tr['src_idx']: tr['id'] for tr in traffic_flows if tr['type'] == 'SC_ACT'}
+        base_flows = [tr for tr in traffic_flows if 'base' not in tr]
+        flow_of_pair = {(tr['src_idx'], tr['dst_idx']): tr['id'] for tr in base_flows if tr['type'] == 'SC_SC'}
+        flow_into = {tr['dst_idx']: tr['id'] for tr in base_flows if tr['type'] == 'SENS_SC'}
+        flow_from = {tr['src_idx']: tr['id'] for tr in base_flows if tr['type'] == 'SC_ACT'}
         net['chains'] = []
         for ch in (chains or []):
             idx = [sc_index[s] for s in ch['swcs'] if s in sc_index]
             flows = [flow_into[idx[0]]] if idx and idx[0] in flow_into else []
             flows += [flow_of_pair[a, b] for a, b in zip(idx, idx[1:]) if (a, b) in flow_of_pair]
             flows += [flow_from[idx[-1]]] if idx and idx[-1] in flow_from else []
-            net['chains'].append({'id': ch['id'], 'budget': float(ch['net_budget_ms']), 'flows': flows})
+            net['chains'].append({'id': ch['id'], 'budget': float(ch['net_budget_ms']),
+                                  'degraded': float(ch.get('degraded_bound_ms', 2.0 * float(ch['net_budget_ms']))), 'flows': flows})
         if net['chains']:
             print(f"  Chains: {len(net['chains'])} (network budgets {min(c['budget'] for c in net['chains']):.1f} - "
                   f"{max(c['budget'] for c in net['chains']):.1f} ms, robust latency {net['lat']['robust']})")
@@ -1484,6 +1572,9 @@ class AssignmentOptimizer:
             for t, (src, dst) in net['flow_ends'].items():
                 watched += list(src.values()) + list(dst.values())
             watched += list(net['sel'].values()) + list(net['w'].values())
+            watched += list(x.values()) + list(y.values()) + list(hw_use.values()) + list(P.values())
+            watched += list(net['r'].values()) + [v for v in net['hot'].values() if v is not None] + list(net['hr'].values())
+            watched += list(attach_s.values()) + list(attach_a.values())
             seen_ids, cb_vars = set(), []
             for var in watched:
                 if id(var) not in seen_ids:
@@ -1492,13 +1583,50 @@ class AssignmentOptimizer:
             comm_vars = [comm[k] for k in comm_keys]
             cap_of = net['cap_of']
             model._lazy_cuts = 0
+            model._fail_cuts = 0
+            # failure scenarios: the variants of every base flow and the base flows of every critical SC
+            base_variants, flows_of = {}, {i: [] for i in net['critical']}
+            for tr in traffic_flows:
+                si = tr.get('src_inst', 'a' if tr['type'] == 'SENS_SC' else 'x')
+                di = tr.get('dst_inst', 'a' if tr['type'] == 'SC_ACT' else 'x')
+                base_variants.setdefault(tr.get('base', tr['id']), {})[(si, di)] = tr['id']
+                if 'base' not in tr:
+                    for role, key in (('src', 'src_idx'), ('dst', 'dst_idx')):
+                        if tr.get(key) in flows_of:
+                            flows_of[tr[key]].append((tr['id'], role))
+            net['base_variants'], net['flows_of'] = base_variants, flows_of
+
+            model._repair = None
+            model._repairs_used = 0
+            cont_ids = {id(v) for v in cb_vars if v.VType == GRB.CONTINUOUS}
 
             def lazy_cb(m, where):
+                # Heuristic solutions repaired in MIPSOL are handed to Gurobi at the next node
+                if where == GRB.Callback.MIPNODE:
+                    if m._repair is not None and m.cbGet(GRB.Callback.MIPNODE_STATUS) == GRB.OPTIMAL:
+                        rv, rvals = zip(*m._repair.items())
+                        m.cbSetSolution(list(rv), list(rvals))
+                        obj = m.cbUseSolution()
+                        m._repair = None
+                        if obj < GRB.INFINITY:
+                            m._repairs_used += 1
+                    return
                 if where != GRB.Callback.MIPSOL:
                     return
+                cuts_before = m._lazy_cuts
                 vals = dict(zip((id(v) for v in cb_vars), m.cbGetSolution(cb_vars)))
                 cv = dict(zip(comm_keys, m.cbGetSolution(comm_vars)))
-                routes = flow_routes(net, lambda var: vals[id(var)])
+                getv = lambda var: vals[id(var)]
+                routes = flow_routes(net, getv)
+                hot_val = {i: (1.0 if net['hot'][i] is None else getv(net['hot'][i])) for i in net['critical']}
+
+                def silent(t):
+                    # a standby flow of a cold standby carries no traffic in the nominal state (path must still exist)
+                    tr = net['flow_meta'][t]
+                    for inst, key in ((tr.get('src_inst', 'x'), 'src_idx'), (tr.get('dst_inst', 'x'), 'dst_idx')):
+                        if inst == 'r' and hot_val.get(tr[key], 1.0) < 0.5:
+                            return True
+                    return False
 
                 def indicator(t, u, v, w_if, p):
                     # linear lower bound of [flow t starts at u, ends at v, uses type w_if on path p]
@@ -1509,21 +1637,23 @@ class AssignmentOptimizer:
                         expr = expr + net['w'][t, w_if] - 1
                     return expr
 
+                # --- traffic: a pair with traffic needs a selected path; cables carry the routed volume
                 load, contrib = {}, {}
-                for t, r in routes.items():
-                    if r is None:
+                for t, rt in routes.items():
+                    if rt is None:
                         continue
-                    u, v, w_if, p = r
+                    u, v, w_if, p = rt
                     pair = (min(u, v), max(u, v))
                     plist = net['paths'][pair + (w_if,)]
                     if p is None:
-                        # a pair with traffic of this type needs a selected path of this type
                         src, dst = net['flow_ends'][t]
                         rhs = src[u] + dst[v] - 1
                         if len(net['flow_elig'][t]) > 1:
                             rhs = rhs + net['w'][t, w_if] - 1
                         m.cbLazy(gp.quicksum(net['sel'][pair + (w_if, q)] for q in range(len(plist))) >= rhs)
                         m._lazy_cuts += 1
+                        continue
+                    if silent(t):
                         continue
                     seq = plist[p] if (u, v) == pair else plist[p][::-1]
                     vol = net['volumes'][t]
@@ -1533,17 +1663,17 @@ class AssignmentOptimizer:
                 for (a, b, w_if), ld in load.items():
                     key = (a, b, w_if) if a < b else (b, a, w_if)
                     if ld > cap_of[w_if] * cv[key] + 1e-6:
-                        # cables of this type on the link must carry the volume of every flow routed over it
                         m.cbLazy(cap_of[w_if] * comm[key] >= gp.quicksum(vol * ind for ind, vol in contrib[(a, b, w_if)]))
                         m._lazy_cuts += 1
-                # chain latency: the network time of a chain must stay within its budget
+
+                # --- chain latency: the network time of a chain must stay within its budget
                 for ch in net['chains']:
                     terms, total = [], 0.0
                     for t in ch['flows']:
-                        r = routes.get(t)
-                        if r is None or r[3] is None:
+                        rt = routes.get(t)
+                        if rt is None or rt[3] is None:
                             continue
-                        u, v, w_if, p = r
+                        u, v, w_if, p = rt
                         hops = len(net['paths'][(min(u, v), max(u, v), w_if)][p]) - 1
                         ms = crossing_latency_ms(net, t, w_if, hops)
                         terms.append(ms * indicator(t, u, v, w_if, p))
@@ -1551,6 +1681,253 @@ class AssignmentOptimizer:
                     if total > ch['budget'] + 1e-6:
                         m.cbLazy(gp.quicksum(terms) <= ch['budget'])
                         m._lazy_cuts += 1
+
+                # --- single failures: every critical SC keeps a served instance under every scenario
+                placement_ok = True
+                pos_x = {i: next((j for j in feasible_locs_per_sc[i] if getv(x[i, j]) > 0.5), None) for i in range(n_sc)}
+                pos_r = {i: next((j for j in feasible_locs_per_sc[i] if getv(net['r'][i, j]) > 0.5), None) for i in net['critical']}
+
+                def ends_of(t):
+                    src, dst = net['flow_ends'][t]
+                    return (next((k for k, var in src.items() if getv(var) > 0.5), None),
+                            next((k for k, var in dst.items() if getv(var) > 0.5), None))
+
+                def flow_alive(t, kind, elem, routes_):
+                    # (served, variables of the configuration, path missing); a missing path is a traffic violation
+                    # handled by the path cuts, never a reason to cut the placement
+                    u, v = ends_of(t)
+                    if u is None or v is None or (kind == 'cell' and elem in (u, v)):
+                        return False, [], False
+                    if u == v:
+                        return True, [], False
+                    rt = routes_.get(t)
+                    if rt is None or rt[3] is None:
+                        return False, [], True
+                    _u, _v, w_if, p = rt
+                    pair = (min(u, v), max(u, v))
+                    path = net['paths'][pair + (w_if,)][p]
+                    sel_var = net['sel'][pair + (w_if, p)]
+                    if kind in ('cell', 'switch') and elem in path[1:-1]:
+                        return False, [sel_var], False
+                    if kind == 'switch' and w_if == 'ETH' and elem in (u, v):
+                        return False, [sel_var], False   # the ETH ports of a switched cell are the switch's ports
+                    if kind == 'cable':
+                        a, b, wtype = elem
+                        if wtype == w_if and any({pa, pb} == {a, b} for pa, pb in zip(path, path[1:])):
+                            return False, [sel_var], False
+                    return True, [sel_var], False
+
+                def instance_served(i, inst, kind, elem, routes_):
+                    # instance inst ('x' primary, 'r' standby) survives and every flow of i to a critical partner is
+                    # served by an alive partner instance; non-critical partners may be lost; peripheral devices are
+                    # single, the failure of their own attachment element is out of scope
+                    cell = pos_x[i] if inst == 'x' else pos_r[i]
+                    if cell is None or (kind == 'cell' and elem == cell):
+                        return False, [], False
+                    involved, missing = [], False
+                    for t_base, role in flows_of[i]:
+                        tr = net['flow_meta'][t_base]
+                        if tr['type'] in ('SENS_SC', 'SC_ACT'):
+                            keys = [('a', inst)] if tr['type'] == 'SENS_SC' else [(inst, 'a')]
+                            att = ends_of(t_base)[0 if tr['type'] == 'SENS_SC' else 1]
+                            if kind in ('cell', 'switch') and elem == att:
+                                continue
+                        else:
+                            partner = tr['dst_idx'] if role == 'src' else tr['src_idx']
+                            if partner not in pos_r:
+                                continue
+                            keys = [((inst, pi) if role == 'src' else (pi, inst)) for pi in ('x', 'r')]
+                        served = False
+                        for key in keys:
+                            t = base_variants[t_base].get(key)
+                            if t is None:
+                                continue
+                            ok, vs, miss = flow_alive(t, kind, elem, routes_)
+                            involved += vs
+                            missing = missing or miss
+                            if ok:
+                                served = True
+                                break
+                        if not served:
+                            return False, involved, missing
+                    return True, involved, False
+
+                def scenario_list(routes_):
+                    classes = set(net['fail_cfg'].get('classes', ['cell', 'switch', 'cable']))
+                    has_sw = 'SWITCH' in all_hw
+                    scenarios = []
+                    if 'cell' in classes:
+                        scenarios += [('cell', c) for c in range(n_locs) if getv(y[c]) > 0.5 or (has_sw and getv(hw_use[c, 'SWITCH']) > 0.5)]
+                    if 'switch' in classes and has_sw:
+                        scenarios += [('switch', c) for c in range(n_locs) if getv(hw_use[c, 'SWITCH']) > 0.5]
+                    if 'cable' in classes:
+                        if routes_ is routes:
+                            scenarios += [('cable', key) for key in comm_keys if cv[key] > 0.5]
+                        else:
+                            used = {(min(u, v), max(u, v), w_if) for rt in routes_.values() if rt for u, v, w_if, _p in [rt]}
+                            scenarios += [('cable', key) for key in used]
+                    return scenarios
+
+                VARIANT_ORDER = {'SC_SC': [('x', 'x'), ('x', 'r'), ('r', 'x'), ('r', 'r')],
+                                 'SENS_SC': [('a', 'x'), ('a', 'r')], 'SC_ACT': [('x', 'a'), ('r', 'a')]}
+
+                def dead_endpoint_vars(t, kind, elem):
+                    if kind != 'cell':
+                        return []
+                    src, dst = net['flow_ends'][t]
+                    u, v = ends_of(t)
+                    return [src[u] for _ in [0] if u == elem] + [dst[v] for _ in [0] if v == elem]
+
+                def degraded_check(routes_, add_cuts):
+                    """chain network latency in every failure scenario over the surviving instances; returns the number
+                    of chains over their degraded bound (with add_cuts: one cut per violation)"""
+                    violations = 0
+                    for kind, elem in scenario_list(routes_):
+                        for ch in net['chains']:
+                            total, terms, broken = 0.0, [], False
+                            for t_base in ch['flows']:
+                                picked, reasons = None, []
+                                for key in VARIANT_ORDER[net['flow_meta'][t_base]['type']]:
+                                    t = base_variants[t_base].get(key)
+                                    if t is None:
+                                        continue
+                                    ok, vs, miss = flow_alive(t, kind, elem, routes_)
+                                    if miss:
+                                        picked = 'missing'
+                                        break
+                                    if ok:
+                                        picked = (t, vs)
+                                        break
+                                    reasons += vs + dead_endpoint_vars(t, kind, elem)
+                                if picked is None or picked == 'missing':
+                                    broken = True   # a broken chain is a survival violation (cut elsewhere)
+                                    break
+                                t, vs = picked
+                                u, v = ends_of(t)
+                                if u == v:
+                                    continue
+                                _u, _v, w_if, p = routes_[t]
+                                hops = len(net['paths'][(min(u, v), max(u, v), w_if)][p]) - 1
+                                ms = crossing_latency_ms(net, t, w_if, hops)
+                                total += ms
+                                if add_cuts:
+                                    ind = indicator(t, u, v, w_if, p)
+                                    for rv in reasons:
+                                        ind = ind + rv - 1
+                                    terms.append(ms * ind)
+                            if not broken and total > ch['degraded'] + 1e-6:
+                                violations += 1
+                                if add_cuts:
+                                    m.cbLazy(gp.quicksum(terms) <= ch['degraded'])
+                                    m._lazy_cuts += 1
+                                    m._fail_cuts += 1
+                    return violations
+
+                def scenario_check(routes_, add_cuts):
+                    """number of (scenario, SC) violations; with add_cuts the first violation per scenario is cut"""
+                    violations = 0
+                    scenarios = scenario_list(routes_)
+                    for kind, elem in scenarios:
+                        for i in net['critical']:
+                            ok_x, vs_x, miss_x = instance_served(i, 'x', kind, elem, routes_)
+                            if ok_x:
+                                continue
+                            ok_r, vs_r, miss_r = instance_served(i, 'r', kind, elem, routes_)
+                            if ok_r:
+                                continue
+                            if miss_x or miss_r:
+                                continue   # undecided until the missing paths are selected (path cuts pending)
+                            violations += 1
+                            if add_cuts:
+                                vars_ = [x[i, pos_x[i]], net['r'][i, pos_r[i]]] + vs_x + vs_r
+                                for t_base, role in flows_of[i]:
+                                    tr = net['flow_meta'][t_base]
+                                    k = tr.get('dst_idx' if role == 'src' else 'src_idx')
+                                    if k is None:
+                                        continue
+                                    if pos_x.get(k) is not None:
+                                        vars_.append(x[k, pos_x[k]])
+                                    if pos_r.get(k) is not None:
+                                        vars_.append(net['r'][k, pos_r[k]])
+                                uniq = list({id(v): v for v in vars_}.values())
+                                m.cbLazy(gp.quicksum(uniq) <= len(uniq) - 1)
+                                m._lazy_cuts += 1
+                                m._fail_cuts += 1
+                            break
+                    return violations
+
+                if net['critical']:
+                    if scenario_check(routes, True) > 0:
+                        placement_ok = False
+                    if net['chains'] and degraded_check(routes, True) > 0:
+                        placement_ok = False
+                    # cold standbys activated by a cell failure must fit next to the nominal load of their cell
+                    for c in range(n_locs):
+                        if getv(y[c]) < 0.5:
+                            continue
+                        activated = [i for i in net['critical'] if pos_x[i] == c and pos_r[i] is not None and hot_val[i] < 0.5]
+                        groups = {}
+                        for i in activated:
+                            groups.setdefault((pos_r[i], scs[i].asil_req), []).append(i)
+                        for (j, a), act in groups.items():
+                            H = site_derating(locations[j], uncertainty)
+                            for res in ('cpu', 'ram', 'rom'):
+                                cap = float(partitions.get(f'{res}_cap', 0) or 0)
+                                if cap <= 0:
+                                    continue
+                                dem = lambda i, res=res: getattr(scs[i], f'{res}_req') * sw_multiplier(scs[i], uncertainty)
+                                nominal = sum(dem(i) for i in feasible_scs_per_loc[j] if scs[i].asil_req == a and getv(x[i, j]) > 0.5)
+                                hot_here = sum(dem(i) for i in net['critical'] if (i, j) in net['hr'] and scs[i].asil_req == a and getv(net['hr'][i, j]) > 0.5)
+                                if nominal + hot_here + sum(dem(i) for i in act) <= getv(P[j, a]) * cap * H + 1e-6:
+                                    continue
+                                placement_ok = False
+                                expr = gp.quicksum(dem(i) * x[i, j] for i in feasible_scs_per_loc[j] if scs[i].asil_req == a)
+                                expr += gp.quicksum(dem(i) * net['hr'][i, j] for i in net['critical'] if (i, j) in net['hr'] and scs[i].asil_req == a)
+                                for i in act:
+                                    term = x[i, c] + net['r'][i, j] - 1
+                                    if net['hot'][i] is not None:
+                                        term = term - net['hot'][i]
+                                    expr += dem(i) * term
+                                m.cbLazy(expr <= P[j, a] * cap * H)
+                                m._lazy_cuts += 1
+                                m._fail_cuts += 1
+
+                # --- repair: the placement is kept, every pair with traffic gets its direct path, the cable counts
+                # follow the loads; handed to Gurobi as a heuristic solution if it passes all checks
+                if m._lazy_cuts > cuts_before and placement_ok and m._repair is None:
+                    fix = {var: (getv(var) if id(var) in cont_ids else round(getv(var))) for var in cb_vars}
+                    for var in net['sel'].values():
+                        fix[var] = 0
+                    rep_routes, rload, need = {}, {}, set()
+                    for t, (src, dst) in net['flow_ends'].items():
+                        u, v = ends_of(t)
+                        if u is None or v is None or u == v:
+                            rep_routes[t] = None
+                            continue
+                        elig = net['flow_elig'][t]
+                        w_if = elig[0] if len(elig) == 1 else max(elig, key=lambda n: getv(net['w'][t, n]))
+                        pair = (min(u, v), max(u, v))
+                        fix[net['sel'][pair + (w_if, 0)]] = 1
+                        rep_routes[t] = (u, v, w_if, 0)
+                        need.add(pair + (w_if,))
+                        if not silent(t):
+                            rload[pair + (w_if,)] = rload.get(pair + (w_if,), 0.0) + net['volumes'][t]
+                    feasible = True
+                    for key in comm_keys:
+                        fix[comm[key]] = 0
+                    for key in need:
+                        n_cab = max(1, int(np.ceil(rload.get(key, 0.0) / cap_of[key[2]] - 1e-9)))
+                        if n_cab > net['comm_ub'][key[2]]:
+                            feasible = False
+                        fix[comm[key]] = n_cab
+                    if feasible and net['chains']:
+                        feasible = all(c['ok'] for c in chain_latencies(net, rep_routes).values())
+                    if feasible and net['critical']:
+                        feasible = scenario_check(rep_routes, False) == 0
+                    if feasible and net['critical'] and net['chains']:
+                        feasible = degraded_check(rep_routes, False) == 0
+                    if feasible:
+                        m._repair = fix
 
         def _solve_lexicographic():
             """Phase 1: primary objective. Phase 2: secondary objective with the primary fixed at its phase-1 value."""
@@ -1588,7 +1965,7 @@ class AssignmentOptimizer:
             phases, lex_constr = _solve_lexicographic()
             if not (model.SolCount > 0 and model.status in (GRB.OPTIMAL, GRB.TIME_LIMIT)):
                 break
-            partition_map, failed = pack_partitions(x, P, scs, locations, partitions, uncertainty)
+            partition_map, failed = pack_partitions(x, P, scs, locations, partitions, uncertainty, standby=net['hr'])
             if not failed:
                 break
             if packing_cuts >= MAX_PACKING_CUTS:
@@ -1597,7 +1974,7 @@ class AssignmentOptimizer:
             for (j, a, members, p_val) in failed:
                 # If all SCs of the group are hosted at site j, at least p_val + 1 partitions are needed
                 model.addConstr(
-                    P[j, a] >= (p_val + 1) * (gp.quicksum(x[i, j] for i in members) - len(members) + 1),
+                    P[j, a] >= (p_val + 1) * (gp.quicksum(var for _key, var in members) - len(members) + 1),
                     name=f"packing_cut_{packing_cuts}_{locations[j].id}_asil{a}"
                 )
                 packing_cuts += 1
@@ -1620,7 +1997,7 @@ class AssignmentOptimizer:
                 traffic_flows=traffic_flows, net=net, attach_s=attach_s, attach_a=attach_a,
                 shared_attach_s=shared_attach_s, shared_attach_a=shared_attach_a,
                 shared_trunk_len=shared_trunk_len, shared_extra_trunk_len=shared_extra_trunk_len,
-                partition_map=partition_map
+                partition_map=partition_map, standby=(net['r'], net['hot']), uncertainty=uncertainty
             )
             formatted_solution['solve_info'] = {
                 'objective_type': 'min_cable_length' if minimize_cable_length else 'min_cost',
@@ -1634,6 +2011,9 @@ class AssignmentOptimizer:
                 'backbone_interfaces': net['bb_ifaces'],
                 'lazy_cuts': int(getattr(model, '_lazy_cuts', 0)),
                 'chains': len(net.get('chains', [])),
+                'critical': len(net['critical']),
+                'failure_cuts': int(getattr(model, '_fail_cuts', 0)),
+                'repairs_used': int(getattr(model, '_repairs_used', 0)),
                 'gurobi_params': gurobi_params,
                 'branch_priority': bool(branch_priority),
                 'runtime_s': sum(ph['runtime_s'] for ph in phases),
@@ -1643,6 +2023,7 @@ class AssignmentOptimizer:
                 'num_int_vars': int(model.NumIntVars),
                 'lp_file': lp_path,
                 'uncertainty': {k: bool((uncertainty or {}).get(k)) for k in UNCERTAINTY_BLOCKS},
+                'growth_alpha': float((uncertainty or {}).get('growth_alpha', 0.0)) if (uncertainty or {}).get('growth') else None,
             }
             formatted_solution['status'] = 'TIME_LIMIT' if time_limited else 'OPTIMAL'
             return formatted_solution
@@ -1668,6 +2049,40 @@ class AssignmentOptimizer:
             'runtime_s': float(model.Runtime),
             'node_count': float(model.NodeCount),
         }
+
+    def optimize_growth_sweep(self, scs, locations, sensors, actuators, cable_types, comm_matrix,
+                              partitions=None, hardwares=None, interfaces=None, solve_time_limit=None, mip_gap=None,
+                              lp_dir=None, uncertainty=None, backbone=None, phase2_time=600, gurobi_params=None,
+                              branch_priority=False, chains=None, **_ignored):
+        """
+        Cost against software growth: for every growth level of configs/uncertainty.json (growth.alpha_levels) the
+        min-cost design (second phase: cable length). Returns the solutions in the order of the levels; each carries
+        solve_info.growth_alpha.
+        """
+        levels = [float(a) for a in (uncertainty or {}).get('params', {}).get('growth', {}).get('alpha_levels', [0.0])]
+        print("=" * 80)
+        print(f"GROWTH SWEEP (min cost per growth level): alpha in {levels}")
+        print("=" * 80)
+        solutions = []
+        for alpha in levels:
+            unc = dict(uncertainty or {})
+            unc['growth'] = True
+            unc['growth_alpha'] = alpha
+            print(f"\n[Growth] alpha = {alpha:.2f}")
+            sol = self.optimize(
+                scs, locations, sensors, actuators, cable_types, comm_matrix,
+                partitions=partitions, hardwares=hardwares, interfaces=interfaces,
+                time_limit=solve_time_limit, mip_gap=mip_gap,
+                lp_path=(os.path.join(lp_dir, f"model_alpha_{alpha:g}.lp.gz") if lp_dir else None),
+                uncertainty=unc, backbone=backbone, phase2_time=phase2_time, gurobi_params=gurobi_params,
+                branch_priority=branch_priority, chains=chains)
+            if sol:
+                solutions.append(sol)
+            else:
+                print(f"[Growth] alpha = {alpha:.2f}: no feasible design (capacity exhausted)")
+                break
+        print(f"Growth sweep: {len(solutions)} of {len(levels)} levels solved")
+        return solutions
 
     def optimize_pareto_epsilon_constraint(self, scs, locations, sensors, actuators, cable_types, comm_matrix,
                                            partitions=None, hardwares=None, interfaces=None,

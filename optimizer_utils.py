@@ -116,6 +116,91 @@ def crossing_latency_ms(net, t, w_if, hops):
     return base * lat['factor'] + lat['sync'] + lat['platform'] if lat['robust'] else base
 
 
+def failure_report(net, scs, locations, getv, uncertainty=None):
+    """Per single-failure scenario of the solution: the element, the cold standbys it activates and the load they add
+    per cell (CPU, DMIPS), and the network latency of every chain over the surviving instances against its degraded
+    bound. Mirrors the checks of the solver callback (survival, degraded latency) for reporting."""
+    routes = flow_routes(net, getv)
+    n_locs = len(locations)
+    pos_x = {}
+    for (i, j), var in net['x_vars'].items():
+        if getv(var) > 0.5:
+            pos_x[i] = j
+    pos_r = {i: next((j for (ii, j), var in net['r'].items() if ii == i and getv(var) > 0.5), None) for i in net['critical']}
+    hot_val = {i: (1.0 if net['hot'][i] is None else getv(net['hot'][i])) for i in net['critical']}
+    cells_on = {j for j in range(n_locs) if getv(net['y_vars'][j]) > 0.5}
+    switches = {j for j in range(n_locs) if net['switch_vars'].get(j) is not None and getv(net['switch_vars'][j]) > 0.5}
+    used_links = {(min(u, v), max(u, v), w_if) for rt in routes.values() if rt for u, v, w_if, _p in [rt]}
+    classes = set(net['fail_cfg'].get('classes', ['cell', 'switch', 'cable']))
+    scenarios = []
+    if 'cell' in classes:
+        scenarios += [('cell', c) for c in sorted(cells_on | switches)]
+    if 'switch' in classes:
+        scenarios += [('switch', c) for c in sorted(switches)]
+    if 'cable' in classes:
+        scenarios += [('cable', k) for k in sorted(used_links)]
+    order = {'SC_SC': [('x', 'x'), ('x', 'r'), ('r', 'x'), ('r', 'r')], 'SENS_SC': [('a', 'x'), ('a', 'r')], 'SC_ACT': [('x', 'a'), ('r', 'a')]}
+
+    def ends(t):
+        src, dst = net['flow_ends'][t]
+        return (next((k for k, var in src.items() if getv(var) > 0.5), None), next((k for k, var in dst.items() if getv(var) > 0.5), None))
+
+    def alive(t, kind, elem):
+        u, v = ends(t)
+        if u is None or v is None or (kind == 'cell' and elem in (u, v)):
+            return False
+        if u == v:
+            return True
+        rt = routes.get(t)
+        if rt is None or rt[3] is None:
+            return False
+        _u, _v, w_if, p = rt
+        path = net['paths'][(min(u, v), max(u, v), w_if)][p]
+        if kind in ('cell', 'switch') and elem in path[1:-1]:
+            return False
+        if kind == 'switch' and w_if == 'ETH' and elem in (u, v):
+            return False
+        if kind == 'cable' and elem[2] == w_if and any({pa, pb} == {elem[0], elem[1]} for pa, pb in zip(path, path[1:])):
+            return False
+        return True
+
+    report = []
+    for kind, elem in scenarios:
+        entry = {'kind': kind, 'element': (locations[elem].id if kind != 'cable' else f"{locations[elem[0]].id}-{locations[elem[1]].id} {elem[2]}")}
+        if kind == 'cell':
+            act = [i for i in net['critical'] if pos_x.get(i) == elem and pos_r.get(i) is not None and hot_val[i] < 0.5]
+            entry['activated_cold_standbys'] = [scs[i].id for i in act]
+            load = {}
+            for i in act:
+                load[locations[pos_r[i]].id] = load.get(locations[pos_r[i]].id, 0.0) + scs[i].cpu_req * sw_multiplier(scs[i], uncertainty)
+            entry['added_cpu_load'] = {k: round(v) for k, v in load.items()}
+        chains = {}
+        for ch in net.get('chains', []):
+            total, broken = 0.0, False
+            for t_base in ch['flows']:
+                picked = None
+                for key in order[net['flow_meta'][t_base]['type']]:
+                    t = net['base_variants'][t_base].get(key)
+                    if t is not None and alive(t, kind, elem):
+                        picked = t
+                        break
+                if picked is None:
+                    broken = True
+                    break
+                u, v = ends(picked)
+                if u != v:
+                    _u, _v, w_if, p = routes[picked]
+                    total += crossing_latency_ms(net, picked, w_if, len(net['paths'][(min(u, v), max(u, v), w_if)][p]) - 1)
+            status = 'broken (non-critical member lost)' if broken else ('ok' if total <= ch['degraded'] + 1e-6 else 'over bound')
+            chains[ch['id']] = {'latency_ms': None if broken else round(total, 3), 'degraded_bound_ms': ch['degraded'],
+                                'ok': status != 'over bound', 'status': status}
+        entry['chains'] = chains
+        worst = max((c for c in chains.values() if c['latency_ms'] is not None), key=lambda c: c['latency_ms'] / c['degraded_bound_ms'], default=None)
+        entry['worst_chain_ratio'] = round(worst['latency_ms'] / worst['degraded_bound_ms'], 3) if worst else None
+        report.append(entry)
+    return report
+
+
 def chain_latencies(net, routes):
     """Network latency of every cause-effect chain (configs/chains.json) for the routes of a solution."""
     out = {}
@@ -140,18 +225,23 @@ def chain_latencies(net, routes):
 # ============================================================================
 
 def sw_multiplier(sc, uncertainty):
-    """SW resource demand multiplier of --sw_margin (1.0 when the block is off or the SC's domain is not listed)."""
+    """Resource demand multiplier of an SC: the --sw_margin margins (listed domains only) times the --growth factor
+    1 + alpha * profile[domain] at the growth level uncertainty['growth_alpha'] (configs/uncertainty.json: growth)."""
     unc = uncertainty or {}
-    if not unc.get('sw_margin'):
-        return 1.0
-    cfg = unc.get('params', {}).get('sw_margin', {})
-    domains = {str(d).strip().upper() for d in cfg.get('domains', [])}
-    if str(getattr(sc, 'domain', '') or '').strip().upper() not in domains:
-        return 1.0
-    margins = {int(k): float(v) for k, v in cfg.get('asil_margins', {}).items()}
-    m_asil = margins.get(int(getattr(sc, 'asil_req', 0)), float(cfg['default_asil_margin']))
-    m_ai = float(cfg['ai_margin']) if (cfg['ai_hw_feature'] in (getattr(sc, 'hw_required', None) or [])) else 0.0
-    return 1.0 + m_asil + m_ai
+    m = 1.0
+    domain = str(getattr(sc, 'domain', '') or '').strip()
+    if unc.get('sw_margin'):
+        cfg = unc.get('params', {}).get('sw_margin', {})
+        if domain.upper() in {str(d).strip().upper() for d in cfg.get('domains', [])}:
+            margins = {int(k): float(v) for k, v in cfg.get('asil_margins', {}).items()}
+            m_asil = margins.get(int(getattr(sc, 'asil_req', 0)), float(cfg['default_asil_margin']))
+            m_ai = float(cfg['ai_margin']) if (cfg['ai_hw_feature'] in (getattr(sc, 'hw_required', None) or [])) else 0.0
+            m *= 1.0 + m_asil + m_ai
+    if unc.get('growth'):
+        cfg = unc.get('params', {}).get('growth', {})
+        alpha = float(unc.get('growth_alpha', 0.0))
+        m *= 1.0 + alpha * float(cfg.get('profiles', {}).get(domain, cfg.get('default_profile', 0.0)))
+    return m
 
 
 def site_derating(location, uncertainty):
@@ -203,7 +293,7 @@ def _exact_packing(members, demand, bin_cap, n_bins):
     return {i: next(b for b in range(n_bins) if u[i, b].X > 0.5) for i in members}
 
 
-def pack_partitions(x, P, scs, locations, partitions, uncertainty=None):
+def pack_partitions(x, P, scs, locations, partitions, uncertainty=None, standby=None):
     """
     Give every hosted SC a concrete partition slot "<site>_asil<a>_p<k>" inside the P[j, a] partitions the model
     opened. The model's capacity constraint pools the partitions of one ASIL at a site (demand <= P * capacity),
@@ -214,25 +304,29 @@ def pack_partitions(x, P, scs, locations, partitions, uncertainty=None):
     the optimiser adds a cut for each and solves again.
     """
     caps = {res: float(partitions.get(f'{res}_cap', 0) or 0) for res in ('cpu', 'ram', 'rom')}
-    groups = {}
+    groups = {}   # (cell, ASIL) -> [(member key, variable)]; members are primaries (i, 'x') and hot standbys (i, 'r')
     for (i, j), var in x.items():
         if var.X > 0.5:
-            groups.setdefault((j, scs[i].asil_req), []).append(i)
+            groups.setdefault((j, scs[i].asil_req), []).append(((i, 'x'), var))
+    for (i, j), var in (standby or {}).items():
+        if var.X > 0.5:
+            groups.setdefault((j, scs[i].asil_req), []).append(((i, 'r'), var))
     partition_map, failed = {}, []
     for (j, a), members in sorted(groups.items()):
         n_bins = int(round(P[j, a].X))
         h = site_derating(locations[j], uncertainty)
         bin_cap = {res: caps[res] * h for res in caps}
-        demand = {i: {res: float(getattr(scs[i], f'{res}_req', 0) or 0) * sw_multiplier(scs[i], uncertainty) for res in caps}
-                  for i in members}
-        slots = _first_fit_decreasing(members, demand, bin_cap, n_bins)
+        keys = [k for k, _v in members]
+        demand = {k: {res: float(getattr(scs[k[0]], f'{res}_req', 0) or 0) * sw_multiplier(scs[k[0]], uncertainty) for res in caps}
+                  for k in keys}
+        slots = _first_fit_decreasing(keys, demand, bin_cap, n_bins)
         if slots is None:
-            slots = _exact_packing(members, demand, bin_cap, n_bins)
+            slots = _exact_packing(keys, demand, bin_cap, n_bins)
         if slots is None:
             failed.append((j, a, list(members), n_bins))
-            slots = {i: 0 for i in members}
-        for i, b in slots.items():
-            partition_map[scs[i].id] = f"{locations[j].id}_asil{a}_p{b}"
+            slots = {k: 0 for k in keys}
+        for (i, inst), b in slots.items():
+            partition_map[scs[i].id + ('@standby' if inst == 'r' else '')] = f"{locations[j].id}_asil{a}_p{b}"
     return partition_map, failed
 
 
@@ -477,7 +571,7 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
                      cable_types, partitions, hardwares, interfaces, comm_matrix=None,
                      traffic_flows=None, net=None, attach_s=None, attach_a=None,
                      shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None, shared_extra_trunk_len=None,
-                     partition_map=None):
+                     partition_map=None, standby=None, uncertainty=None):
         """
         Extract formatted solution dict from raw Gurobi model variables.
         
@@ -521,6 +615,18 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
             if var.X > 0.5:
                 assignment_map[scs[i].id] = locations[j].id
                 partition_map.setdefault(scs[i].id, f"{locations[j].id}_asil{scs[i].asil_req}_p0")
+        # Standby instances (failures): cell, type and partition slot per critical SC
+        standby_map = {}
+        if standby:
+            r_vars, hot_vars = standby
+            for (i, j), var in r_vars.items():
+                if var.X > 0.5:
+                    kind = 'hot' if (hot_vars.get(i) is None or hot_vars[i].X > 0.5) else 'cold'
+                    standby_map[scs[i].id] = {'cell': locations[j].id, 'type': kind,
+                                              'partition': partition_map.get(scs[i].id + '@standby', f"{locations[j].id}_asil{scs[i].asil_req}_p0")}
+            print(f"\n[DEBUG] Standby instances: {len(standby_map)} ({sum(1 for s in standby_map.values() if s['type'] == 'hot')} hot, "
+                  f"{sum(1 for s in standby_map.values() if s['type'] == 'cold')} cold)")
+        partition_map = {k: v for k, v in partition_map.items() if not k.endswith('@standby')}
         
         # DEBUG: Print SC placements and communication requirements
         print(f"\n[DEBUG] SC Placement Analysis:")
@@ -644,6 +750,7 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
         comm_link_peak_load = {}
         backbone_routes = []
         chain_latency = {}
+        failure_scenarios = []
         print(f"\n[DEBUG] Backbone routing (site pairs with traffic):")
         if not net:
             print("  Routing unavailable (net not provided to extract_solution)")
@@ -686,6 +793,13 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
             for (a, b, w_if), load in arc_load.items():
                 key = f"{locations[min(a, b)].id}|{locations[max(a, b)].id}|{w_if}"
                 comm_link_peak_load[key] = max(comm_link_peak_load.get(key, 0.0), float(load))
+            if net.get('critical'):
+                failure_scenarios = failure_report(net, scs, locations, lambda var: var.X, uncertainty)
+                over = [e for e in failure_scenarios if any(c['status'] == 'over bound' for c in e['chains'].values())]
+                broken = [e for e in failure_scenarios if any(c['status'].startswith('broken') for c in e['chains'].values())]
+                print(f"\n[DEBUG] Failure scenarios: {len(failure_scenarios)} checked, {len(over)} with a chain over its degraded bound, "
+                      f"{len(broken)} with a chain broken by a lost non-critical member; worst chain ratio "
+                      f"{max((e['worst_chain_ratio'] or 0) for e in failure_scenarios):.2f}")
             if net.get('chains'):
                 chain_latency = chain_latencies(net, flow_routes(net, lambda var: var.X))
                 print(f"\n[DEBUG] Chain network latency (ms):")
@@ -730,6 +844,8 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
             'comm_link_peak_load': comm_link_peak_load,
             'backbone_routes': backbone_routes,
             'chain_latency': chain_latency,
+            'standby': standby_map,
+            'failure_scenarios': failure_scenarios,
             'eth_sensor_attachments': eth_sensor_attachments,
             'eth_actuator_attachments': eth_actuator_attachments,
             'shared_sensor_attachments': shared_sensor_attachments,

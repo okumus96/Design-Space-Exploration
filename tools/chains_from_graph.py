@@ -19,6 +19,11 @@ from collections import defaultdict
 
 # network latency budget per actuator (ms): what the data may spend on the in-vehicle network along the whole chain
 NET_BUDGET_MS = {'BRAKE': 20.0, 'STEERING': 20.0, 'MOTOR': 30.0, 'LIGHT': 200.0, 'HVAC': 500.0}
+# fault-tolerant time interval of the chain (ms): how long its function may be absent after a failure before the
+# situation becomes hazardous; compared with the platform recovery time to admit a cold standby (HANDOFF 16.6)
+FTTI_MS = {'BRAKE': 50.0, 'STEERING': 50.0, 'MOTOR': 100.0, 'LIGHT': 1000.0, 'HVAC': 5000.0}
+# network budget allowed in a failure scenario (standby paths active): a multiple of the nominal budget
+DEGRADED_FACTOR = 2.0
 MOTION_ACTUATORS = ('BRAKE', 'STEERING', 'MOTOR')
 POSITIONING_SENSORS = ('IMU', 'GPS')
 
@@ -77,17 +82,21 @@ def main():
         longest = max(cands, key=lambda p: (len(p), [-ord(c) for c in ''.join(p)]))
         longest = max([p for p in cands if len(p) == len(longest)], key=lambda p: ''.join(p))
         chains.append({'id': f"chain_{act}", 'actuator': act, 'sensor': longest[0], 'swcs': longest, 'hops': len(longest) - 1,
-                       'net_budget_ms': NET_BUDGET_MS[actuator_type(act)], 'rule': 'longest sensor-to-actuator path'})
+                       'net_budget_ms': NET_BUDGET_MS[actuator_type(act)], 'ftti_ms': FTTI_MS[actuator_type(act)],
+                       'degraded_bound_ms': NET_BUDGET_MS[actuator_type(act)] * DEGRADED_FACTOR,
+                       'rule': 'longest sensor-to-actuator path'})
         if actuator_type(act) in MOTION_ACTUATORS:
             fast = [p for p in cands if any(k in p[0].upper() for k in POSITIONING_SENSORS)]
             if fast:
                 shortest = min(fast, key=lambda p: (len(p), ''.join(p)))
                 chains.append({'id': f"chain_{act}_positioning", 'actuator': act, 'sensor': shortest[0], 'swcs': shortest,
                                'hops': len(shortest) - 1, 'net_budget_ms': NET_BUDGET_MS[actuator_type(act)] / 2,
+                               'ftti_ms': FTTI_MS[actuator_type(act)], 'degraded_bound_ms': NET_BUDGET_MS[actuator_type(act)] / 2 * DEGRADED_FACTOR,
                                'rule': 'shortest path from a positioning sensor'})
     out = {'_generated_by': 'tools/chains_from_graph.py (receives_from graph of the architecture)',
            '_comment': 'Generated file, do not edit; change the architecture or the budgets in the script and re-run. '
-                       'net_budget_ms = time the data of the chain may spend on the network (cables, switches, synchronisation).',
+                       'net_budget_ms = time the data of the chain may spend on the network (cables, switches, synchronisation); '
+                       'ftti_ms = fault-tolerant time interval of the chain; degraded_bound_ms = network budget in a failure scenario.',
            'architecture': os.path.basename(args.architecture), 'chains': chains}
     json.dump(out, open(args.out, 'w'), indent=2)
     print(f"{len(chains)} chains written to {args.out}")

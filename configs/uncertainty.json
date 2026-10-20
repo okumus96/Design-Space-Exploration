@@ -1,5 +1,5 @@
 {
-  "_comment": "Parameters of the uncertainty-aware constraints. Each block is switched on by its own CLI flag (--sw_margin, --derating, --redundancy, --ai_contention, --robust_latency); --uncertainty switches on all of them. Latency values in milliseconds.",
+  "_comment": "Parameters of the uncertainty-aware constraints. Each block is switched on by its own CLI flag (--sw_margin, --derating, --redundancy, --ai_contention, --robust_latency, --growth, --failures); --uncertainty switches on all of them. Latency values in milliseconds.",
   "sw_margin": {
     "_comment": "SW resource demand multiplier = 1 + asil_margin + ai_margin, applied only to SCs of the listed domains.",
     "domains": [
@@ -33,5 +33,36 @@
     "network_safety_factor": 1.1,
     "sync_ms": 0.5,
     "platform_ms": 2.0
+  },
+  "growth": {
+    "_comment": "Software growth: demand_i(alpha) = demand_i * (1 + alpha * profiles[domain_i]). alpha = growth level (1 = the reference domain doubled); profiles = relative growth per domain (reference ADAS 1.0). alpha_levels = the levels of the cost-growth sweep run with --growth / --uncertainty (Ebert and Jones, IEEE Computer 2009: embedded software volume +10..20 % per year depending on the domain; alpha 1..3 = 4..15 years at those rates).",
+    "profiles": {
+      "ADAS": 1.0,
+      "Driver": 1.0,
+      "Connectivity": 0.7,
+      "Infotainment": 0.7,
+      "DriveTrain": 0.4,
+      "BodyComfort": 0.4
+    },
+    "default_profile": 0.4,
+    "alpha_levels": [
+      0.0,
+      0.5,
+      1.0,
+      1.5,
+      2.0,
+      2.5,
+      3.0
+    ]
+  },
+  "failures": {
+    "_comment": "Single failures (block --failures, in --uncertainty): every SC with asil_req >= critical_asil_min gets a standby instance on another cell; the optimiser chooses hot (runs permanently, resources and traffic always) or cold (capacity reserved per failure scenario, no nominal traffic) per SC; cold only when the smallest FTTI of the SC's chains >= recovery_ms. Scenarios: every active cell, every switch, every backbone cable (classes). Peripheral devices are single; the failure of their own attachment element is out of scope.",
+    "critical_asil_min": 3,
+    "recovery_ms": 50.0,
+    "classes": [
+      "cell",
+      "switch",
+      "cable"
+    ]
   }
 }

@@ -8,11 +8,11 @@
     "description": "Infrastructure cost to open/establish a partition at a location. Supports all ASIL levels (0-4). max_per_asil_per_site bounds the partitions of one ASIL at one site (3 = the slot count of the v1 model)."
   },
   "site": {
-    "max_partitions": null,
-    "cpu_cap": null,
-    "ram_cap": null,
-    "rom_cap": null,
+    "max_partitions": 4,
+    "cpu_cap": 200000,
+    "ram_cap": 64000,
+    "rom_cap": 128000,
     "fixed_cost": 0,
-    "description": "Caps and fixed activation cost of the control unit at a site. null = unlimited, fixed_cost 0 = free: this reproduces the v1 model. Capacity caps are totals over all partitions of the site (same units as partition capacities)."
+    "description": "Caps and fixed activation cost of the control unit at a cell (the single unit size of configs/vehicle.json installation_space.ecu_size): at most max_partitions partitions and cpu/ram/rom_cap in total over them (same units as the partition capacities). null = unlimited, fixed_cost 0 = free. Provisional values 2026-10-20 (two partitions' worth of compute, four partitions) until the data pass."
   }
 }

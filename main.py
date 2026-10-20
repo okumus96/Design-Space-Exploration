@@ -56,6 +56,7 @@ def save_run_results(args, pareto_solutions, pareto_time_s):
                 'file': f"solution_{idx}.json",
                 'total_cost': sol.get('total_cost'),
                 'cable_length': sol.get('cable_length'),
+                'growth_alpha': sol.get('solve_info', {}).get('growth_alpha'),
             }
             for idx, sol in enumerate(pareto_solutions, 1)
         ],
@@ -113,7 +114,8 @@ def main(args):
     
     # Step 3: Run Pareto optimization
     start_time = time.time()
-    pareto_solutions = opt.optimize_pareto_epsilon_constraint(
+    sweep = opt.optimize_growth_sweep if uncertainty.get('growth') else opt.optimize_pareto_epsilon_constraint
+    pareto_solutions = sweep(
         scs, locations, sensors, actuators, cable_types, comm_matrix,
         partitions=partitions,
         hardwares=hardwares,
@@ -148,8 +150,11 @@ def main(args):
         for idx, solution in enumerate(pareto_solutions, 1):
             reporter.display_solution_details(solution, scs, locations, sensors, actuators)
 
-    # Pareto front figure (pareto_front_analysis.pdf)
-    visualizer.visualize_pareto_front(pareto_solutions)
+    # Result figure: cost against growth level (growth sweep) or the cost-cable Pareto front
+    if uncertainty.get('growth'):
+        visualizer.visualize_growth_curve(pareto_solutions)
+    else:
+        visualizer.visualize_pareto_front(pareto_solutions)
 
     for solution_idx, solution in enumerate(pareto_solutions, 1):
         reporter.display_assignments(solution['assignment'])
@@ -178,6 +183,8 @@ if __name__ == "__main__":
     argparser.add_argument("--redundancy", action="store_true", help="Redundant SC pairs must be placed at different locations")
     argparser.add_argument("--ai_contention", action="store_true", help="Limit AI-accelerated SCs per location (configs/uncertainty.json: ai_contention)")
     argparser.add_argument("--robust_latency", action="store_true", help="Robust link latency with safety factor and overheads (configs/uncertainty.json: robust_latency)")
+    argparser.add_argument("--growth", action="store_true", help="Software growth: sweep the growth levels of configs/uncertainty.json (growth) and solve min cost per level")
+    argparser.add_argument("--failures", action="store_true", help="Single failures of cells, switches and cables: standby instances for the critical SCs (configs/uncertainty.json: failures)")
     argparser.add_argument("--warm_start", action="store_true", help="Enable warm start for optimization")
     argparser.add_argument("--mip_gap", type=float, default=None, help="MIP Gap for Gurobi optimizer (default: Gurobi's own, 1e-4)")
     argparser.add_argument("--gurobi_params", type=str, default=None, help="Extra Gurobi parameters, e.g. \"MIPFocus=3,Cuts=2\" (experiments)")

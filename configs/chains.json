@@ -1,6 +1,6 @@
 {
   "_generated_by": "tools/chains_from_graph.py (receives_from graph of the architecture)",
-  "_comment": "Generated file, do not edit; change the architecture or the budgets in the script and re-run. net_budget_ms = time the data of the chain may spend on the network (cables, switches, synchronisation).",
+  "_comment": "Generated file, do not edit; change the architecture or the budgets in the script and re-run. net_budget_ms = time the data of the chain may spend on the network (cables, switches, synchronisation); ftti_ms = fault-tolerant time interval of the chain; degraded_bound_ms = network budget in a failure scenario.",
   "architecture": "full_architecture_v2.json",
   "chains": [
     {
@@ -24,6 +24,8 @@
       ],
       "hops": 12,
       "net_budget_ms": 20.0,
+      "ftti_ms": 50.0,
+      "degraded_bound_ms": 40.0,
       "rule": "longest sensor-to-actuator path"
     },
     {
@@ -40,6 +42,8 @@
       ],
       "hops": 5,
       "net_budget_ms": 10.0,
+      "ftti_ms": 50.0,
+      "degraded_bound_ms": 20.0,
       "rule": "shortest path from a positioning sensor"
     },
     {
@@ -64,6 +68,8 @@
       ],
       "hops": 13,
       "net_budget_ms": 30.0,
+      "ftti_ms": 100.0,
+      "degraded_bound_ms": 60.0,
       "rule": "longest sensor-to-actuator path"
     },
     {
@@ -81,6 +87,8 @@
       ],
       "hops": 6,
       "net_budget_ms": 15.0,
+      "ftti_ms": 100.0,
+      "degraded_bound_ms": 30.0,
       "rule": "shortest path from a positioning sensor"
     },
     {
@@ -104,6 +112,8 @@
       ],
       "hops": 12,
       "net_budget_ms": 20.0,
+      "ftti_ms": 50.0,
+      "degraded_bound_ms": 40.0,
       "rule": "longest sensor-to-actuator path"
     },
     {
@@ -120,6 +130,8 @@
       ],
       "hops": 5,
       "net_budget_ms": 10.0,
+      "ftti_ms": 50.0,
+      "degraded_bound_ms": 20.0,
       "rule": "shortest path from a positioning sensor"
     },
     {
@@ -143,6 +155,8 @@
       ],
       "hops": 12,
       "net_budget_ms": 20.0,
+      "ftti_ms": 50.0,
+      "degraded_bound_ms": 40.0,
       "rule": "longest sensor-to-actuator path"
     },
     {
@@ -159,6 +173,8 @@
       ],
       "hops": 5,
       "net_budget_ms": 10.0,
+      "ftti_ms": 50.0,
+      "degraded_bound_ms": 20.0,
       "rule": "shortest path from a positioning sensor"
     },
     {
@@ -183,6 +199,8 @@
       ],
       "hops": 13,
       "net_budget_ms": 200.0,
+      "ftti_ms": 1000.0,
+      "degraded_bound_ms": 400.0,
       "rule": "longest sensor-to-actuator path"
     },
     {
@@ -207,6 +225,8 @@
       ],
       "hops": 13,
       "net_budget_ms": 200.0,
+      "ftti_ms": 1000.0,
+      "degraded_bound_ms": 400.0,
       "rule": "longest sensor-to-actuator path"
     }
   ]
