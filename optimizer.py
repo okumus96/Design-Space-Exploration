@@ -680,20 +680,28 @@ class AssignmentOptimizer:
             model.addConstr(xv <= P[j, scs[i].asil_req], name=f"x_le_P_{scs[i].id}_{locations[j].id}")
             cstats['c1e_x_le_P'] += 1
 
-        # Constraint 1d: per-site caps of the control unit (configs/partitions.json: site.max_partitions,
-        # site.cpu_cap / ram_cap / rom_cap; null = unlimited, which reproduces the v1 model)
+        # Constraint 1d: per-site caps of the control unit (configs/partitions.json: site.max_partitions and
+        # site.cpu_cap / ram_cap / rom_cap = the hosted demand of the whole unit over all its partitions, hot standbys
+        # included as in constraint 2, times the site derating; null = unlimited, which reproduces the v1 model)
         site_max_p = partitions.get('site_max_partitions')
         for j in range(n_locs):
             p_sum = gp.quicksum(P[j, a] for a in unique_asils)
             if site_max_p is not None:
                 model.addConstr(p_sum <= float(site_max_p) * y[j], name=f"site_max_partitions_{locations[j].id}")
                 cstats['c1d_site_caps'] += 1
+            H_j = site_derating(locations[j], unc)
             for res in ('cpu', 'ram', 'rom'):
                 site_cap = partitions.get(f'site_{res}_cap')
-                part_cap = float(partitions.get(f'{res}_cap', 0) or 0)
-                if site_cap is not None and part_cap > 0:
-                    model.addConstr(p_sum * part_cap <= float(site_cap) * y[j], name=f"site_{res}_cap_{locations[j].id}")
-                    cstats['c1d_site_caps'] += 1
+                if site_cap is None:
+                    continue
+                demand = gp.quicksum(
+                    x[i, j] * getattr(scs[i], f'{res}_req') * get_sw_multiplier(scs[i]) for i in feasible_scs_per_loc[j]
+                ) + gp.quicksum(
+                    net['hr'][i, j] * getattr(scs[i], f'{res}_req') * get_sw_multiplier(scs[i])
+                    for i in feasible_scs_per_loc[j] if (i, j) in net['hr']
+                )
+                model.addConstr(demand <= float(site_cap) * H_j * y[j], name=f"site_{res}_cap_{locations[j].id}")
+                cstats['c1d_site_caps'] += 1
 
         # Constraint 2: resource capacity per (site, ASIL): hosted demand <= partitions * partition capacity * derating.
         # Pooled over the partitions of one ASIL; exactness is checked after the solve (pack_partitions) and
@@ -1889,6 +1897,32 @@ class AssignmentOptimizer:
                                         term = term - net['hot'][i]
                                     expr += dem(i) * term
                                 m.cbLazy(expr <= P[j, a] * cap * H)
+                                m._lazy_cuts += 1
+                                m._fail_cuts += 1
+                        # the same for the whole unit (constraint 1d: site caps over all ASILs)
+                        by_site = {}
+                        for i in activated:
+                            by_site.setdefault(pos_r[i], []).append(i)
+                        for j, act in by_site.items():
+                            H = site_derating(locations[j], uncertainty)
+                            for res in ('cpu', 'ram', 'rom'):
+                                site_cap = partitions.get(f'site_{res}_cap')
+                                if site_cap is None:
+                                    continue
+                                dem = lambda i, res=res: getattr(scs[i], f'{res}_req') * sw_multiplier(scs[i], uncertainty)
+                                nominal = sum(dem(i) for i in feasible_scs_per_loc[j] if getv(x[i, j]) > 0.5)
+                                hot_here = sum(dem(i) for i in net['critical'] if (i, j) in net['hr'] and getv(net['hr'][i, j]) > 0.5)
+                                if nominal + hot_here + sum(dem(i) for i in act) <= float(site_cap) * H + 1e-6:
+                                    continue
+                                placement_ok = False
+                                expr = gp.quicksum(dem(i) * x[i, j] for i in feasible_scs_per_loc[j])
+                                expr += gp.quicksum(dem(i) * net['hr'][i, j] for i in net['critical'] if (i, j) in net['hr'])
+                                for i in act:
+                                    term = x[i, c] + net['r'][i, j] - 1
+                                    if net['hot'][i] is not None:
+                                        term = term - net['hot'][i]
+                                    expr += dem(i) * term
+                                m.cbLazy(expr <= float(site_cap) * H)
                                 m._lazy_cuts += 1
                                 m._fail_cuts += 1
 
