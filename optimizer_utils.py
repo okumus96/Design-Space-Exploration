@@ -755,30 +755,27 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
         if not net:
             print("  Routing unavailable (net not provided to extract_solution)")
         else:
-            paths, sel, f = net['paths'], net['sel'], net['f']
+            paths, sel = net['paths'], net['sel']
             arc_load = {}
             relayed = 0
             pair_dir_vol = {}
-            if net.get('lazy'):   # no volume variables: pair volumes per cable type from the flow endpoints and w
-                for t, (src, dst) in net['flow_ends'].items():
-                    u = next((k for k, var in src.items() if var.X > 0.5), None)
-                    v = next((k for k, var in dst.items() if var.X > 0.5), None)
-                    if u is None or v is None or u == v:
-                        continue
-                    elig = net['flow_elig'][t]
-                    w_if = elig[0] if len(elig) == 1 else max(elig, key=lambda n: net['w'][t, n].X)
-                    pair = (min(u, v), max(u, v))
-                    pair_dir_vol.setdefault(pair + (w_if,), [0.0, 0.0])[0 if (u, v) == pair else 1] += net['volumes'][t]
+            # pair volumes per cable type from the flow endpoints and the type choice w
+            for t, (src, dst) in net['flow_ends'].items():
+                u = next((k for k, var in src.items() if var.X > 0.5), None)
+                v = next((k for k, var in dst.items() if var.X > 0.5), None)
+                if u is None or v is None or u == v:
+                    continue
+                elig = net['flow_elig'][t]
+                w_if = elig[0] if len(elig) == 1 else max(elig, key=lambda n: net['w'][t, n].X)
+                pair = (min(u, v), max(u, v))
+                pair_dir_vol.setdefault(pair + (w_if,), [0.0, 0.0])[0 if (u, v) == pair else 1] += net['volumes'][t]
             for (u, v, w_if), plist in paths.items():
                 chosen = [p for p in range(len(plist)) if sel[u, v, w_if, p].X > 0.5]
                 if not chosen:
                     continue
                 p = chosen[0]
                 path = plist[p]
-                if net.get('lazy'):
-                    vol_fwd, vol_rev = pair_dir_vol.get((u, v, w_if), [0.0, 0.0])
-                else:
-                    vol_fwd, vol_rev = float(f[u, v, w_if, p, 0].X), float(f[u, v, w_if, p, 1].X)
+                vol_fwd, vol_rev = pair_dir_vol.get((u, v, w_if), [0.0, 0.0])
                 if vol_fwd + vol_rev <= 1e-3:   # a selected path without traffic carries nothing (no cable needed)
                     continue
                 for vol, seq in ((vol_fwd, path), (vol_rev, path[::-1])):

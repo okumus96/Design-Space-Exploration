@@ -45,10 +45,8 @@
   },
   "backbone": {
     "candidate_paths": 3,
-    "_comment": "Candidate backbone paths per site pair handed to the optimiser: the direct link plus the (candidate_paths - 1) shortest routes over one relaying site (needs a SWITCH there). All traffic of a site pair uses one path. lazy_traffic (on): no per-flow traffic variables; a callback adds the 'pair needs a selected path' and link-capacity constraints as lazy cuts (33 cells: gap 1.4 % after 30 min instead of 9 %). path_link_cut (on): a selected path has a cable on each of its links (static). conservation_cut (off): aggregated flow conservation of the explicit-traffic model; slower in tests.",
-    "conservation_cut": false,
-    "path_link_cut": true,
-    "lazy_traffic": true
+    "_comment": "Candidate backbone paths per site pair handed to the optimiser: the direct link plus the (candidate_paths - 1) shortest routes over one relaying site (needs a SWITCH there); all traffic of a site pair uses one path per cable type. The traffic constraints (a pair with traffic needs a selected path, link load within cables x capacity, chain latency, failure scenarios) are lazy constraints added in a callback. path_link_cut (on): static LP strengthening, a selected path has a cable on each of its links.",
+    "path_link_cut": true
   },
   "_comment": "cable_types: cost per metre, weight per metre, capacity = bit rate (Mbit/s, same units as flow volumes), port cost, hop_latency_ms = per-hop processing/queueing bound (switch forwarding, bus arbitration). Every type may connect two control units; the optimiser picks per data flow which type carries it. Latency of a message over a link of a type = message kbit / capacity + hop_latency_ms per hop (HANDOFF 14.3)."
 }

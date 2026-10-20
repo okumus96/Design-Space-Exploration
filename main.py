@@ -3,13 +3,12 @@
 ECU Optimization and Visualization Pipeline
 
 Main script that orchestrates the entire workflow:
-1. Generate vehicle architecture data (possible locations, SCs, sensors, actuators)
+1. Load the vehicle architecture (candidate sites, SCs, sensors, actuators)
 2. Run Gurobi optimization for SW-to-ECU assignment
 3. Visualize the optimization results
 """
 import argparse
 from config_reader import ConfigReader
-from data_generator import VehicleDataGenerator
 from architecture_loader import load_architecture_from_json
 from optimizer import AssignmentOptimizer, UNCERTAINTY_BLOCKS
 from visualizer import Visualization
@@ -19,6 +18,7 @@ import time
 import os
 import sys
 import json
+import shutil
 import socket
 import subprocess
 from datetime import datetime
@@ -69,6 +69,35 @@ def save_run_results(args, pareto_solutions, pareto_time_s):
     print(f"Saved run_info.json and {len(pareto_solutions)} solution JSON file(s) to: {args.output_dir}")
 
 
+def render_vehicle_layouts(args, n_solutions):
+    """--vehicle_layout: figures of every solution inside the reference car, written to <output_dir>/vehicle_layout_<i>/.
+    The cables are routed by tools/vehicle_layout/solution_paths.py (voxel graph configs/routing_space.npz) and the
+    views rendered by tools/vehicle_viz/build_vehicle.py in headless Blender (launcher: $BLENDER, or blender-headless /
+    blender on the PATH, or ~/blender/blender-headless; see README)."""
+    repo = os.path.dirname(os.path.abspath(__file__))
+    blender = os.environ.get('BLENDER') or shutil.which('blender-headless') or shutil.which('blender') or os.path.expanduser('~/blender/blender-headless')
+    if not os.path.exists(blender):
+        print(f"[Layout] Blender launcher not found ({blender}); set BLENDER. Vehicle layout figures skipped.")
+        return
+    config_dir = args.config_dir
+    if not os.path.exists(os.path.join(config_dir, 'routing_space.npz')):
+        config_dir = os.path.join(repo, 'configs')
+        print(f"[Layout] {args.config_dir} has no routing_space.npz; the cable routing uses {config_dir}")
+    for idx in range(1, n_solutions + 1):
+        sol = os.path.join(args.output_dir, f"solution_{idx}.json")
+        out = os.path.join(args.output_dir, f"vehicle_layout_{idx}")
+        os.makedirs(out, exist_ok=True)
+        routed = subprocess.run([sys.executable, os.path.join(repo, "tools", "vehicle_layout", "solution_paths.py"), sol, "--config_dir", config_dir])
+        if routed.returncode != 0:
+            print(f"[Layout] solution {idx}: cable routing failed, figure skipped")
+            continue
+        with open(os.path.join(out, "run.log"), "w") as log:
+            rendered = subprocess.run([blender, "--python", os.path.join(repo, "tools", "vehicle_viz", "build_vehicle.py"), "--",
+                                       "--config_dir", config_dir, "--outdir", out, "--solution", sol, "--render", "--views", "iso,top"],
+                                      stdout=log, stderr=subprocess.STDOUT)
+        print(f"[Layout] solution {idx}: {'written to ' + out if rendered.returncode == 0 else 'render failed, see ' + os.path.join(out, 'run.log')}")
+
+
 def main(args):
     print("=" * 80)
     print("ECU OPTIMIZATION AND VISUALIZATION PIPELINE")
@@ -89,16 +118,12 @@ def main(args):
     print("STEP 1: Preparing Vehicle Architecture Data")
     print("-" * 80)
 
-    if args.architecture_json:
-        print(f"Loading architecture from JSON: {args.architecture_json}")
-        scs, comm_matrix, sensors, actuators, cable_types, locations = load_architecture_from_json(
-            args.architecture_json,
-            config_reader=config_reader,
-            num_locs=args.num_locs,
-        )
-    else:
-        generator = VehicleDataGenerator(num_locs=args.num_locs, num_scs=args.num_scs, seed=args.seed, config_reader=config_reader)
-        scs, comm_matrix, sensors, actuators, cable_types, locations = generator.generate_data()
+    print(f"Loading architecture from JSON: {args.architecture_json}")
+    scs, comm_matrix, sensors, actuators, cable_types, locations = load_architecture_from_json(
+        args.architecture_json,
+        config_reader=config_reader,
+        num_locs=args.num_locs,
+    )
     
     # Summary and visualization of generated data
     visualizer = Visualization(save_dir=args.output_dir)
@@ -107,10 +132,7 @@ def main(args):
     reporter.display_data(sensors, actuators, scs, locations=locations, hardwares=hardwares, interface_costs=interfaces, partitions=partitions)
 
     # Step 2: Run optimization
-    if hasattr(args, 'solver') and args.solver == 'z3':
-        pass
-    else:
-        opt = AssignmentOptimizer()
+    opt = AssignmentOptimizer()
     
     # Step 3: Run Pareto optimization
     start_time = time.time()
@@ -123,7 +145,6 @@ def main(args):
         backbone=config_reader.get_backbone_config(),
         phase2_time=args.phase2_time,
         gurobi_params=args.gurobi_params,
-        branch_priority=args.branch_priority,
         chains=config_reader.get_chains(),
         num_points=args.num_points,
         solve_time_limit=args.time_limit,
@@ -143,7 +164,7 @@ def main(args):
     for idx in range(1, len(pareto_solutions) + 1):
         subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools", "architecture_diagram.py"),
                         os.path.join(args.output_dir, f"solution_{idx}.json"), "--config_dir", args.config_dir,
-                        "--architecture", args.architecture_json or os.path.join(args.config_dir, "full_architecture_v2.json")], check=False)
+                        "--architecture", args.architecture_json], check=False)
     
     # Display detailed solution analysis
     if pareto_solutions:
@@ -159,8 +180,9 @@ def main(args):
     for solution_idx, solution in enumerate(pareto_solutions, 1):
         reporter.display_assignments(solution['assignment'])
 
-    # Figures inside the reference car: tools/vehicle_layout/solution_paths.py <output_dir>/solution_<i>.json, then
-    # tools/vehicle_viz/build_vehicle.py --solution <that file> --render (Blender, see HANDOFF / README)
+    # Figures inside the reference car (Blender), only on request
+    if args.vehicle_layout:
+        render_vehicle_layouts(args, len(pareto_solutions))
 
     print("\n" + "=" * 80)
     print("PIPELINE COMPLETED SUCCESSFULLY")
@@ -170,11 +192,8 @@ def main(args):
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description="ECU Optimization and Visualization Pipeline")
     argparser.add_argument("--num_locs", type=int, default=None, help="Use only this many of the candidate sites in configs/sites.json (default: all)")
-    argparser.add_argument("--num_scs", type=int, default=20, help="Number of software components to generate")
-    argparser.add_argument("--architecture_json", type=str, default=None, help="Load complete architecture from JSON and bypass data_generator")
-    argparser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
+    argparser.add_argument("--architecture_json", type=str, default="configs/full_architecture_v2.json", help="Vehicle architecture JSON (software components, sensors, actuators, communication)")
     argparser.add_argument("--config_dir", type=str, default="configs", help="Directory containing configuration JSON files")
-    argparser.add_argument("--solver", type=str, default="gurobi", choices=["gurobi", "z3"], help="Solver to use")
     argparser.add_argument("--time_limit", type=int, default=43200, help="Time limit per solve in seconds (default: 12 h)")
     argparser.add_argument("--phase2_time", type=int, default=600, help="Minimum time for the second lexicographic phase of every solve, even when the first phase used up the time limit (default: 600 s)")
     argparser.add_argument("--uncertainty", "--uncertainity", dest="uncertainty", action="store_true", help="Enable all uncertainty-aware constraint blocks below")
@@ -185,13 +204,11 @@ if __name__ == "__main__":
     argparser.add_argument("--robust_latency", action="store_true", help="Robust link latency with safety factor and overheads (configs/uncertainty.json: robust_latency)")
     argparser.add_argument("--growth", action="store_true", help="Software growth: sweep the growth levels of configs/uncertainty.json (growth) and solve min cost per level")
     argparser.add_argument("--failures", action="store_true", help="Single failures of cells, switches and cables: standby instances for the critical SCs (configs/uncertainty.json: failures)")
-    argparser.add_argument("--warm_start", action="store_true", help="Enable warm start for optimization")
     argparser.add_argument("--mip_gap", type=float, default=None, help="MIP Gap for Gurobi optimizer (default: Gurobi's own, 1e-4)")
     argparser.add_argument("--gurobi_params", type=str, default=None, help="Extra Gurobi parameters, e.g. \"MIPFocus=3,Cuts=2\" (experiments)")
-    argparser.add_argument("--branch_priority", action="store_true", help="Branch on site activation first, then partitions/hardware (experiments)")
     argparser.add_argument("--output_dir", type=str, default="results", help="Directory to save visualization results")
     argparser.add_argument("--write_lp", action="store_true", help="Write the Gurobi model of each solve as model_<point>.lp.gz into output_dir")
+    argparser.add_argument("--vehicle_layout", action="store_true", help="Render every solution inside the reference car with headless Blender into output_dir/vehicle_layout_<i>/ (tools/vehicle_viz; launcher from $BLENDER or the PATH)")
     argparser.add_argument("--num_points", type=int, default=5, help="Number of Pareto points to generate (1 = only the min-cost extreme)")
-    argparser.add_argument("--verbose", action="store_true", help="Enable verbose output during optimization")
     args = argparser.parse_args()
     main(args)
