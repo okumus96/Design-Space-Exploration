@@ -8,7 +8,8 @@ Independent check of optimisation results.
 Re-evaluates every rule of the model on a stored solution with plain Python and recomputes every cost and length:
 placement, partitions and their capacities, control-unit caps, hardware, redundancy, AI contention, peripheral
 wiring, ports and shared-bus trunks, backbone cables and paths, link capacities, chain latencies, and with single
-failures the standbys, survival in every scenario, degraded chain latencies and the cold-standby capacity.
+failures the standbys, survival in every scenario, degraded chain latencies, link capacity after every failure and
+the cold-standby capacity.
 
 It reads the raw config and architecture files itself and imports nothing from the optimiser (optimizer.py,
 optimizer_utils.py, architecture_loader.py, config_reader.py, models.py), so an error in the model code cannot hide
@@ -793,25 +794,26 @@ class SolutionCheck:
                     self.err('degraded_latency', f"{label}: {ch['id']} {total:.3f} ms > degraded bound {bound} ms")
             if kind == 'cell':
                 self._failure_capacity(elem, label)
-            # beyond the model (it checks link capacity in the nominal state only): every data flow on its first
-            # surviving variant, as in the degraded latency rule, against the remaining cables
-            dl = defaultdict(float)
+            # link capacity after the failure: the flows that keep running (alive, primaries and hot standbys) and,
+            # per data flow, its first surviving variant (the variant rule of the degraded latency), which activates
+            # the cold standbys it needs, against the remaining cables
+            carried = {id(f): f for f in self.flows if not self.silent(f) and alive(f, kind, elem)}
             for b in range(len(self.base)):
                 pick = next((self.variants[b][k] for k in VARIANT_ORDER[self.base[b]['type']]
                              if k in self.variants[b] and alive(self.variants[b][k], kind, elem)), None)
-                if pick is None or pick['path'] is None:
+                if pick is not None:
+                    carried.setdefault(id(pick), pick)
+            dl = defaultdict(float)
+            for f in carried.values():
+                if f['path'] is None:
                     continue
-                for a, c2 in zip(pick['path'], pick['path'][1:]):
-                    dl[(a, c2, pick['iface'])] += pick['volume']
-            over = []
+                for a, c2 in zip(f['path'], f['path'][1:]):
+                    dl[(a, c2, f['iface'])] += f['volume']
             for (a, c2, n), ld in dl.items():
+                self.checked['failure_link_capacity'] += 1
                 cap = self.ct[n]['cap'] * self.cables.get(_pk(a, c2) + (n,), 0)
                 if not _le(ld, cap):
-                    over.append(((a, c2, n), ld, cap))
-            if over:
-                (a, c2, n), ld, cap = max(over, key=lambda o: o[1] / max(o[2], 1e-9))
-                self.warn('failure_link_capacity', f"{label}: {len(over)} link direction(s) over capacity after the failure, "
-                                                   f"worst {a}->{c2} {n} {ld:.1f} > {cap:.1f}")
+                    self.err('failure_link_capacity', f"{label}: {a}->{c2} {n} load {ld:.1f} > {cap:.1f} after the failure")
 
     def _failure_capacity(self, c, label):
         """cold standbys activated by the failure of cell c must fit next to the load of their cell"""

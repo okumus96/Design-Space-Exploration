@@ -39,7 +39,7 @@ CASES = [
     ('growth', ['--growth', '--sw_margin', '--derating', '--redundancy', '--ai_contention', '--robust_latency'], [0.0, 1.0, 2.0],
      [(8352.46, 56.8483), (8384.394, 58.695), (8860.2475, 63.1326)]),
     ('failures', ['--uncertainty'], [0.0],
-     [(10955.162, 60.3599)]),
+     [(10961.423, 58.6409)]),
 ]
 
 

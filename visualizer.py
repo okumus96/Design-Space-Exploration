@@ -40,7 +40,7 @@ class Visualization:
         ax.margins(y=0.2)
         fig.tight_layout()
         self.save_plot(filename)
-        with open(os.path.join(self.save_dir, filename.replace('.pdf', '.dat')), 'w') as f:
+        with open(os.path.join(self.save_dir, os.path.splitext(filename)[0] + '.dat'), 'w') as f:
             f.write("alpha cost units partitions\n")
             for a, c, n, k in pts:
                 f.write(f"{a} {c:.2f} {n} {k}\n")

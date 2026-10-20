@@ -1578,6 +1578,16 @@ class AssignmentOptimizer:
                     expr = expr + net['w'][t, w_if] - 1
                 return expr
 
+            def traffic_indicator(t, u, v, w_if, p):
+                # as indicator, and the flow carries traffic in the nominal state: a standby endpoint that may be cold
+                # must be hot (the flows of a cold standby are silent until a failure activates it)
+                expr = indicator(t, u, v, w_if, p)
+                tr = net['flow_meta'][t]
+                for inst, key in ((tr.get('src_inst', 'x'), 'src_idx'), (tr.get('dst_inst', 'x'), 'dst_idx')):
+                    if inst == 'r' and net['hot'].get(tr[key]) is not None:
+                        expr = expr + net['hot'][tr[key]] - 1
+                return expr
+
             # --- traffic: a pair with traffic needs a selected path; cables carry the routed volume
             load, contrib = {}, {}
             for t, rt in routes.items():
@@ -1600,7 +1610,7 @@ class AssignmentOptimizer:
                 vol = net['volumes'][t]
                 for a, b in zip(seq, seq[1:]):
                     load[(a, b, w_if)] = load.get((a, b, w_if), 0.0) + vol
-                    contrib.setdefault((a, b, w_if), []).append((indicator(t, u, v, w_if, p), vol))
+                    contrib.setdefault((a, b, w_if), []).append((traffic_indicator(t, u, v, w_if, p), vol))
             for (a, b, w_if), ld in load.items():
                 key = (a, b, w_if) if a < b else (b, a, w_if)
                 if ld > cap_of[w_if] * cv[key] + 1e-6:
@@ -1634,29 +1644,36 @@ class AssignmentOptimizer:
                         next((k for k, var in dst.items() if getv(var) > 0.5), None))
 
             def flow_alive(t, kind, elem, routes_):
-                # (served, variables of the configuration, path missing); a missing path is a traffic violation
-                # handled by the path cuts, never a reason to cut the placement
+                # (alive, variables that fix this outcome, path missing). The variables are what a valid cut needs:
+                # the endpoint at the failed cell, or else the whole configuration of the flow (both endpoints, the
+                # cable type choice, the path). A missing path is a traffic violation handled by the path cuts, never
+                # a reason to cut the placement.
                 u, v = ends_of(t)
-                if u is None or v is None or (kind == 'cell' and elem in (u, v)):
+                if u is None or v is None:
                     return False, [], False
+                src, dst = net['flow_ends'][t]
+                if kind == 'cell' and elem in (u, v):
+                    return False, [src[u] if u == elem else dst[v]], False
                 if u == v:
-                    return True, [], False
+                    return True, [src[u], dst[v]], False
                 rt = routes_.get(t)
                 if rt is None or rt[3] is None:
                     return False, [], True
                 _u, _v, w_if, p = rt
                 pair = (min(u, v), max(u, v))
                 path = net['paths'][pair + (w_if,)][p]
-                sel_var = net['sel'][pair + (w_if, p)]
+                cfg = [src[u], dst[v], net['sel'][pair + (w_if, p)]]
+                if len(net['flow_elig'][t]) > 1:
+                    cfg.append(net['w'][t, w_if])
                 if kind in ('cell', 'switch') and elem in path[1:-1]:
-                    return False, [sel_var], False
+                    return False, cfg, False
                 if kind == 'switch' and w_if == 'ETH' and elem in (u, v):
-                    return False, [sel_var], False   # the ETH ports of a switched cell are the switch's ports
+                    return False, cfg, False   # the ETH ports of a switched cell are the switch's ports
                 if kind == 'cable':
                     a, b, wtype = elem
                     if wtype == w_if and any({pa, pb} == {a, b} for pa, pb in zip(path, path[1:])):
-                        return False, [sel_var], False
-                return True, [sel_var], False
+                        return False, cfg, False
+                return True, cfg, False
 
             def instance_served(i, inst, kind, elem, routes_):
                 # instance inst ('x' primary, 'r' standby) survives and every flow of i to a critical partner is
@@ -1712,13 +1729,6 @@ class AssignmentOptimizer:
             VARIANT_ORDER = {'SC_SC': [('x', 'x'), ('x', 'r'), ('r', 'x'), ('r', 'r')],
                              'SENS_SC': [('a', 'x'), ('a', 'r')], 'SC_ACT': [('x', 'a'), ('r', 'a')]}
 
-            def dead_endpoint_vars(t, kind, elem):
-                if kind != 'cell':
-                    return []
-                src, dst = net['flow_ends'][t]
-                u, v = ends_of(t)
-                return [src[u] for _ in [0] if u == elem] + [dst[v] for _ in [0] if v == elem]
-
             def degraded_check(routes_, add_cuts):
                 """chain network latency in every failure scenario over the surviving instances; returns the number
                 of chains over their degraded bound (with add_cuts: one cut per violation)"""
@@ -1739,7 +1749,7 @@ class AssignmentOptimizer:
                                 if ok:
                                     picked = (t, vs)
                                     break
-                                reasons += vs + dead_endpoint_vars(t, kind, elem)
+                                reasons += vs
                             if picked is None or picked == 'missing':
                                 broken = True   # a broken chain is a survival violation (cut elsewhere)
                                 break
@@ -1797,7 +1807,68 @@ class AssignmentOptimizer:
                         break
                 return violations
 
+            def degraded_traffic(routes_):
+                """Traffic after every single failure: the flows that keep running (alive, primaries and hot standbys)
+                and, per base flow, the first surviving variant of the degraded latency rule, which activates the cold
+                standbys it needs. Returns [(load {(a, b, type): volume}, members {(a, b, type): [(t, reasons)]})]
+                per scenario; reasons is None for a flow that runs in the nominal state."""
+                out = []
+                for kind, elem in scenario_list(routes_):
+                    carried = {}
+                    for t in net['flow_meta']:
+                        if not silent(t):
+                            ok, _vs, _miss = flow_alive(t, kind, elem, routes_)
+                            if ok:
+                                carried[t] = None
+                    for t_base, variants in base_variants.items():
+                        reasons = []
+                        for key in VARIANT_ORDER[net['flow_meta'][t_base]['type']]:
+                            t = variants.get(key)
+                            if t is None:
+                                continue
+                            ok, vs, miss = flow_alive(t, kind, elem, routes_)
+                            if miss:
+                                break
+                            if ok:
+                                carried.setdefault(t, reasons)
+                                break
+                            reasons = reasons + vs
+                    load, members = {}, {}
+                    for t, reasons in carried.items():
+                        u, v = ends_of(t)
+                        if u == v:
+                            continue
+                        _u, _v, w_if, p = routes_[t]
+                        pair = (min(u, v), max(u, v))
+                        path = net['paths'][pair + (w_if,)][p]
+                        seq = path if (u, v) == pair else path[::-1]
+                        for a, b in zip(seq, seq[1:]):
+                            load[(a, b, w_if)] = load.get((a, b, w_if), 0.0) + net['volumes'][t]
+                            members.setdefault((a, b, w_if), []).append((t, reasons))
+                    out.append((load, members))
+                return out
+
+            def degraded_term(t, reasons, routes_):
+                # lower bound of [flow t carries traffic on its path in the scenario]
+                u, v = ends_of(t)
+                _u, _v, w_if, p = routes_[t]
+                if reasons is None:
+                    return traffic_indicator(t, u, v, w_if, p)
+                ind = indicator(t, u, v, w_if, p)
+                for rv in reasons:
+                    ind = ind + rv - 1
+                return ind
+
             if net['critical']:
+                # link capacity after a failure (cables can be added, so this never rejects the placement)
+                for load, members in degraded_traffic(routes):
+                    for (a, b, w_if), ld in load.items():
+                        key = (a, b, w_if) if a < b else (b, a, w_if)
+                        if ld > cap_of[w_if] * cv[key] + 1e-6:
+                            m.cbLazy(cap_of[w_if] * comm[key] >= gp.quicksum(
+                                net['volumes'][t] * degraded_term(t, reasons, routes) for t, reasons in members[(a, b, w_if)]))
+                            m._lazy_cuts += 1
+                            m._fail_cuts += 1
                 if scenario_check(routes, True) > 0:
                     placement_ok = False
                 if net['chains'] and degraded_check(routes, True) > 0:
@@ -1880,6 +1951,11 @@ class AssignmentOptimizer:
                     if not silent(t):
                         rload[pair + (w_if,)] = rload.get(pair + (w_if,), 0.0) + net['volumes'][t]
                 feasible = True
+                if net['critical']:
+                    for load, _members in degraded_traffic(rep_routes):
+                        for (a, b, w_if), ld in load.items():
+                            key = (min(a, b), max(a, b), w_if)
+                            rload[key] = max(rload.get(key, 0.0), ld)
                 for key in comm_keys:
                     fix[comm[key]] = 0
                 for key in need:
@@ -2050,7 +2126,7 @@ class AssignmentOptimizer:
             if sol:
                 solutions.append(sol)
             else:
-                print(f"[Growth] alpha = {alpha:.2f}: no feasible design (capacity exhausted)")
+                print(f"[Growth] alpha = {alpha:.2f}: no design found (infeasible, or no feasible design within the time limit); sweep stopped")
                 break
         print(f"Growth sweep: {len(solutions)} of {len(levels)} levels solved")
         return solutions
