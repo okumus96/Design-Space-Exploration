@@ -87,11 +87,13 @@ def render_vehicle_layouts(args, n_solutions):
         sol = os.path.join(args.output_dir, f"solution_{idx}.json")
         out = os.path.join(args.output_dir, f"vehicle_layout_{idx}")
         os.makedirs(out, exist_ok=True)
+        sys.stdout.flush()
         routed = subprocess.run([sys.executable, os.path.join(repo, "tools", "vehicle_layout", "solution_paths.py"), sol, "--config_dir", config_dir])
         if routed.returncode != 0:
             print(f"[Layout] solution {idx}: cable routing failed, figure skipped")
             continue
         with open(os.path.join(out, "run.log"), "w") as log:
+            sys.stdout.flush()
             rendered = subprocess.run([blender, "--python", os.path.join(repo, "tools", "vehicle_viz", "build_vehicle.py"), "--",
                                        "--config_dir", config_dir, "--outdir", out, "--solution", sol, "--render", "--views", "iso,top"],
                                       stdout=log, stderr=subprocess.STDOUT)
@@ -160,8 +162,14 @@ def main(args):
     # Save results before plotting, so a plotting error does not lose them
     save_run_results(args, pareto_solutions, end_time - start_time)
 
+    # Independent check of every solution: all rules re-evaluated and all costs recomputed without the optimiser code
+    sys.stdout.flush()
+    subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools", "check_solution.py"),
+                    args.output_dir], check=False)
+
     # Technical architecture diagram of every Pareto solution (units, partitions, software, peripherals, backbone)
     for idx in range(1, len(pareto_solutions) + 1):
+        sys.stdout.flush()
         subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools", "architecture_diagram.py"),
                         os.path.join(args.output_dir, f"solution_{idx}.json"), "--config_dir", args.config_dir,
                         "--architecture", args.architecture_json], check=False)

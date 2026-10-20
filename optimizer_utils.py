@@ -759,7 +759,9 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
             arc_load = {}
             relayed = 0
             pair_dir_vol = {}
-            # pair volumes per cable type from the flow endpoints and the type choice w
+            # nominal pair volumes per cable type from the flow endpoints and the type choice w; a flow to or from a
+            # cold standby carries nothing in the nominal state (its path must exist, the model does not load it)
+            hot_val = {i: (1.0 if net['hot'][i] is None else net['hot'][i].X) for i in net.get('critical', [])}
             for t, (src, dst) in net['flow_ends'].items():
                 u = next((k for k, var in src.items() if var.X > 0.5), None)
                 v = next((k for k, var in dst.items() if var.X > 0.5), None)
@@ -768,16 +770,21 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
                 elig = net['flow_elig'][t]
                 w_if = elig[0] if len(elig) == 1 else max(elig, key=lambda n: net['w'][t, n].X)
                 pair = (min(u, v), max(u, v))
-                pair_dir_vol.setdefault(pair + (w_if,), [0.0, 0.0])[0 if (u, v) == pair else 1] += net['volumes'][t]
+                tr = net['flow_meta'][t]
+                silent = any(tr.get(inst_key, 'x') == 'r' and hot_val.get(tr[idx_key], 1.0) < 0.5
+                             for inst_key, idx_key in (('src_inst', 'src_idx'), ('dst_inst', 'dst_idx')))
+                vols = pair_dir_vol.setdefault(pair + (w_if,), [0.0, 0.0])
+                if not silent:
+                    vols[0 if (u, v) == pair else 1] += net['volumes'][t]
             for (u, v, w_if), plist in paths.items():
                 chosen = [p for p in range(len(plist)) if sel[u, v, w_if, p].X > 0.5]
                 if not chosen:
                     continue
                 p = chosen[0]
                 path = plist[p]
-                vol_fwd, vol_rev = pair_dir_vol.get((u, v, w_if), [0.0, 0.0])
-                if vol_fwd + vol_rev <= 1e-3:   # a selected path without traffic carries nothing (no cable needed)
+                if (u, v, w_if) not in pair_dir_vol:   # a selected path no flow uses needs no cable
                     continue
+                vol_fwd, vol_rev = pair_dir_vol[(u, v, w_if)]
                 for vol, seq in ((vol_fwd, path), (vol_rev, path[::-1])):
                     for a, b in zip(seq, seq[1:]):
                         arc_load[(a, b, w_if)] = arc_load.get((a, b, w_if), 0.0) + vol
@@ -804,6 +811,39 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
                     print(f"  {cid:42s} {c['latency_ms']:8.3f} / budget {c['budget_ms']:7.1f}  crossings {len(c['crossings'])}  {'ok' if c['ok'] else 'VIOLATED'}")
 
         total_cost = partition_cost + site_cost + hw_cost + if_cost + cable_cost + comm_cost
+
+        # Decision values an independent check needs (tools/check_solution.py): partitions per (site, ASIL), the
+        # route and cable type of every data flow, and the shared-bus trunk lengths
+        partition_counts = {f"{locations[j].id}_asil{a}": int(round(var.X)) for (j, a), var in P.items() if var.X > 0.5}
+        flow_route_list = []
+        if net:
+            routes = flow_routes(net, lambda var: var.X)
+            for t, tr in net['flow_meta'].items():
+                if tr['type'] == 'SC_SC':
+                    src, dst = scs[tr['src_idx']].id, scs[tr['dst_idx']].id
+                elif tr['type'] == 'SENS_SC':
+                    src, dst = sensors[tr['sensor_idx']].id, scs[tr['dst_idx']].id
+                else:
+                    src, dst = scs[tr['src_idx']].id, actuators[tr['act_idx']].id
+                entry = {'type': tr['type'], 'src': src, 'dst': dst,
+                         'src_inst': tr.get('src_inst', 'a' if tr['type'] == 'SENS_SC' else 'x'),
+                         'dst_inst': tr.get('dst_inst', 'a' if tr['type'] == 'SC_ACT' else 'x'),
+                         'iface': None, 'path': None}
+                rt = routes.get(t)
+                if rt is not None:
+                    u, v, w_if, p_idx = rt
+                    entry['iface'] = w_if
+                    if p_idx is not None:
+                        path = net['paths'][(min(u, v), max(u, v), w_if)][p_idx]
+                        path = path if path[0] == u else path[::-1]
+                        entry['path'] = [locations[k].id for k in path]
+                flow_route_list.append(entry)
+        shared_trunks = {}
+        for (j, iface), tv in (shared_trunk_len or {}).items():
+            main = float(getattr(tv, 'X', 0.0) or 0.0)
+            extra = float(getattr((shared_extra_trunk_len or {}).get((j, iface)), 'X', 0.0) or 0.0)
+            if main > 1e-9 or extra > 1e-9:
+                shared_trunks[f"{locations[j].id}|{iface}"] = {'main': main, 'extra': extra}
 
         eth_sensor_attachments = {}
         if attach_s:
@@ -853,6 +893,10 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
             'total_cost': total_cost,
             'num_locations_used': num_locations_used,
             'num_candidate_sites': len(locations),
+            'candidate_sites': [loc.id for loc in locations],
+            'partition_counts': partition_counts,
+            'flow_routes': flow_route_list,
+            'shared_trunks': shared_trunks,
             'num_ecus_used': num_locations_used,  # For visualizer compatibility
             'num_partitions': num_partitions_opened,
             'hw_features': hw_opened,
