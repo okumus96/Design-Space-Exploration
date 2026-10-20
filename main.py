@@ -122,6 +122,7 @@ def main(args):
         phase2_time=args.phase2_time,
         gurobi_params=args.gurobi_params,
         branch_priority=args.branch_priority,
+        chains=config_reader.get_chains(),
         num_points=args.num_points,
         solve_time_limit=args.time_limit,
         mip_gap=args.mip_gap,
@@ -135,6 +136,12 @@ def main(args):
 
     # Save results before plotting, so a plotting error does not lose them
     save_run_results(args, pareto_solutions, end_time - start_time)
+
+    # Technical architecture diagram of every Pareto solution (units, partitions, software, peripherals, backbone)
+    for idx in range(1, len(pareto_solutions) + 1):
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools", "architecture_diagram.py"),
+                        os.path.join(args.output_dir, f"solution_{idx}.json"), "--config_dir", args.config_dir,
+                        "--architecture", args.architecture_json or os.path.join(args.config_dir, "full_architecture_v2.json")], check=False)
     
     # Display detailed solution analysis
     if pareto_solutions:

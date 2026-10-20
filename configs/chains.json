@@ -1,0 +1,213 @@
+{
+  "_generated_by": "tools/chains_from_graph.py (receives_from graph of the architecture)",
+  "_comment": "Generated file, do not edit; change the architecture or the budgets in the script and re-run. net_budget_ms = time the data of the chain may spend on the network (cables, switches, synchronisation).",
+  "architecture": "full_architecture_v2.json",
+  "chains": [
+    {
+      "id": "chain_SC_15_Driver_ACT_Steering",
+      "actuator": "SC_15_Driver_ACT_Steering",
+      "sensor": "SC_9_Driver_LIDAR_Left_Pillar",
+      "swcs": [
+        "SC_9_Driver_LIDAR_Left_Pillar",
+        "AW_Sensing_Lidar_Preprocessor",
+        "AW_Perception_Lidar_Cluster",
+        "AW_Perception_Sensor_Fusion",
+        "AW_Perception_Object_Tracker",
+        "AW_Perception_Trajectory_Predictor",
+        "AW_Planning_Behavior_Path",
+        "AW_Planning_Obstacle_Avoidance",
+        "AW_Planning_Velocity_Smoother",
+        "AW_Control_Longitudinal_PID",
+        "AW_Vehicle_Cmd_Gate",
+        "DT_Steering_Assist_Controller",
+        "SC_15_Driver_ACT_Steering"
+      ],
+      "hops": 12,
+      "net_budget_ms": 20.0,
+      "rule": "longest sensor-to-actuator path"
+    },
+    {
+      "id": "chain_SC_15_Driver_ACT_Steering_positioning",
+      "actuator": "SC_15_Driver_ACT_Steering",
+      "sensor": "SC_13_Driver_IMU_Top_Center",
+      "swcs": [
+        "SC_13_Driver_IMU_Top_Center",
+        "AW_Localization_Twist_Estimator",
+        "AW_Control_Lateral_MPC",
+        "AW_Vehicle_Cmd_Gate",
+        "DT_Steering_Assist_Controller",
+        "SC_15_Driver_ACT_Steering"
+      ],
+      "hops": 5,
+      "net_budget_ms": 10.0,
+      "rule": "shortest path from a positioning sensor"
+    },
+    {
+      "id": "chain_SC_16_Driver_ACT_Motor_Front",
+      "actuator": "SC_16_Driver_ACT_Motor_Front",
+      "sensor": "SC_9_Driver_LIDAR_Left_Pillar",
+      "swcs": [
+        "SC_9_Driver_LIDAR_Left_Pillar",
+        "AW_Sensing_Lidar_Preprocessor",
+        "AW_Perception_Lidar_Cluster",
+        "AW_Perception_Sensor_Fusion",
+        "AW_Perception_Object_Tracker",
+        "AW_Perception_Trajectory_Predictor",
+        "AW_Planning_Behavior_Path",
+        "AW_Planning_Obstacle_Avoidance",
+        "AW_Planning_Velocity_Smoother",
+        "AW_Control_Longitudinal_PID",
+        "AW_Vehicle_Cmd_Gate",
+        "DT_Powertrain_Supervisor",
+        "DT_Torque_Distributor",
+        "SC_16_Driver_ACT_Motor_Front"
+      ],
+      "hops": 13,
+      "net_budget_ms": 30.0,
+      "rule": "longest sensor-to-actuator path"
+    },
+    {
+      "id": "chain_SC_16_Driver_ACT_Motor_Front_positioning",
+      "actuator": "SC_16_Driver_ACT_Motor_Front",
+      "sensor": "SC_13_Driver_IMU_Top_Center",
+      "swcs": [
+        "SC_13_Driver_IMU_Top_Center",
+        "AW_Localization_Twist_Estimator",
+        "AW_Control_Lateral_MPC",
+        "AW_Vehicle_Cmd_Gate",
+        "DT_Powertrain_Supervisor",
+        "DT_Torque_Distributor",
+        "SC_16_Driver_ACT_Motor_Front"
+      ],
+      "hops": 6,
+      "net_budget_ms": 15.0,
+      "rule": "shortest path from a positioning sensor"
+    },
+    {
+      "id": "chain_SC_17_Driver_ACT_Brake_Front",
+      "actuator": "SC_17_Driver_ACT_Brake_Front",
+      "sensor": "SC_9_Driver_LIDAR_Left_Pillar",
+      "swcs": [
+        "SC_9_Driver_LIDAR_Left_Pillar",
+        "AW_Sensing_Lidar_Preprocessor",
+        "AW_Perception_Lidar_Cluster",
+        "AW_Perception_Sensor_Fusion",
+        "AW_Perception_Object_Tracker",
+        "AW_Perception_Trajectory_Predictor",
+        "AW_Planning_Behavior_Path",
+        "AW_Planning_Obstacle_Avoidance",
+        "AW_Planning_Velocity_Smoother",
+        "AW_Control_Longitudinal_PID",
+        "AW_Vehicle_Cmd_Gate",
+        "DT_Brake_Blend_Controller",
+        "SC_17_Driver_ACT_Brake_Front"
+      ],
+      "hops": 12,
+      "net_budget_ms": 20.0,
+      "rule": "longest sensor-to-actuator path"
+    },
+    {
+      "id": "chain_SC_17_Driver_ACT_Brake_Front_positioning",
+      "actuator": "SC_17_Driver_ACT_Brake_Front",
+      "sensor": "SC_13_Driver_IMU_Top_Center",
+      "swcs": [
+        "SC_13_Driver_IMU_Top_Center",
+        "AW_Localization_Twist_Estimator",
+        "AW_Control_Lateral_MPC",
+        "AW_Vehicle_Cmd_Gate",
+        "DT_Brake_Blend_Controller",
+        "SC_17_Driver_ACT_Brake_Front"
+      ],
+      "hops": 5,
+      "net_budget_ms": 10.0,
+      "rule": "shortest path from a positioning sensor"
+    },
+    {
+      "id": "chain_SC_18_Driver_ACT_Brake_Rear",
+      "actuator": "SC_18_Driver_ACT_Brake_Rear",
+      "sensor": "SC_9_Driver_LIDAR_Left_Pillar",
+      "swcs": [
+        "SC_9_Driver_LIDAR_Left_Pillar",
+        "AW_Sensing_Lidar_Preprocessor",
+        "AW_Perception_Lidar_Cluster",
+        "AW_Perception_Sensor_Fusion",
+        "AW_Perception_Object_Tracker",
+        "AW_Perception_Trajectory_Predictor",
+        "AW_Planning_Behavior_Path",
+        "AW_Planning_Obstacle_Avoidance",
+        "AW_Planning_Velocity_Smoother",
+        "AW_Control_Longitudinal_PID",
+        "AW_Vehicle_Cmd_Gate",
+        "DT_Brake_Blend_Controller",
+        "SC_18_Driver_ACT_Brake_Rear"
+      ],
+      "hops": 12,
+      "net_budget_ms": 20.0,
+      "rule": "longest sensor-to-actuator path"
+    },
+    {
+      "id": "chain_SC_18_Driver_ACT_Brake_Rear_positioning",
+      "actuator": "SC_18_Driver_ACT_Brake_Rear",
+      "sensor": "SC_13_Driver_IMU_Top_Center",
+      "swcs": [
+        "SC_13_Driver_IMU_Top_Center",
+        "AW_Localization_Twist_Estimator",
+        "AW_Control_Lateral_MPC",
+        "AW_Vehicle_Cmd_Gate",
+        "DT_Brake_Blend_Controller",
+        "SC_18_Driver_ACT_Brake_Rear"
+      ],
+      "hops": 5,
+      "net_budget_ms": 10.0,
+      "rule": "shortest path from a positioning sensor"
+    },
+    {
+      "id": "chain_SC_20_Driver_ACT_Light_Front",
+      "actuator": "SC_20_Driver_ACT_Light_Front",
+      "sensor": "SC_9_Driver_LIDAR_Left_Pillar",
+      "swcs": [
+        "SC_9_Driver_LIDAR_Left_Pillar",
+        "AW_Sensing_Lidar_Preprocessor",
+        "AW_Perception_Lidar_Cluster",
+        "AW_Perception_Sensor_Fusion",
+        "AW_Perception_Object_Tracker",
+        "AW_Perception_Trajectory_Predictor",
+        "AW_Planning_Behavior_Path",
+        "AW_Planning_Obstacle_Avoidance",
+        "AW_Planning_Velocity_Smoother",
+        "AW_Control_Longitudinal_PID",
+        "AW_Vehicle_Cmd_Gate",
+        "INFO_Dashboard_Display",
+        "BC_Lighting_Manager",
+        "SC_20_Driver_ACT_Light_Front"
+      ],
+      "hops": 13,
+      "net_budget_ms": 200.0,
+      "rule": "longest sensor-to-actuator path"
+    },
+    {
+      "id": "chain_SC_21_Driver_ACT_Light_Rear",
+      "actuator": "SC_21_Driver_ACT_Light_Rear",
+      "sensor": "SC_9_Driver_LIDAR_Left_Pillar",
+      "swcs": [
+        "SC_9_Driver_LIDAR_Left_Pillar",
+        "AW_Sensing_Lidar_Preprocessor",
+        "AW_Perception_Lidar_Cluster",
+        "AW_Perception_Sensor_Fusion",
+        "AW_Perception_Object_Tracker",
+        "AW_Perception_Trajectory_Predictor",
+        "AW_Planning_Behavior_Path",
+        "AW_Planning_Obstacle_Avoidance",
+        "AW_Planning_Velocity_Smoother",
+        "AW_Control_Longitudinal_PID",
+        "AW_Vehicle_Cmd_Gate",
+        "INFO_Dashboard_Display",
+        "BC_Lighting_Manager",
+        "SC_21_Driver_ACT_Light_Rear"
+      ],
+      "hops": 13,
+      "net_budget_ms": 200.0,
+      "rule": "longest sensor-to-actuator path"
+    }
+  ]
+}

@@ -11,7 +11,8 @@
         "y": -1.321,
         "z": 1.476
       },
-      "snapped": "moved 0.16 m onto the car skin of the reference model"
+      "snapped": "moved 0.16 m onto the car skin of the reference model",
+      "rate_hz": 30.0
     },
     {
       "type": "CAMERA",
@@ -23,7 +24,8 @@
         "y": 0.388,
         "z": 1.447
       },
-      "snapped": "moved 0.17 m onto the car skin of the reference model"
+      "snapped": "moved 0.17 m onto the car skin of the reference model",
+      "rate_hz": 30.0
     },
     {
       "type": "CAMERA",
@@ -35,7 +37,8 @@
         "y": -1.321,
         "z": 1.476
       },
-      "snapped": "moved 0.16 m onto the car skin of the reference model"
+      "snapped": "moved 0.16 m onto the car skin of the reference model",
+      "rate_hz": 30.0
     },
     {
       "type": "CAMERA",
@@ -47,7 +50,8 @@
         "y": 0.36,
         "z": 1.407
       },
-      "snapped": "moved 0.22 m onto the car skin of the reference model"
+      "snapped": "moved 0.22 m onto the car skin of the reference model",
+      "rate_hz": 30.0
     },
     {
       "type": "CAMERA",
@@ -59,7 +63,8 @@
         "y": 0.36,
         "z": 1.407
       },
-      "snapped": "moved 0.22 m onto the car skin of the reference model"
+      "snapped": "moved 0.22 m onto the car skin of the reference model",
+      "rate_hz": 30.0
     },
     {
       "type": "CAMERA",
@@ -71,7 +76,8 @@
         "y": -0.302,
         "z": 1.493
       },
-      "snapped": "moved 0.15 m onto the car skin of the reference model"
+      "snapped": "moved 0.15 m onto the car skin of the reference model",
+      "rate_hz": 30.0
     },
     {
       "type": "CAMERA",
@@ -83,7 +89,8 @@
         "y": -0.302,
         "z": 1.494
       },
-      "snapped": "moved 0.15 m onto the car skin of the reference model"
+      "snapped": "moved 0.15 m onto the car skin of the reference model",
+      "rate_hz": 30.0
     },
     {
       "type": "CAMERA",
@@ -95,7 +102,8 @@
         "y": -1.319,
         "z": 1.512
       },
-      "snapped": "moved 0.16 m onto the car skin of the reference model"
+      "snapped": "moved 0.16 m onto the car skin of the reference model",
+      "rate_hz": 30.0
     },
     {
       "type": "LIDAR",
@@ -107,7 +115,8 @@
         "y": 2.297,
         "z": 0.555
       },
-      "snapped": "moved 0.06 m onto the car skin of the reference model"
+      "snapped": "moved 0.06 m onto the car skin of the reference model",
+      "rate_hz": 10.0
     },
     {
       "type": "LIDAR",
@@ -119,7 +128,8 @@
         "y": 0.83,
         "z": 1.131
       },
-      "snapped": "moved 0.26 m onto the car skin of the reference model"
+      "snapped": "moved 0.26 m onto the car skin of the reference model",
+      "rate_hz": 10.0
     },
     {
       "type": "LIDAR",
@@ -131,7 +141,8 @@
         "y": 0.831,
         "z": 1.132
       },
-      "snapped": "moved 0.26 m onto the car skin of the reference model"
+      "snapped": "moved 0.26 m onto the car skin of the reference model",
+      "rate_hz": 10.0
     },
     {
       "type": "LIDAR",
@@ -143,7 +154,8 @@
         "y": -2.267,
         "z": 0.609
       },
-      "snapped": "moved 0.03 m onto the car skin of the reference model"
+      "snapped": "moved 0.03 m onto the car skin of the reference model",
+      "rate_hz": 10.0
     },
     {
       "type": "LIDAR",
@@ -155,7 +167,8 @@
         "y": -0.305,
         "z": 1.549
       },
-      "snapped": "moved 0.16 m onto the car skin of the reference model"
+      "snapped": "moved 0.16 m onto the car skin of the reference model",
+      "rate_hz": 10.0
     },
     {
       "type": "IMU",
@@ -166,7 +179,8 @@
         "x": 0.0,
         "y": 0.1,
         "z": 0.62
-      }
+      },
+      "rate_hz": 100.0
     },
     {
       "type": "GPS",
@@ -178,7 +192,8 @@
         "y": -1.204,
         "z": 1.586
       },
-      "snapped": "moved 0.02 m onto the car skin of the reference model"
+      "snapped": "moved 0.02 m onto the car skin of the reference model",
+      "rate_hz": 10.0
     }
   ]
 }

@@ -1,5 +1,5 @@
 {
-  "_comment": "Parameters of the uncertainty-aware constraints. Each block is switched on by its own CLI flag (--sw_margin, --derating, --redundancy, --ai_contention, --robust_latency); --uncertainty switches on all of them. Values are the ones previously hard-coded in optimizer.py / architecture_loader.py.",
+  "_comment": "Parameters of the uncertainty-aware constraints. Each block is switched on by its own CLI flag (--sw_margin, --derating, --redundancy, --ai_contention, --robust_latency); --uncertainty switches on all of them. Latency values in milliseconds.",
   "sw_margin": {
     "_comment": "SW resource demand multiplier = 1 + asil_margin + ai_margin, applied only to SCs of the listed domains.",
     "domains": [
@@ -29,9 +29,9 @@
     "max_per_location": 2
   },
   "robust_latency": {
-    "_comment": "Robust link latency = nominal * network_safety_factor + sync_error_constant + platform_overhead.",
+    "_comment": "Robust chain latency: every network crossing costs nominal * network_safety_factor + sync_ms + platform_ms (ms).",
     "network_safety_factor": 1.1,
-    "sync_error_constant": 0.0005,
-    "platform_overhead": 0.002
+    "sync_ms": 0.5,
+    "platform_ms": 2.0
   }
 }

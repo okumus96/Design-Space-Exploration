@@ -59,7 +59,7 @@ def load_architecture_from_json(json_filepath, config_reader, num_locs=None):
             interface=item['interface'],
             volume=float(item.get('volume', 1.0)),
             location=_position(item),
-            max_latency=item.get('max_latency', None),
+            rate_hz=float(item.get('rate_hz', 10.0)),
         )
         sensors.append(s)
         sensor_by_id[s.id] = s
@@ -73,7 +73,7 @@ def load_architecture_from_json(json_filepath, config_reader, num_locs=None):
             interface=item['interface'],
             volume=float(item.get('volume', 1.0)),
             location=_position(item),
-            max_latency=item.get('max_latency', None),
+            rate_hz=float(item.get('rate_hz', 10.0)),
         )
         actuators.append(a)
         actuator_by_id[a.id] = a
@@ -91,6 +91,7 @@ def load_architecture_from_json(json_filepath, config_reader, num_locs=None):
             asil_req=int(comp.get('asil_req', 0)),
             hw_required=list(comp.get('hw_required', [])),
             redundant_with=comp.get('redundant_with', None),
+            rate_hz=float(comp.get('rate_hz', 10.0)),
         )
 
         sc_type = comp.get('type', '')
@@ -116,23 +117,21 @@ def load_architecture_from_json(json_filepath, config_reader, num_locs=None):
                 continue
 
             src_sc = scs[sc_id_to_idx[src]]
-            volume = 10.0
+            volume, rate_hz = 10.0, float(src_sc.rate_hz or 10.0)
             if src_sc.sensors:
-                sensor_id = src_sc.sensors[0]
-                sensor_obj = sensor_by_id.get(sensor_id)
+                sensor_obj = sensor_by_id.get(src_sc.sensors[0])
                 if sensor_obj is not None:
-                    volume = float(sensor_obj.volume)
+                    volume, rate_hz = float(sensor_obj.volume), float(sensor_obj.rate_hz or 10.0)
             elif src_sc.actuators:
-                actuator_id = src_sc.actuators[0]
-                actuator_obj = actuator_by_id.get(actuator_id)
+                actuator_obj = actuator_by_id.get(src_sc.actuators[0])
                 if actuator_obj is not None:
-                    volume = float(actuator_obj.volume)
+                    volume, rate_hz = float(actuator_obj.volume), float(actuator_obj.rate_hz or 10.0)
 
             comm_matrix.append({
                 'src': src,
                 'dst': dst,
-                'volume': volume,
-                'max_latency': 1.0,
+                'volume': volume,                      # Mbit/s
+                'kbit': volume * 1000.0 / rate_hz,     # size of one message (kbit) at the sender's message rate
             })
 
     return scs, comm_matrix, sensors, actuators, cable_types, locations

@@ -11,7 +11,8 @@
         "y": 1.4,
         "z": 0.3
       },
-      "source": "assumption: steering rack on the front subframe below the drive unit"
+      "source": "assumption: steering rack on the front subframe below the drive unit",
+      "rate_hz": 100.0
     },
     {
       "type": "MOTOR",
@@ -22,7 +23,8 @@
         "x": 0.0,
         "y": 1.5,
         "z": 0.6
-      }
+      },
+      "rate_hz": 100.0
     },
     {
       "type": "BRAKE",
@@ -33,7 +35,8 @@
         "x": 0.45,
         "y": 1.45,
         "z": 0.5
-      }
+      },
+      "rate_hz": 100.0
     },
     {
       "type": "BRAKE",
@@ -44,7 +47,8 @@
         "x": 0.45,
         "y": -1.45,
         "z": 0.4
-      }
+      },
+      "rate_hz": 100.0
     },
     {
       "type": "HVAC",
@@ -55,7 +59,8 @@
         "x": 0.0,
         "y": 1.0,
         "z": 0.7
-      }
+      },
+      "rate_hz": 10.0
     },
     {
       "type": "LIGHT",
@@ -67,7 +72,8 @@
         "y": 1.98,
         "z": 0.72
       },
-      "source": "assumption: lamp control inside the body behind the lens"
+      "source": "assumption: lamp control inside the body behind the lens",
+      "rate_hz": 10.0
     },
     {
       "type": "LIGHT",
@@ -79,7 +85,8 @@
         "y": -2.0,
         "z": 0.92
       },
-      "source": "assumption: lamp control inside the body behind the lens"
+      "source": "assumption: lamp control inside the body behind the lens",
+      "rate_hz": 10.0
     }
   ]
 }

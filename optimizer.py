@@ -4,8 +4,8 @@ os.environ.setdefault("GRB_LICENSE_FILE", os.path.expanduser("~/gurobi.lic"))
 import gurobipy as gp
 from gurobipy import GRB
 from optimizer_utils import (get_distance, build_sensor_lookup, build_actuator_lookup,
-                             precompute_latency_infeasible_pairs, build_cost_map, build_latency_map, extract_solution,
-                             sw_multiplier, site_derating, pack_partitions)
+                             build_cost_map, build_latency_map, extract_solution,
+                             sw_multiplier, site_derating, pack_partitions, flow_routes, crossing_latency_ms)
 
 # Uncertainty-aware constraint blocks, each switched on by its own CLI flag (parameters in configs/uncertainty.json)
 UNCERTAINTY_BLOCKS = ('sw_margin', 'derating', 'redundancy', 'ai_contention', 'robust_latency')
@@ -198,7 +198,7 @@ class AssignmentOptimizer:
             
         return cable_cost_expr, cable_distance_expr, latency_expr
     
-    def _create_model_and_variables(self, n_sc, n_locs, scs, locations, unique_asils, all_hw, sensors, actuators, all_interfaces, infeasible_ij=None, comm_matrix=None, partitions=None, backbone=None):
+    def _create_model_and_variables(self, n_sc, n_locs, scs, locations, unique_asils, all_hw, sensors, actuators, all_interfaces, infeasible_ij=None, comm_matrix=None, partitions=None, backbone=None, cable_types=None):
         """
         Create Gurobi model and define all decision variables
 
@@ -315,12 +315,19 @@ class AssignmentOptimizer:
             for iface in shared_bus_ifaces:
                 shared_extra_trunk_len[j, iface] = model.addVar(vtype=GRB.CONTINUOUS, lb=0.0, name=f"sharedExtraTrunkLen_{locations[j].id}_{iface}")
         
-        # comm[j1,j2,'ETH'] = number of backbone cables between sites j1 and j2 (integer). Every site pair may carry
-        # a cable: the candidate paths below use direct links and the two links of a relaying site.
+        # comm[j1,j2,w] = number of cables of type w between sites j1 and j2 (integer). Every cable type of
+        # configs/buses.json may connect two units; a site pair may carry cables of several types.
+        lazy = bool((backbone or {}).get('lazy_traffic', False))
+        bb_ifaces = list(all_interfaces)
+        if not lazy:
+            bb_ifaces = ['ETH']   # the explicit-traffic variant (experimental) models an Ethernet backbone only
+            print("  explicit traffic variables: backbone restricted to ETH")
+        cap_of = {n: float(getattr((cable_types or {}).get(n), 'capacity', float('inf'))) for n in bb_ifaces}
         comm = {}
         for j1 in range(n_locs):
             for j2 in range(j1 + 1, n_locs):
-                comm[j1, j2, "ETH"] = model.addVar(vtype=GRB.INTEGER, lb=0, name=f"comm_{locations[j1].id}_{locations[j2].id}_ETH")
+                for w_if in bb_ifaces:
+                    comm[j1, j2, w_if] = model.addVar(vtype=GRB.INTEGER, lb=0, name=f"comm_{locations[j1].id}_{locations[j2].id}_{w_if}")
 
         # --- TRAFFIC FLOW GENERATION ---
         traffic_flows = []
@@ -339,7 +346,8 @@ class AssignmentOptimizer:
                         'type': 'SC_SC',  # Tipini belirtiyoruz
                         'src_idx': sc_id_map[src_id], # Kaynak SC index
                         'dst_idx': sc_id_map[dst_id], # Hedef SC index
-                        'volume': vol
+                        'volume': vol,
+                        'kbit': float(link.get('kbit', 0.0)),
                     })
                     t_idx += 1
 
@@ -364,6 +372,7 @@ class AssignmentOptimizer:
                     'sensor_idx': s_idx,
                     'dst_idx': dst_sc_idx,
                     'volume': vol,
+                    'kbit': vol * 1000.0 / float(getattr(s_obj, 'rate_hz', 10.0) or 10.0),
                 })
                 t_idx += 1
 
@@ -386,6 +395,7 @@ class AssignmentOptimizer:
                     'src_idx': src_sc_idx,
                     'act_idx': a_idx,
                     'volume': vol,
+                    'kbit': vol * 1000.0 / float(getattr(a_obj, 'rate_hz', 10.0) or 10.0),
                 })
                 t_idx += 1
 
@@ -396,7 +406,16 @@ class AssignmentOptimizer:
         k_paths = max(1, int((backbone or {}).get('candidate_paths', 3)))
         # lazy_traffic (configs/buses.json): no lnk / f variables; the traffic requirements are enforced as lazy
         # constraints in a callback (see optimize()). The LP is small, the relaxation does not see the traffic.
-        lazy = bool((backbone or {}).get('lazy_traffic', False))
+        # Interface choice per flow: a flow may use every backbone type whose capacity holds its volume (fallback:
+        # the largest type); w[t,iface] selects it when there is more than one option.
+        w, flow_elig = {}, {}
+        for tr in traffic_flows:
+            vol = float(tr['volume'])
+            elig = [n for n in bb_ifaces if vol <= cap_of[n]] or [max(bb_ifaces, key=lambda n: cap_of[n])]
+            flow_elig[tr['id']] = elig
+            if len(elig) > 1:
+                for n in elig:
+                    w[tr['id'], n] = model.addVar(vtype=GRB.BINARY, name=f"w_{tr['id']}_{n}")
         lnk, lnk_terms, pair_vol, flow_ends = {}, [], {}, {}
         for tr in traffic_flows:
             if tr['type'] == 'SC_SC':
@@ -428,14 +447,20 @@ class AssignmentOptimizer:
                      for u in range(n_locs) for v in range(n_locs) if u != v}
         paths, sel, f = {}, {}, {}
         for (u, v) in sorted({(min(a, b), max(a, b)) for (a, b) in pair_vol}):
-            relays = sorted((w for w in range(n_locs) if w not in (u, v)), key=lambda w: site_dist[u, w] + site_dist[w, v])
-            paths[u, v] = [[u, v]] + [[u, w, v] for w in relays[:k_paths - 1]]
-            for p in range(len(paths[u, v])):
-                sel[u, v, p] = model.addVar(vtype=GRB.BINARY, name=f"sel_{locations[u].id}_{locations[v].id}_p{p}")
-                for d in ((0, 1) if not lazy else ()):
-                    f[u, v, p, d] = model.addVar(vtype=GRB.CONTINUOUS, lb=0.0, name=f"f_{locations[u].id}_{locations[v].id}_p{p}_d{d}")
+            relays = sorted((r for r in range(n_locs) if r not in (u, v)), key=lambda r: site_dist[u, r] + site_dist[r, v])
+            for w_if in bb_ifaces:
+                # relaying over a switch exists for Ethernet only; every other type is a direct cable between the two units
+                paths[u, v, w_if] = [[u, v]] + ([[u, r, v] for r in relays[:k_paths - 1]] if w_if == 'ETH' else [])
+                for p in range(len(paths[u, v, w_if])):
+                    sel[u, v, w_if, p] = model.addVar(vtype=GRB.BINARY, name=f"sel_{locations[u].id}_{locations[v].id}_{w_if}_p{p}")
+                    for d in ((0, 1) if not lazy else ()):
+                        f[u, v, w_if, p, d] = model.addVar(vtype=GRB.CONTINUOUS, lb=0.0, name=f"f_{locations[u].id}_{locations[v].id}_{w_if}_p{p}_d{d}")
         net = {'paths': paths, 'sel': sel, 'f': f, 'lnk': lnk, 'lnk_terms': lnk_terms, 'pair_vol': pair_vol, 'flow_ends': flow_ends,
+               'bb_ifaces': bb_ifaces, 'cap_of': cap_of, 'w': w, 'flow_elig': flow_elig,
                'k_paths': k_paths, 'lazy': lazy, 'volumes': {tr['id']: float(tr['volume']) for tr in traffic_flows},
+               'kbit': {tr['id']: float(tr.get('kbit', 0.0)) for tr in traffic_flows},
+               'site_ids': [loc.id for loc in locations],
+               'hop_ms': {n: float(getattr((cable_types or {}).get(n), 'hop_latency_ms', 0.0)) for n in bb_ifaces},
                'conservation_cut': bool((backbone or {}).get('conservation_cut', False)),
                'path_link_cut': bool((backbone or {}).get('path_link_cut', False))}
 
@@ -455,6 +480,7 @@ class AssignmentOptimizer:
             'traffic_flows': len(traffic_flows),
             'lnk': len(lnk),
             'sel': len(sel),
+            'w': len(w),
             'f': len(f),
             'pairs_with_paths': len(paths),
         }
@@ -473,6 +499,7 @@ class AssignmentOptimizer:
             + var_stats['comm']
             + var_stats['lnk']
             + var_stats['sel']
+            + var_stats['w']
             + var_stats['f']
         )
 
@@ -505,7 +532,6 @@ class AssignmentOptimizer:
             'c4_shared_bus_bw': 0,
             'c5_redundancy': 0,
             'c6_ai_contention': 0,
-            'c8_loc_loc_latency': 0,
             'c9_if_activation': 0,
             'c9_attach': 0,
             'c9_shared_attach': 0,
@@ -531,12 +557,11 @@ class AssignmentOptimizer:
         # Data-derived bounds (replace arbitrary Big-M values)
         # comm_ub: a backbone link never carries more than the total traffic volume, and extra parallel links only
         # add cost; 2 keeps the "switch-only node has degree >= 2" rule satisfiable with one neighbour.
-        eth_capacity = float(cable_types['ETH'].capacity)
         total_traffic_volume = sum(float(tr['volume']) for tr in traffic_flows)
-        comm_ub = max(2, int(np.ceil(total_traffic_volume / eth_capacity)))
-        for comm_var in comm.values():
-            comm_var.UB = comm_ub
-        print(f"  Backbone link upper bound: comm <= {comm_ub} (total traffic {total_traffic_volume:.1f}, ETH capacity {eth_capacity:.1f})")
+        comm_ub = {n: max(2, int(np.ceil(total_traffic_volume / cap))) if cap < float('inf') else 2 for n, cap in net['cap_of'].items()}
+        for (_j1, _j2, w_if), comm_var in comm.items():
+            comm_var.UB = comm_ub[w_if]
+        print(f"  Backbone cable upper bounds per type: {comm_ub} (total traffic {total_traffic_volume:.1f})")
 
         # max_periph_dist[j, iface]: farthest peripheral of a shared bus from location j (upper bound of its trunk length)
         max_periph_dist = {}
@@ -870,49 +895,6 @@ class AssignmentOptimizer:
                     )
                     cstats['c6_ai_contention'] += 1
         
-        # Constraint 6/7 (Sensor/Actuator max-latency): precomputed and enforced via sparse z creation.
-        lat_cfg = unc_params.get('robust_latency', {})
-        latency_map = build_latency_map(cable_types)
-
-        def robust_link_latency(iface, dist):
-            nominal = dist * latency_map.get(iface, 0.0)
-            if not unc.get('robust_latency'):
-                return nominal
-            NETWORK_SAFETY_FACTOR = float(lat_cfg['network_safety_factor'])
-            SYNC_ERROR_CONSTANT = float(lat_cfg['sync_error_constant'])
-            PLATFORM_OVERHEAD = float(lat_cfg['platform_overhead'])
-            return (nominal * NETWORK_SAFETY_FACTOR) + SYNC_ERROR_CONSTANT + PLATFORM_OVERHEAD
-        
-        # Constraint 8: Location-Location Communication Latency Constraints
-        if comm_matrix:
-            sc_id_map = {sc.id: i for i, sc in enumerate(scs)}
-            for link in comm_matrix:
-                src_id = link.get('src')
-                dst_id = link.get('dst')
-                max_lat = link.get('max_latency', float('inf'))
-                
-                if src_id not in sc_id_map or dst_id not in sc_id_map:
-                    continue
-                
-                u = sc_id_map[src_id]
-                v = sc_id_map[dst_id]
-                
-                for j1 in feasible_locs_per_sc[u]:
-                    for j2 in feasible_locs_per_sc[v]:
-                        if j1 == j2:
-                            continue
-
-                        dist = get_distance(locations[j1].location, locations[j2].location)
-                        robust_lat = robust_link_latency('ETH', dist)
-                        if robust_lat > max_lat:
-                            model.addConstr(
-                                x_expr(u, j1)
-                                + x_expr(v, j2)
-                                <= 1,
-                                name=f"net_uncertainty_{u}_{v}_{j1}_{j2}"
-                            )
-                            cstats['c8_loc_loc_latency'] += 1
-        
         # Constraint 9a: ECU-to-ECU Communication - Endpoint Activation (Big-M)
         # A backbone link can only touch an "active" node. This prevents the optimizer from
         # opening comm links to completely unused locations.
@@ -923,7 +905,6 @@ class AssignmentOptimizer:
         #
         # Note: This is grouped near interface-activation constraints because all of these
         # constraints directly gate the same decision variable family: comm[j1,j2,*].
-        M = comm_ub  # Big-M value: comm can never exceed its upper bound
         all_interfaces = list(cable_types.keys())
 
         # Build an "active node" expression per location.
@@ -935,7 +916,6 @@ class AssignmentOptimizer:
         # Constraint 9-ATT: ETH sensor/actuator attachments must connect to an active node,
         # and must respect peripheral max-latency on the physical cable to that attachment point.
         # (We do not model end-to-end network latency here; this only constrains the local cable.)
-        latency_map = build_latency_map(cable_types)
         eth_cap_obj = cable_types.get('ETH') if cable_types else None
         eth_cap = getattr(eth_cap_obj, 'capacity', None) if eth_cap_obj is not None else None
         try:
@@ -956,13 +936,6 @@ class AssignmentOptimizer:
                     )
                     cstats['c9_attach'] += 1
 
-                max_lat = getattr(sensors[si], 'max_latency', None)
-                if max_lat is not None and getattr(sensors[si], 'location', None) is not None:
-                    dist = get_distance(sensors[si].location, locations[j].location)
-                    lat = robust_link_latency('ETH', dist)
-                    if lat > max_lat:
-                        model.addConstr(av == 0, name=f"attachS_lat_infeas_{sensors[si].id}_{locations[j].id}")
-                        cstats['c9_attach'] += 1
 
             for si in {k[0] for k in attach_s.keys()}:
                 model.addConstr(
@@ -985,13 +958,6 @@ class AssignmentOptimizer:
                     )
                     cstats['c9_attach'] += 1
 
-                max_lat = getattr(actuators[ai], 'max_latency', None)
-                if max_lat is not None and getattr(actuators[ai], 'location', None) is not None:
-                    dist = get_distance(actuators[ai].location, locations[j].location)
-                    lat = robust_link_latency('ETH', dist)
-                    if lat > max_lat:
-                        model.addConstr(av == 0, name=f"attachA_lat_infeas_{actuators[ai].id}_{locations[j].id}")
-                        cstats['c9_attach'] += 1
 
             for ai in {k[0] for k in attach_a.keys()}:
                 model.addConstr(
@@ -1014,13 +980,6 @@ class AssignmentOptimizer:
                     continue
                 model.addConstr(av <= loc_active[j], name=f"sharedAttachS_active_{sensors[si].id}_{locations[j].id}")
                 cstats['c9_shared_attach'] += 1
-                max_lat = getattr(sensors[si], 'max_latency', None)
-                if max_lat is not None and getattr(sensors[si], 'location', None) is not None:
-                    dist = get_distance(sensors[si].location, locations[j].location)
-                    lat = robust_link_latency(iface, dist)
-                    if lat > max_lat:
-                        model.addConstr(av == 0, name=f"sharedAttachS_lat_infeas_{sensors[si].id}_{locations[j].id}")
-                        cstats['c9_shared_attach'] += 1
 
             for si in {k[0] for k in shared_attach_s.keys()}:
                 model.addConstr(
@@ -1038,13 +997,6 @@ class AssignmentOptimizer:
                     continue
                 model.addConstr(av <= loc_active[j], name=f"sharedAttachA_active_{actuators[ai].id}_{locations[j].id}")
                 cstats['c9_shared_attach'] += 1
-                max_lat = getattr(actuators[ai], 'max_latency', None)
-                if max_lat is not None and getattr(actuators[ai], 'location', None) is not None:
-                    dist = get_distance(actuators[ai].location, locations[j].location)
-                    lat = robust_link_latency(iface, dist)
-                    if lat > max_lat:
-                        model.addConstr(av == 0, name=f"sharedAttachA_lat_infeas_{actuators[ai].id}_{locations[j].id}")
-                        cstats['c9_shared_attach'] += 1
 
             for ai in {k[0] for k in shared_attach_a.keys()}:
                 model.addConstr(
@@ -1157,6 +1109,7 @@ class AssignmentOptimizer:
                     cstats['c9_shared_trunk'] += 1
             
         for (j1, j2, iface), comm_var in comm.items():
+            M = comm_ub[iface]  # a cable count never exceeds its data-derived upper bound
             model.addConstr(
                 comm_var <= M * loc_active[j1],
                 name=f"comm_active_j1_{locations[j1].id}_{locations[j2].id}_{iface}"
@@ -1220,10 +1173,17 @@ class AssignmentOptimizer:
         
         # C-NET: aggregated backbone traffic on candidate paths (replaces the per-flow routing binaries of v1)
         paths, sel, f, lnk, pair_vol = net['paths'], net['sel'], net['f'], net['lnk'], net['pair_vol']
-        eth_cap = float(cable_types['ETH'].capacity)
+        cap_of = net['cap_of']
         has_switch = 'SWITCH' in all_hw
+        lazy = net['lazy']
 
-        # C-NET-1: lnk[t,u,v] >= start_t(u) + end_t(v) - 1
+        # C-NET-0: every flow with a choice uses exactly one backbone cable type
+        for t, elig in net['flow_elig'].items():
+            if len(elig) > 1:
+                model.addConstr(gp.quicksum(net['w'][t, n] for n in elig) == 1, name=f"flow_iface_{t}")
+                cstats['c10_pair_traffic'] += 1
+
+        # C-NET-1 (explicit variant, ETH only): lnk[t,u,v] >= start_t(u) + end_t(v) - 1
         for n_l, (lv, sv, dv) in enumerate(net['lnk_terms']):
             model.addConstr(lv >= sv + dv - 1, name=f"lnk_{n_l}")
             cstats['c10_pair_traffic'] += 1
@@ -1231,7 +1191,7 @@ class AssignmentOptimizer:
         # C-NET-1b (optional, configs/buses.json: backbone.conservation_cut): aggregated conservation, valid and
         # raising the LP bound (root 7,411 -> 7,482 at 10 cells) but the heavier LP made the search slower in the
         # tests of 2026-10-19 (10 cells: 380 s -> time limit); off by default.
-        for t, (src, dst) in (net['flow_ends'].items() if (net.get('conservation_cut') and not net['lazy']) else ()):
+        for t, (src, dst) in (net['flow_ends'].items() if (net.get('conservation_cut') and not lazy) else ()):
             for u, sv in src.items():
                 outs = [lnk[t, u, v] for v in dst if v != u]
                 if outs:
@@ -1243,54 +1203,53 @@ class AssignmentOptimizer:
                     model.addConstr(gp.quicksum(ins) >= dv - src.get(v, 0), name=f"lnk_in_{t}_{locations[v].id}")
                     cstats['c10_pair_traffic'] += 1
 
-        # C-NET-2: the traffic of a site pair is routed on exactly one of its candidate paths (both directions)
+        # C-NET-2: per site pair and cable type at most one candidate path (both directions)
         arc_load = {}
-        lazy = net['lazy']
-        for (u, v), plist in paths.items():
+        for (u, v, w_if), plist in paths.items():
             for p, path in enumerate(plist):
                 for d in ((0, 1) if not lazy else ()):
                     seq = path if d == 0 else path[::-1]
                     for a, b in zip(seq, seq[1:]):
-                        arc_load.setdefault((a, b), gp.LinExpr()).add(f[u, v, p, d], 1.0)
+                        arc_load.setdefault((a, b, w_if), gp.LinExpr()).add(f[u, v, w_if, p, d], 1.0)
             for d, (s, t_) in (enumerate(((u, v), (v, u))) if not lazy else ()):
                 vol_terms = pair_vol.get((s, t_), [])
                 vmax = sum(vol for _, vol in vol_terms)
                 model.addConstr(
-                    gp.quicksum(f[u, v, p, d] for p in range(len(plist))) == gp.quicksum(lv * vol for lv, vol in vol_terms),
+                    gp.quicksum(f[u, v, w_if, p, d] for p in range(len(plist))) == gp.quicksum(lv * vol for lv, vol in vol_terms),
                     name=f"path_volume_{locations[s].id}_{locations[t_].id}"
                 )
                 for p in range(len(plist)):
-                    model.addConstr(f[u, v, p, d] <= vmax * sel[u, v, p], name=f"path_gate_{locations[s].id}_{locations[t_].id}_p{p}")
+                    model.addConstr(f[u, v, w_if, p, d] <= vmax * sel[u, v, w_if, p], name=f"path_gate_{locations[s].id}_{locations[t_].id}_p{p}")
                 cstats['c10_path_choice'] += 1 + len(plist)
-            model.addConstr(gp.quicksum(sel[u, v, p] for p in range(len(plist))) <= 1, name=f"one_path_{locations[u].id}_{locations[v].id}")
+            model.addConstr(gp.quicksum(sel[u, v, w_if, p] for p in range(len(plist))) <= 1, name=f"one_path_{locations[u].id}_{locations[v].id}_{w_if}")
             cstats['c10_path_choice'] += 1
             # Optional (configs/buses.json: backbone.path_link_cut): a flow between the sites needs a selected path,
             # and a selected path has a cable on each of its links. Implied for integer solutions; in the LP it makes
             # a fractional placement pay a proportional share of a whole cable instead of load / capacity.
             if net.get('path_link_cut'):
-                sel_sum = gp.quicksum(sel[u, v, p] for p in range(len(plist)))
+                sel_sum = gp.quicksum(sel[u, v, w_if, p] for p in range(len(plist)))
                 for (s, t_) in (((u, v), (v, u)) if not lazy else ()):
                     for lv, _vol in pair_vol.get((s, t_), []):
                         model.addConstr(sel_sum >= lv, name=f"path_needed_{len(net['lnk'])}_{cstats['c10_path_choice']}")
                         cstats['c10_path_choice'] += 1
                 for p, path in enumerate(plist):
                     for a, b in zip(path, path[1:]):
-                        key = (a, b, 'ETH') if a < b else (b, a, 'ETH')
-                        model.addConstr(comm[key] >= sel[u, v, p], name=f"path_cable_{locations[u].id}_{locations[v].id}_p{p}_{locations[a].id}_{locations[b].id}")
+                        key = (a, b, w_if) if a < b else (b, a, w_if)
+                        model.addConstr(comm[key] >= sel[u, v, w_if, p], name=f"path_cable_{locations[u].id}_{locations[v].id}_{w_if}_p{p}_{locations[a].id}_{locations[b].id}")
                         cstats['c10_path_choice'] += 1
             # C-NET-3: a relaying site needs a SWITCH
             for p, path in enumerate(plist):
-                for w in path[1:-1]:
+                for r in path[1:-1]:
                     if has_switch:
-                        model.addConstr(sel[u, v, p] <= hw_use[w, 'SWITCH'], name=f"relay_switch_{locations[u].id}_{locations[v].id}_p{p}_{locations[w].id}")
+                        model.addConstr(sel[u, v, w_if, p] <= hw_use[r, 'SWITCH'], name=f"relay_switch_{locations[u].id}_{locations[v].id}_p{p}_{locations[r].id}")
                     else:
-                        model.addConstr(sel[u, v, p] == 0, name=f"relay_impossible_{locations[u].id}_{locations[v].id}_p{p}")
+                        model.addConstr(sel[u, v, w_if, p] == 0, name=f"relay_impossible_{locations[u].id}_{locations[v].id}_p{p}")
                     cstats['c10_relay_switch'] += 1
 
-        # C-NET-4: link capacity per direction: routed volume <= ETH capacity * number of cables
-        for (a, b), load in arc_load.items():
-            key = (a, b, 'ETH') if a < b else (b, a, 'ETH')
-            model.addConstr(load <= eth_cap * comm[key], name=f"link_capacity_{locations[a].id}_{locations[b].id}")
+        # C-NET-4 (explicit variant): link capacity per direction and cable type
+        for (a, b, w_if), load in arc_load.items():
+            key = (a, b, w_if) if a < b else (b, a, w_if)
+            model.addConstr(load <= cap_of[w_if] * comm[key], name=f"link_capacity_{locations[a].id}_{locations[b].id}_{w_if}")
             cstats['c10_link_capacity'] += 1
 
         cstats['total'] = sum(v for k, v in cstats.items() if k != 'total')
@@ -1364,7 +1323,7 @@ class AssignmentOptimizer:
 
         return model, objectives
 
-    def optimize(self, scs, locations, sensors, actuators, cable_types, comm_matrix, partitions=None, hardwares=None, interfaces=None, enable_comm_bw_constraints=True, comm_bw_big_m=10000, minimize_cable_length=False, cable_length_limit=None, cost_limit=None, time_limit=None, mip_gap=None, lp_path=None, uncertainty=None, backbone=None, phase2_time=600, gurobi_params=None, branch_priority=False):
+    def optimize(self, scs, locations, sensors, actuators, cable_types, comm_matrix, partitions=None, hardwares=None, interfaces=None, enable_comm_bw_constraints=True, comm_bw_big_m=10000, minimize_cable_length=False, cable_length_limit=None, cost_limit=None, time_limit=None, mip_gap=None, lp_path=None, uncertainty=None, backbone=None, phase2_time=600, gurobi_params=None, branch_priority=False, chains=None):
         """
         Dynamic selection of partitions + HW + interfaces + cables.
         
@@ -1405,14 +1364,12 @@ class AssignmentOptimizer:
               f"site caps cpu/ram/rom={partitions.get('site_cpu_cap')}/{partitions.get('site_ram_cap')}/{partitions.get('site_rom_cap')}, fixed cost={partitions.get('site_fixed_cost', 0)}")
         
         # ======================= PRECOMPUTE FEASIBILITY =======================
-        infeasible_ij = precompute_latency_infeasible_pairs(scs, locations, sensors, actuators, cable_types)
-        if infeasible_ij:
-            print(f"  Precomputed infeasible SC-location pairs (latency): {len(infeasible_ij)}")
+        infeasible_ij = set()   # placement restrictions from timing are enforced through the chain constraints
 
         # ======================= CREATE MODEL & VARIABLES =======================
         model, x, P, y, hw_use, if_use, attach_s, attach_a, shared_attach_s, shared_attach_a, shared_trunk_len, shared_extra_trunk_len, comm, traffic_flows, net, feasible_locs_per_sc, feasible_scs_per_loc, var_stats = self._create_model_and_variables(
             n_sc, n_locs, scs, locations, unique_asils, all_hw, sensors, actuators, all_interfaces, infeasible_ij=infeasible_ij, comm_matrix=comm_matrix,
-            partitions=partitions, backbone=backbone
+            partitions=partitions, backbone=backbone, cable_types=cable_types
         )
         
         # ======================= ADD CONSTRAINTS =======================
@@ -1499,51 +1456,100 @@ class AssignmentOptimizer:
 
         # Lazy traffic constraints (configs/buses.json: backbone.lazy_traffic): every integer solution is checked;
         # a site pair with traffic but no selected path, or a link carrying more than its cables allow, adds a cut.
+        # Chain latency (configs/chains.json): per chain the flows between its consecutive components, including the
+        # sensor-to-driver and driver-to-actuator links of Ethernet peripherals; budget = network time allowed.
+        unc_lat = (uncertainty or {}).get('params', {}).get('robust_latency', {})
+        net['lat'] = {'robust': bool((uncertainty or {}).get('robust_latency')),
+                      'factor': float(unc_lat.get('network_safety_factor', 1.0)),
+                      'sync': float(unc_lat.get('sync_ms', 0.0)), 'platform': float(unc_lat.get('platform_ms', 0.0))}
+        sc_index = {sc.id: i for i, sc in enumerate(scs)}
+        flow_of_pair = {(tr['src_idx'], tr['dst_idx']): tr['id'] for tr in traffic_flows if tr['type'] == 'SC_SC'}
+        flow_into = {tr['dst_idx']: tr['id'] for tr in traffic_flows if tr['type'] == 'SENS_SC'}
+        flow_from = {tr['src_idx']: tr['id'] for tr in traffic_flows if tr['type'] == 'SC_ACT'}
+        net['chains'] = []
+        for ch in (chains or []):
+            idx = [sc_index[s] for s in ch['swcs'] if s in sc_index]
+            flows = [flow_into[idx[0]]] if idx and idx[0] in flow_into else []
+            flows += [flow_of_pair[a, b] for a, b in zip(idx, idx[1:]) if (a, b) in flow_of_pair]
+            flows += [flow_from[idx[-1]]] if idx and idx[-1] in flow_from else []
+            net['chains'].append({'id': ch['id'], 'budget': float(ch['net_budget_ms']), 'flows': flows})
+        if net['chains']:
+            print(f"  Chains: {len(net['chains'])} (network budgets {min(c['budget'] for c in net['chains']):.1f} - "
+                  f"{max(c['budget'] for c in net['chains']):.1f} ms, robust latency {net['lat']['robust']})")
+
         lazy_cb = None
         if net['lazy']:
             model.setParam('LazyConstraints', 1)
-            end_vars, end_index = [], {}
+            watched = []
             for t, (src, dst) in net['flow_ends'].items():
-                for var in list(src.values()) + list(dst.values()):
-                    if id(var) not in end_index:
-                        end_index[id(var)] = len(end_vars)
-                        end_vars.append(var)
-            sel_keys = list(net['sel'].keys())
-            sel_vars = [net['sel'][k] for k in sel_keys]
+                watched += list(src.values()) + list(dst.values())
+            watched += list(net['sel'].values()) + list(net['w'].values())
+            seen_ids, cb_vars = set(), []
+            for var in watched:
+                if id(var) not in seen_ids:
+                    seen_ids.add(id(var)); cb_vars.append(var)
             comm_keys = list(comm.keys())
             comm_vars = [comm[k] for k in comm_keys]
-            eth_cap = float(cable_types['ETH'].capacity)
+            cap_of = net['cap_of']
             model._lazy_cuts = 0
 
             def lazy_cb(m, where):
                 if where != GRB.Callback.MIPSOL:
                     return
-                ev = m.cbGetSolution(end_vars)
-                sv = dict(zip(sel_keys, m.cbGetSolution(sel_vars)))
+                vals = dict(zip((id(v) for v in cb_vars), m.cbGetSolution(cb_vars)))
                 cv = dict(zip(comm_keys, m.cbGetSolution(comm_vars)))
-                load, contrib = {}, {}
-                for t, (src, dst) in net['flow_ends'].items():
-                    u = next((k for k, var in src.items() if ev[end_index[id(var)]] > 0.5), None)
-                    v = next((k for k, var in dst.items() if ev[end_index[id(var)]] > 0.5), None)
-                    if u is None or v is None or u == v:
-                        continue
+                routes = flow_routes(net, lambda var: vals[id(var)])
+
+                def indicator(t, u, v, w_if, p):
+                    # linear lower bound of [flow t starts at u, ends at v, uses type w_if on path p]
+                    src, dst = net['flow_ends'][t]
                     pair = (min(u, v), max(u, v))
-                    plist = net['paths'][pair]
-                    chosen = [p for p in range(len(plist)) if sv[pair + (p,)] > 0.5]
-                    if not chosen:
-                        m.cbLazy(gp.quicksum(net['sel'][pair + (p,)] for p in range(len(plist))) >= src[u] + dst[v] - 1)
+                    expr = src[u] + dst[v] + net['sel'][pair + (w_if, p)] - 2
+                    if len(net['flow_elig'][t]) > 1:
+                        expr = expr + net['w'][t, w_if] - 1
+                    return expr
+
+                load, contrib = {}, {}
+                for t, r in routes.items():
+                    if r is None:
+                        continue
+                    u, v, w_if, p = r
+                    pair = (min(u, v), max(u, v))
+                    plist = net['paths'][pair + (w_if,)]
+                    if p is None:
+                        # a pair with traffic of this type needs a selected path of this type
+                        src, dst = net['flow_ends'][t]
+                        rhs = src[u] + dst[v] - 1
+                        if len(net['flow_elig'][t]) > 1:
+                            rhs = rhs + net['w'][t, w_if] - 1
+                        m.cbLazy(gp.quicksum(net['sel'][pair + (w_if, q)] for q in range(len(plist))) >= rhs)
                         m._lazy_cuts += 1
                         continue
-                    p = chosen[0]
                     seq = plist[p] if (u, v) == pair else plist[p][::-1]
                     vol = net['volumes'][t]
                     for a, b in zip(seq, seq[1:]):
-                        load[(a, b)] = load.get((a, b), 0.0) + vol
-                        contrib.setdefault((a, b), []).append((src[u], dst[v], net['sel'][pair + (p,)], vol))
-                for (a, b), ld in load.items():
-                    key = (a, b, 'ETH') if a < b else (b, a, 'ETH')
-                    if ld > eth_cap * cv[key] + 1e-6:
-                        m.cbLazy(eth_cap * comm[key] >= gp.quicksum(vol * (s_var + d_var + sel_var - 2) for s_var, d_var, sel_var, vol in contrib[(a, b)]))
+                        load[(a, b, w_if)] = load.get((a, b, w_if), 0.0) + vol
+                        contrib.setdefault((a, b, w_if), []).append((indicator(t, u, v, w_if, p), vol))
+                for (a, b, w_if), ld in load.items():
+                    key = (a, b, w_if) if a < b else (b, a, w_if)
+                    if ld > cap_of[w_if] * cv[key] + 1e-6:
+                        # cables of this type on the link must carry the volume of every flow routed over it
+                        m.cbLazy(cap_of[w_if] * comm[key] >= gp.quicksum(vol * ind for ind, vol in contrib[(a, b, w_if)]))
+                        m._lazy_cuts += 1
+                # chain latency: the network time of a chain must stay within its budget
+                for ch in net['chains']:
+                    terms, total = [], 0.0
+                    for t in ch['flows']:
+                        r = routes.get(t)
+                        if r is None or r[3] is None:
+                            continue
+                        u, v, w_if, p = r
+                        hops = len(net['paths'][(min(u, v), max(u, v), w_if)][p]) - 1
+                        ms = crossing_latency_ms(net, t, w_if, hops)
+                        terms.append(ms * indicator(t, u, v, w_if, p))
+                        total += ms
+                    if total > ch['budget'] + 1e-6:
+                        m.cbLazy(gp.quicksum(terms) <= ch['budget'])
                         m._lazy_cuts += 1
 
         def _solve_lexicographic():
@@ -1625,7 +1631,9 @@ class AssignmentOptimizer:
                 'packing_cuts': packing_cuts,
                 'backbone_candidate_paths': net['k_paths'],
                 'lazy_traffic': net['lazy'],
+                'backbone_interfaces': net['bb_ifaces'],
                 'lazy_cuts': int(getattr(model, '_lazy_cuts', 0)),
+                'chains': len(net.get('chains', [])),
                 'gurobi_params': gurobi_params,
                 'branch_priority': bool(branch_priority),
                 'runtime_s': sum(ph['runtime_s'] for ph in phases),
@@ -1664,7 +1672,7 @@ class AssignmentOptimizer:
     def optimize_pareto_epsilon_constraint(self, scs, locations, sensors, actuators, cable_types, comm_matrix,
                                            partitions=None, hardwares=None, interfaces=None,
                                            enable_comm_bw_constraints=True, comm_bw_big_m=10000, num_points=5,
-                                           solve_time_limit=None, mip_gap=None, lp_dir=None, uncertainty=None, backbone=None, phase2_time=600, gurobi_params=None, branch_priority=False):
+                                           solve_time_limit=None, mip_gap=None, lp_dir=None, uncertainty=None, backbone=None, phase2_time=600, gurobi_params=None, branch_priority=False, chains=None):
         """
         Build Pareto front between total_cost and cable_length via epsilon-constraint.
 
@@ -1693,7 +1701,7 @@ class AssignmentOptimizer:
             time_limit=solve_time_limit,
             mip_gap=mip_gap,
             lp_path=_lp("min_cost"),
-            uncertainty=uncertainty, backbone=backbone, phase2_time=phase2_time, gurobi_params=gurobi_params, branch_priority=branch_priority
+            uncertainty=uncertainty, backbone=backbone, phase2_time=phase2_time, gurobi_params=gurobi_params, branch_priority=branch_priority, chains=chains
         )
 
         if num_points is not None and int(num_points) == 1:
@@ -1710,7 +1718,7 @@ class AssignmentOptimizer:
             time_limit=solve_time_limit,
             mip_gap=mip_gap,
             lp_path=_lp("min_cable"),
-            uncertainty=uncertainty, backbone=backbone, phase2_time=phase2_time, gurobi_params=gurobi_params, branch_priority=branch_priority
+            uncertainty=uncertainty, backbone=backbone, phase2_time=phase2_time, gurobi_params=gurobi_params, branch_priority=branch_priority, chains=chains
         )
 
         pareto_solutions = []
@@ -1773,7 +1781,7 @@ class AssignmentOptimizer:
                         time_limit=solve_time_limit,
                         mip_gap=mip_gap,
                         lp_path=_lp(f"eps_cost_{k}"),
-                        uncertainty=uncertainty, backbone=backbone, phase2_time=phase2_time, gurobi_params=gurobi_params, branch_priority=branch_priority
+                        uncertainty=uncertainty, backbone=backbone, phase2_time=phase2_time, gurobi_params=gurobi_params, branch_priority=branch_priority, chains=chains
                     )
                     _add_unique(sol_eps)
             else:
@@ -1794,7 +1802,7 @@ class AssignmentOptimizer:
                         time_limit=solve_time_limit,
                         mip_gap=mip_gap,
                         lp_path=_lp(f"eps_cable_{k}"),
-                        uncertainty=uncertainty, backbone=backbone, phase2_time=phase2_time, gurobi_params=gurobi_params, branch_priority=branch_priority
+                        uncertainty=uncertainty, backbone=backbone, phase2_time=phase2_time, gurobi_params=gurobi_params, branch_priority=branch_priority, chains=chains
                     )
                     _add_unique(sol_eps)
 

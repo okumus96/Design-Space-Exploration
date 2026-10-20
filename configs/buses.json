@@ -2,45 +2,45 @@
   "cable_types": {
     "ETH": {
       "cost_per_meter": 100.0,
-      "latency_per_meter": 0.1,
       "weight_per_meter": 50,
       "capacity": 1000,
-      "port_cost": 10
+      "port_cost": 10,
+      "hop_latency_ms": 0.1
     },
     "FLEXRAY": {
       "cost_per_meter": 30.0,
-      "latency_per_meter": 0.1,
       "weight_per_meter": 30,
       "capacity": 300,
-      "port_cost": 5
+      "port_cost": 5,
+      "hop_latency_ms": 1.0
     },
     "CAN": {
       "cost_per_meter": 20.0,
-      "latency_per_meter": 0.1,
       "weight_per_meter": 20,
       "capacity": 100,
-      "port_cost": 5
+      "port_cost": 5,
+      "hop_latency_ms": 2.0
     },
     "LIN": {
       "cost_per_meter": 10.0,
-      "latency_per_meter": 0.1,
       "weight_per_meter": 10,
       "capacity": 20,
-      "port_cost": 5
+      "port_cost": 5,
+      "hop_latency_ms": 10.0
     },
     "UART": {
       "cost_per_meter": 5.0,
-      "latency_per_meter": 0.1,
       "weight_per_meter": 5,
       "capacity": 10,
-      "port_cost": 5
+      "port_cost": 5,
+      "hop_latency_ms": 1.0
     },
     "SPI": {
       "cost_per_meter": 5.0,
-      "latency_per_meter": 0.1,
       "weight_per_meter": 5,
       "capacity": 50,
-      "port_cost": 5
+      "port_cost": 5,
+      "hop_latency_ms": 0.1
     }
   },
   "backbone": {
@@ -49,5 +49,6 @@
     "conservation_cut": false,
     "path_link_cut": true,
     "lazy_traffic": true
-  }
+  },
+  "_comment": "cable_types: cost per metre, weight per metre, capacity = bit rate (Mbit/s, same units as flow volumes), port cost, hop_latency_ms = per-hop processing/queueing bound (switch forwarding, bus arbitration). Every type may connect two control units; the optimiser picks per data flow which type carries it. Latency of a message over a link of a type = message kbit / capacity + hop_latency_ms per hop (HANDOFF 14.3)."
 }

@@ -88,73 +88,51 @@ def build_latency_map(cable_types):
     return {name: ct.latency_per_meter for name, ct in cable_types.items()}
 
 
-def precompute_latency_infeasible_pairs(scs, locations, sensors, actuators, cable_types):
-    """
-    Precompute infeasible (sc_idx, loc_idx) pairs due to sensor/actuator max-latency constraints.
+def flow_routes(net, getv):
+    """Per flow of the current solution: (start site, end site, cable type, index of the selected path) or None when
+    both ends share a site; the path index is None when no path of the pair and type is selected. getv(var) returns
+    the value of a variable (callback solution or .X)."""
+    routes = {}
+    for t, (src, dst) in net['flow_ends'].items():
+        u = next((k for k, var in src.items() if getv(var) > 0.5), None)
+        v = next((k for k, var in dst.items() if getv(var) > 0.5), None)
+        if u is None or v is None or u == v:
+            routes[t] = None
+            continue
+        elig = net['flow_elig'][t]
+        w_if = elig[0] if len(elig) == 1 else max(elig, key=lambda n: getv(net['w'][t, n]))
+        pair = (min(u, v), max(u, v))
+        plist = net['paths'][pair + (w_if,)]
+        chosen = [p for p in range(len(plist)) if getv(net['sel'][pair + (w_if, p)]) > 0.5]
+        routes[t] = (u, v, w_if, chosen[0] if chosen else None)
+    return routes
 
-    This identifies which software components cannot be placed at which locations because 
-    the latency required for sensor/actuator communication would exceed the maximum allowed latency.
-    
-    This replaces adding many explicit constraints like:
-        sum_p z[i,j,a,p] == 0
-    by directly setting the corresponding z variables' upper bounds to 0.
-    
-    Args:
-        scs: List of software component objects, each with 'sensors' and 'actuators' attributes
-        locations: List of location/ECU objects with a `.location` attribute (Point)
-        sensors: List of sensor objects with 'id', 'location', 'interface', and 'max_latency' attributes
-        actuators: List of actuator objects with 'id', 'location', 'interface', and 'max_latency' attributes
-        cable_types: Dict mapping cable type names to cable type objects with 'latency_per_meter' attribute
-    
-    Returns:
-        set: Set of (sc_index, location_index) tuples that are infeasible due to latency constraints
-    """
-    latency_map = {name: ct.latency_per_meter for name, ct in cable_types.items()}
-    sensor_lookup = build_sensor_lookup(sensors)
-    actuator_lookup = build_actuator_lookup(actuators)
 
-    infeasible = set()
-    n_sc = len(scs)
-    n_locs = len(locations)
+def crossing_latency_ms(net, t, w_if, hops):
+    """Network latency of flow t over `hops` links of type w_if: hops * (message kbit / bit rate + per-hop bound), with
+    the --robust_latency safety factor and the synchronisation / platform constants of configs/uncertainty.json."""
+    lat = net['lat']
+    base = hops * (net['kbit'][t] / net['cap_of'][w_if] + net['hop_ms'][w_if])
+    return base * lat['factor'] + lat['sync'] + lat['platform'] if lat['robust'] else base
 
-    for i in range(n_sc):
-        # Check sensor latency constraints
-        for s_id in getattr(scs[i], 'sensors', []) or []:
-            sensor = sensor_lookup.get(s_id)
-            if not sensor or not getattr(sensor, 'max_latency', None):
-                continue
-            # ETH sensors may attach to a switch/ECU node; do not preclude SWC placement based on
-            # direct sensor->ECU wiring latency in that case.
-            if getattr(sensor, 'interface', None) == 'ETH':
-                continue
-            if not getattr(sensor, 'location', None):
-                continue
-            for j in range(n_locs):
-                if not getattr(locations[j], 'location', None):
-                    continue
-                dist = get_distance(sensor.location, locations[j].location)
-                latency = dist * latency_map.get(getattr(sensor, 'interface', None), 0.0)
-                if latency > sensor.max_latency:
-                    infeasible.add((i, j))
 
-        # Check actuator latency constraints
-        for a_id in getattr(scs[i], 'actuators', []) or []:
-            actuator = actuator_lookup.get(a_id)
-            if not actuator or not getattr(actuator, 'max_latency', None):
+def chain_latencies(net, routes):
+    """Network latency of every cause-effect chain (configs/chains.json) for the routes of a solution."""
+    out = {}
+    for ch in net.get('chains', []):
+        total, crossings = 0.0, []
+        for t in ch['flows']:
+            r = routes.get(t)
+            if r is None or r[3] is None:
                 continue
-            if getattr(actuator, 'interface', None) == 'ETH':
-                continue
-            if not getattr(actuator, 'location', None):
-                continue
-            for j in range(n_locs):
-                if not getattr(locations[j], 'location', None):
-                    continue
-                dist = get_distance(actuator.location, locations[j].location)
-                latency = dist * latency_map.get(getattr(actuator, 'interface', None), 0.0)
-                if latency > actuator.max_latency:
-                    infeasible.add((i, j))
-
-    return infeasible
+            u, v, w_if, p = r
+            hops = len(net['paths'][(min(u, v), max(u, v), w_if)][p]) - 1
+            ms = crossing_latency_ms(net, t, w_if, hops)
+            total += ms
+            crossings.append({'flow': t, 'from': net['site_ids'][u], 'to': net['site_ids'][v], 'iface': w_if, 'hops': hops, 'ms': round(ms, 3)})
+        out[ch['id']] = {'latency_ms': round(total, 3), 'budget_ms': ch['budget'], 'ok': bool(total <= ch['budget'] + 1e-6),
+                         'crossings': crossings}
+    return out
 
 
 # ============================================================================
@@ -665,6 +643,7 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
         # Backbone routing: chosen candidate path and routed volume per site pair
         comm_link_peak_load = {}
         backbone_routes = []
+        chain_latency = {}
         print(f"\n[DEBUG] Backbone routing (site pairs with traffic):")
         if not net:
             print("  Routing unavailable (net not provided to extract_solution)")
@@ -673,38 +652,45 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
             arc_load = {}
             relayed = 0
             pair_dir_vol = {}
-            if net.get('lazy'):   # no volume variables: pair volumes from the placement of the flow endpoints
+            if net.get('lazy'):   # no volume variables: pair volumes per cable type from the flow endpoints and w
                 for t, (src, dst) in net['flow_ends'].items():
                     u = next((k for k, var in src.items() if var.X > 0.5), None)
                     v = next((k for k, var in dst.items() if var.X > 0.5), None)
                     if u is None or v is None or u == v:
                         continue
+                    elig = net['flow_elig'][t]
+                    w_if = elig[0] if len(elig) == 1 else max(elig, key=lambda n: net['w'][t, n].X)
                     pair = (min(u, v), max(u, v))
-                    pair_dir_vol.setdefault(pair, [0.0, 0.0])[0 if (u, v) == pair else 1] += net['volumes'][t]
-            for (u, v), plist in paths.items():
-                chosen = [p for p in range(len(plist)) if sel[u, v, p].X > 0.5]
+                    pair_dir_vol.setdefault(pair + (w_if,), [0.0, 0.0])[0 if (u, v) == pair else 1] += net['volumes'][t]
+            for (u, v, w_if), plist in paths.items():
+                chosen = [p for p in range(len(plist)) if sel[u, v, w_if, p].X > 0.5]
                 if not chosen:
                     continue
                 p = chosen[0]
                 path = plist[p]
                 if net.get('lazy'):
-                    vol_fwd, vol_rev = pair_dir_vol.get((u, v), [0.0, 0.0])
+                    vol_fwd, vol_rev = pair_dir_vol.get((u, v, w_if), [0.0, 0.0])
                 else:
-                    vol_fwd, vol_rev = float(f[u, v, p, 0].X), float(f[u, v, p, 1].X)
+                    vol_fwd, vol_rev = float(f[u, v, w_if, p, 0].X), float(f[u, v, w_if, p, 1].X)
                 if vol_fwd + vol_rev <= 1e-3:   # a selected path without traffic carries nothing (no cable needed)
                     continue
                 for vol, seq in ((vol_fwd, path), (vol_rev, path[::-1])):
                     for a, b in zip(seq, seq[1:]):
-                        arc_load[(a, b)] = arc_load.get((a, b), 0.0) + vol
+                        arc_load[(a, b, w_if)] = arc_load.get((a, b, w_if), 0.0) + vol
                 ids = [locations[j].id for j in path]
                 relayed += int(len(path) > 2)
-                backbone_routes.append({'src_loc': ids[0], 'dst_loc': ids[-1], 'path': ids,
+                backbone_routes.append({'src_loc': ids[0], 'dst_loc': ids[-1], 'iface': w_if, 'path': ids,
                                         'volume_fwd': round(vol_fwd, 3), 'volume_rev': round(vol_rev, 3)})
-                print(f"  {ids[0]} <-> {ids[-1]}: {' -> '.join(ids)}  volume {vol_fwd:.1f} / {vol_rev:.1f}" + ("  (relayed)" if len(path) > 2 else ""))
+                print(f"  {ids[0]} <-> {ids[-1]} [{w_if}]: {' -> '.join(ids)}  volume {vol_fwd:.1f} / {vol_rev:.1f}" + ("  (relayed)" if len(path) > 2 else ""))
             print(f"  Summary: {len(backbone_routes)} site pairs with traffic, {relayed} relayed")
-            for (a, b), load in arc_load.items():
-                key = f"{locations[min(a, b)].id}|{locations[max(a, b)].id}|ETH"
+            for (a, b, w_if), load in arc_load.items():
+                key = f"{locations[min(a, b)].id}|{locations[max(a, b)].id}|{w_if}"
                 comm_link_peak_load[key] = max(comm_link_peak_load.get(key, 0.0), float(load))
+            if net.get('chains'):
+                chain_latency = chain_latencies(net, flow_routes(net, lambda var: var.X))
+                print(f"\n[DEBUG] Chain network latency (ms):")
+                for cid, c in chain_latency.items():
+                    print(f"  {cid:42s} {c['latency_ms']:8.3f} / budget {c['budget_ms']:7.1f}  crossings {len(c['crossings'])}  {'ok' if c['ok'] else 'VIOLATED'}")
 
         total_cost = partition_cost + site_cost + hw_cost + if_cost + cable_cost + comm_cost
 
@@ -743,6 +729,7 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
             'comm_links': comm_links,
             'comm_link_peak_load': comm_link_peak_load,
             'backbone_routes': backbone_routes,
+            'chain_latency': chain_latency,
             'eth_sensor_attachments': eth_sensor_attachments,
             'eth_actuator_attachments': eth_actuator_attachments,
             'shared_sensor_attachments': shared_sensor_attachments,
