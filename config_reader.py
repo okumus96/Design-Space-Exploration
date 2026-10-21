@@ -72,7 +72,8 @@ class ConfigReader:
                 weight_per_meter=specs['weight_per_meter'],
                 capacity=specs.get('capacity', float('inf')),
                 port_cost = specs.get('port_cost', 0),
-                hop_latency_ms=float(specs.get('hop_latency_ms', 0.0))
+                hop_latency_ms=float(specs.get('hop_latency_ms', 0.0)),
+                frame_kbit=float(specs.get('frame_kbit', float('inf')))
             )
         return cable_types
     

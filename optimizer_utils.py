@@ -183,9 +183,10 @@ def flow_routes(net, getv):
 
 # ---------------------------------------------------------------------------------------------- network latency
 # A crossing of a routed flow costs, per hop: its own transmission (message kbit / bit rate), the per-hop bound of the
-# type, and the queue in front of it: every other message on the same resource (a directed cable or a bus line,
-# including the devices of the line) is sent once before it (no priorities assumed). With --robust_latency the
-# crossing is multiplied by the safety factor and gets the synchronisation and platform constants.
+# type, and the queue in front of it on the same resource (a directed cable or a bus line, including the devices of the
+# line): every other message of equal or higher priority once, plus at most one frame of a lower-priority one (see
+# queue_ms; without priorities every other message once). With --robust_latency the crossing is multiplied by the
+# safety factor and gets the synchronisation and platform constants.
 
 def route_resources(net, u, v, w_if, p):
     """resources a routed flow loads: the directed links of its path (point-to-point types) or its bus line"""
@@ -232,9 +233,32 @@ def resource_rate(net, res):
     return net['cap_of'][res[1][0] if res[0] == 'line' else res[2]]
 
 
+def message_prio(net, msg):
+    """priority key of a message, lower = more urgent (configs/buses.json: backbone.priorities): a chain message has the
+    tightest budget of its chains, every other message comes last; without priorities all keys are equal"""
+    pr = net.get('prio')
+    if not pr:
+        return 0.0
+    return pr['f' if msg[0] == 'f' else 'd'].get(msg[1], float('inf'))
+
+
+def frame_kbit(net, res):
+    return net.get('frame_kbit', {}).get(res[1][0] if res[0] == 'line' else res[2], float('inf'))
+
+
 def queue_ms(net, res, me, msgs):
-    """worst-case wait on a resource: every other message on it is sent once before `me`"""
-    return sum(message_kbit(net, mm) for mm in msgs.get(res, []) if mm != me) / resource_rate(net, res)
+    """worst-case wait on a resource with fixed-priority, non-preemptive arbitration: every other message of equal or
+    higher priority is sent once before `me`, plus at most one frame of a lower-priority message already on the wire
+    (without priorities: every other message once)"""
+    pm, wait, block = message_prio(net, me), 0.0, 0.0
+    for mm in msgs.get(res, []):
+        if mm == me:
+            continue
+        if message_prio(net, mm) <= pm:
+            wait += message_kbit(net, mm)
+        else:
+            block = max(block, min(message_kbit(net, mm), frame_kbit(net, res)))
+    return (wait + block) / resource_rate(net, res)
 
 
 def robust_ms(net, base):

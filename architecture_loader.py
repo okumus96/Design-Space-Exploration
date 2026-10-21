@@ -92,6 +92,7 @@ def load_architecture_from_json(json_filepath, config_reader, num_locs=None):
             hw_required=list(comp.get('hw_required', [])),
             redundant_with=comp.get('redundant_with', None),
             rate_hz=float(comp.get('rate_hz', 10.0)),
+            msg_kbit=(float(comp['msg_kbit']) if comp.get('msg_kbit') is not None else None),
         )
 
         sc_type = comp.get('type', '')
@@ -118,7 +119,10 @@ def load_architecture_from_json(json_filepath, config_reader, num_locs=None):
 
             src_sc = scs[sc_id_to_idx[src]]
             volume, rate_hz = 10.0, float(src_sc.rate_hz or 10.0)
-            if src_sc.sensors:
+            if src_sc.msg_kbit is not None:
+                # the sender's message size and rate (architecture JSON: msg_kbit, rate_hz), also for device drivers
+                volume = src_sc.msg_kbit * rate_hz / 1000.0
+            elif src_sc.sensors:
                 sensor_obj = sensor_by_id.get(src_sc.sensors[0])
                 if sensor_obj is not None:
                     volume, rate_hz = float(sensor_obj.volume), float(sensor_obj.rate_hz or 10.0)

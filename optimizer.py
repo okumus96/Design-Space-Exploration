@@ -1,5 +1,6 @@
 import itertools
 import os
+import time
 import numpy as np
 os.environ.setdefault("GRB_LICENSE_FILE", os.path.expanduser("~/gurobi.lic"))
 import gurobipy as gp
@@ -7,7 +8,8 @@ from gurobipy import GRB
 from optimizer_utils import (get_distance, build_sensor_lookup, build_actuator_lookup,
                              build_cost_map, build_latency_map, extract_solution,
                              sw_multiplier, site_derating, pack_partitions, flow_routes, chain_latencies, steiner_tree,
-                             resource_messages, message_kbit, resource_rate, crossing_ms, robust_ms, device_line, device_ms)
+                             resource_messages, message_kbit, resource_rate, crossing_ms, robust_ms, device_line, device_ms,
+                             message_prio, frame_kbit, queue_ms)
 
 # Uncertainty-aware constraint blocks, each switched on by its own CLI flag (parameters in configs/uncertainty.json)
 UNCERTAINTY_BLOCKS = ('sw_margin', 'derating', 'redundancy', 'ai_contention', 'robust_latency', 'growth', 'failures')
@@ -1208,6 +1210,77 @@ class AssignmentOptimizer:
             print(f"  Chains: {len(net['chains'])} (network budgets {min(c['budget'] for c in net['chains']):.1f} - "
                   f"{max(c['budget'] for c in net['chains']):.1f} ms, robust latency {net['lat']['robust']})")
 
+        # Priorities (configs/buses.json: backbone.priorities): fixed-priority, non-preemptive queues, as CAN arbitrates
+        # by identifier and Ethernet switches serve IEEE 802.1Q traffic classes. A chain message gets the tightest
+        # network budget of its chains (deadline-monotonic), a standby copy that of its base flow, the end device of a
+        # chain that of the chain; all other traffic comes last. A message waits for every message of equal or higher
+        # priority once and for at most one frame of a lower-priority one (cable_types.frame_kbit).
+        net['frame_kbit'] = {n: float(getattr((cable_types or {}).get(n), 'frame_kbit', float('inf'))) for n in net['bb_ifaces']}
+        if (backbone or {}).get('priorities'):
+            pf, pd = {}, {}
+            for ch in net['chains']:
+                for t in ch['flows']:
+                    pf[t] = min(pf.get(t, float('inf')), ch['budget'])
+                for d in ch['dev_ends']:
+                    pd[d] = min(pd.get(d, float('inf')), ch['budget'])
+            for t, tr in net['flow_meta'].items():
+                if tr.get('base') in pf:
+                    pf[t] = pf[tr['base']]
+            net['prio'] = {'f': pf, 'd': pd}
+            print(f"  Priorities: {len(set(pf.values()) | set(pd.values()))} chain classes for {len(pf)} flows and "
+                  f"{len(pd)} devices, all other traffic last")
+
+        # Chain latency bound in the model itself (valid; the exact rule with the queues stays in the callback): a
+        # chain flow whose two ends are on different sites crosses the network at least once, at no less than its own
+        # transmission and per-hop bound on its fastest eligible type (robust constants included). Without it the
+        # solver sees latency only through rejected candidates. cross[t] >= src_j - dst_j bounds [ends on different
+        # sites] from below.
+        # After the failure of cell c, for chains whose flows all join two critical SCs (a design that survives never
+        # loses such a chain): a flow a -> b with the primary of a at c runs from the standby of a to an instance of b
+        # and crosses for sure when the standby of a is on neither instance's site:
+        # z >= x[a,c] + 2 r[a,j] - x[b,j] - r[b,j] - 2, and the same with a and b exchanged.
+        def min_crossing(t):
+            return min(robust_ms(net, net['kbit'][t] / net['cap_of'][n] + net['hop_ms'][n]) for n in net['flow_elig'][t])
+
+        cross, cross_c, n_nom, n_fail = {}, {}, 0, 0
+        for ch in net['chains']:
+            terms = []
+            for t in ch['flows']:
+                if t not in cross:
+                    src, dst = net['flow_ends'][t]
+                    cross[t] = model.addVar(lb=0.0, ub=1.0, name=f"cross_{t}")
+                    for j, var in src.items():
+                        model.addConstr(cross[t] >= var - (dst[j] if j in dst else 0), name=f"cross_{t}_{j}")
+                terms.append(min_crossing(t) * cross[t])
+            model.addConstr(gp.quicksum(terms) <= ch['budget'] - ch['const'], name=f"chain_lb_{ch['id']}")
+            n_nom += 1
+        crit = set(net['critical'])
+        for ch in net['chains']:
+            meta = [net['flow_meta'][t] for t in ch['flows']]
+            if not meta or any(tr['type'] != 'SC_SC' or tr['src_idx'] not in crit or tr['dst_idx'] not in crit for tr in meta):
+                continue
+            for c in range(n_locs):
+                terms = []
+                for t, tr in zip(ch['flows'], meta):
+                    a, b = tr['src_idx'], tr['dst_idx']
+                    if (a, c) not in x and (b, c) not in x:
+                        continue
+                    if (t, c) not in cross_c:
+                        z = cross_c[t, c] = model.addVar(lb=0.0, ub=1.0, name=f"cross_{t}_fail_{locations[c].id}")
+                        for p, q in ((a, b), (b, a)):
+                            if (p, c) not in x:
+                                continue
+                            for j in feasible_locs_per_sc[p]:
+                                if (p, j) in net['r']:
+                                    model.addConstr(z >= x[p, c] + 2 * net['r'][p, j] - x.get((q, j), 0) - net['r'].get((q, j), 0) - 2,
+                                                    name=f"cross_{t}_fail_{locations[c].id}_{scs[p].id}_{locations[j].id}")
+                    terms.append(min_crossing(t) * cross_c[t, c])
+                if terms:
+                    model.addConstr(gp.quicksum(terms) <= ch['degraded'] - ch['const'], name=f"chain_lb_{ch['id']}_fail_{locations[c].id}")
+                    n_fail += 1
+        if net['chains']:
+            print(f"  Chain latency bounds in the model: {n_nom} nominal, {n_fail} after a cell failure")
+
         model.setParam('LazyConstraints', 1)
         watched = []
         for t, (src, dst) in net['flow_ends'].items():
@@ -1240,6 +1313,12 @@ class AssignmentOptimizer:
 
         model._repair = None
         model._repairs_used = 0
+        # callback statistics (printed every 60 s and stored in solve_info): integer candidates from Gurobi, how many
+        # were rejected by a lazy check, repair attempts, valid repairs, and the stage where a repair failed
+        model._cb_stats = {'candidates': 0, 'rejected': 0, 'repair_tries': 0, 'repair_valid': 0, 'repair_fail': {},
+                           'rejected_by': {}, 'cuts_by': {}}
+        model._cb_last_print = 0.0
+        has_switch_hw = 'SWITCH' in all_hw
         # Steiner cuts of the bus lines found in the callback ({(line, member names): (member variables, length)});
         # Gurobi drops callback cuts after each optimize, but these are valid for every solution, so they are kept as
         # model constraints between the phases (a start solution's bus lengths are recomputed by Gurobi's LP and
@@ -1280,6 +1359,7 @@ class AssignmentOptimizer:
             if where != GRB.Callback.MIPSOL:
                 return
             cuts_before = m._lazy_cuts
+            m._cb_stats['candidates'] += 1
             vals = dict(zip((id(v) for v in cb_vars), m.cbGetSolution(cb_vars)))
             cv = dict(zip(comm_keys, m.cbGetSolution(comm_vars)))
             getv = lambda var: vals[id(var)]
@@ -1313,6 +1393,15 @@ class AssignmentOptimizer:
                         expr = expr + net['hot'][tr[key]] - 1
                 return expr
 
+            def tally(name, before):
+                # which check rejected the candidate (added cuts) and how many cuts it added
+                d = m._lazy_cuts - before
+                if d > 0:
+                    m._cb_stats['cuts_by'][name] = m._cb_stats['cuts_by'].get(name, 0) + d
+                    m._cb_stats['rejected_by'][name] = m._cb_stats['rejected_by'].get(name, 0) + 1
+                return m._lazy_cuts
+
+            _c = m._lazy_cuts
             # --- bus lines: the cable length of an open line is at least the exact Steiner tree of its members (the
             # tree only grows with more members, so the cut stays valid for every superset)
             bus_members = {}
@@ -1359,6 +1448,7 @@ class AssignmentOptimizer:
                     m.cbLazy(cap_of[w_if] * comm[key] >= gp.quicksum(vol * ind for ind, vol in terms))
                 m._lazy_cuts += 1
 
+            _c = tally('bus length', _c)
             # --- traffic: a pair with traffic needs a selected path; cables and lines carry the routed volume
             load, contrib = {}, {}
             for t, rt in routes.items():
@@ -1385,6 +1475,7 @@ class AssignmentOptimizer:
                 if ld > capacity_left(res, cv) + 1e-6:
                     capacity_cut(res, contrib[res])
 
+            _c = tally('paths and capacity', _c)
             # --- chain latency: the network time of a chain must stay within its budget. A crossing waits for every
             # other message on each of its resources, so the cut has, besides the own crossing of a flow, one term per
             # message sharing a resource with it: (its kbit / rate) * [both there], lower-bounded by ind_t + ind_m - 1
@@ -1393,6 +1484,23 @@ class AssignmentOptimizer:
 
             def msg_ind(msg, res, term_of_flow):
                 return term_of_flow(msg[1]) if msg[0] == 'f' else bus['dev'][res[1], msg[1]]
+
+            def queue_terms(me, ind_me, res, msgs, term_of_flow):
+                # cut terms of the wait of `me` on res (see queue_ms): every message of equal or higher priority,
+                # (its kbit / rate) * [both there]; of the lower-priority ones the longest blocking frame
+                pm, rate, out, block = message_prio(net, me), resource_rate(net, res), [], None
+                for msg in msgs.get(res, []):
+                    if msg == me:
+                        continue
+                    if message_prio(net, msg) <= pm:
+                        out.append(qf * message_kbit(net, msg) / rate * (ind_me + msg_ind(msg, res, term_of_flow) - 1))
+                    else:
+                        kb = min(message_kbit(net, msg), frame_kbit(net, res))
+                        if block is None or kb > block[0]:
+                            block = (kb, msg)
+                if block is not None:
+                    out.append(qf * block[0] / rate * (ind_me + msg_ind(block[1], res, term_of_flow) - 1))
+                return out
 
             def chain_terms(ch, picks, msgs, term_of_flow, add_terms, routes_now):
                 # latency of a chain in one state (picks: flow -> its lower-bound indicator) and the cut terms
@@ -1406,20 +1514,15 @@ class AssignmentOptimizer:
                     own = robust_ms(net, sum(net['kbit'][t] / net['cap_of'][w_if] + net['hop_ms'][w_if] for _r in resources(u, v, w_if, p)))
                     terms.append(own * ind_t)
                     for res in resources(u, v, w_if, p):
-                        for msg in msgs.get(res, []):
-                            if msg != ('f', t):
-                                terms.append(qf * message_kbit(net, msg) / resource_rate(net, res) * (ind_t + msg_ind(msg, res, term_of_flow) - 1))
+                        terms += queue_terms(('f', t), ind_t, res, msgs, term_of_flow)
                 for d in ch['dev_ends']:
                     line = device_line(net, d, getv)
                     if line is None:
                         continue
                     res = ('line', line)
-                    q = sum(message_kbit(net, msg) for msg in msgs.get(res, []) if msg != ('d', d)) / resource_rate(net, res)
-                    total += qf * q
+                    total += qf * queue_ms(net, res, ('d', d), msgs)
                     if add_terms:
-                        for msg in msgs.get(res, []):
-                            if msg != ('d', d):
-                                terms.append(qf * message_kbit(net, msg) / resource_rate(net, res) * (bus['dev'][line, d] + msg_ind(msg, res, term_of_flow) - 1))
+                        terms += queue_terms(('d', d), bus['dev'][line, d], res, msgs, term_of_flow)
                 return total, terms
 
             def nominal_term(k):
@@ -1439,6 +1542,7 @@ class AssignmentOptimizer:
                     m.cbLazy(gp.quicksum(terms) <= ch['budget'] - ch['const'])
                     m._lazy_cuts += 1
 
+            _c = tally('chain latency', _c)
             # --- single failures: every critical SC keeps a served instance under every scenario
             placement_ok = True
             pos_x = {i: next((j for j in feasible_locs_per_sc[i] if getv(x[i, j]) > 0.5), None) for i in range(n_sc)}
@@ -1678,10 +1782,13 @@ class AssignmentOptimizer:
                         if ld > capacity_left(res, cv) + 1e-6:
                             capacity_cut(res, [(degraded_term(t, reasons, routes), net['volumes'][t]) for t, reasons in members[res]])
                             m._fail_cuts += 1
+                _c = tally('capacity after failure', _c)
                 if scenario_check(routes, True) > 0:
                     placement_ok = False
+                _c = tally('failure survival', _c)
                 if net['chains'] and degraded_check(states, routes, True) > 0:
                     placement_ok = False
+                _c = tally('degraded latency', _c)
                 # cold standbys activated by a cell failure must fit next to the nominal load of their cell
                 for c in range(n_locs):
                     if getv(y[c]) < 0.5:
@@ -1739,38 +1846,106 @@ class AssignmentOptimizer:
                             m._lazy_cuts += 1
                             m._fail_cuts += 1
 
-            # --- repair: the placement is kept, every pair with traffic gets its direct path, the cable counts
-            # follow the loads; handed to Gurobi as a heuristic solution if it passes all checks
+            _c = tally('standby capacity after failure', _c)
+
+            def repair_routes():
+                """routes for the repair: (routes, ) or None when some flow has no admissible option"""
+                chain_flows = set()
+                for ch in net['chains']:
+                    for tb in ch['flows']:
+                        chain_flows.update(base_variants.get(tb, {}).values())
+                chain_devs = {d for ch in net['chains'] for d in ch['dev_ends']}
+                kb = net['kbit']
+                placed, line_load = {}, {}     # resource -> [(priority key, kbit, chain message?)] routed so far
+                for (ln, d), var in bus['dev'].items():
+                    if getv(var) > 0.5:
+                        placed.setdefault(('line', ln), []).append((message_prio(net, ('d', d)), bus['devices'][d]['kbit'], d in chain_devs))
+                        line_load[ln] = line_load.get(ln, 0.0) + bus['devices'][d]['volume']
+
+                def wait_on(r, pm):
+                    # queue in front of a message of priority pm on r (as queue_ms)
+                    msgs_r = placed.get(r, [])
+                    block = max((min(k, frame_kbit(net, r)) for p_, k, _c in msgs_r if p_ > pm), default=0.0)
+                    return sum(k for p_, k, _c in msgs_r if p_ <= pm) + block
+
+                def delay_to_chains(r, pm, k):
+                    # what a new message adds to the queues of the chain messages already on r
+                    return sum((k if pm <= p_ else min(k, frame_kbit(net, r))) for p_, _k, c in placed.get(r, []) if c)
+                switch_at = {j for j in range(n_locs) if has_switch_hw and getv(hw_use[j, 'SWITCH']) > 0.5}
+                pair_path, out = {}, {}
+                flows = list(net['flow_meta'])
+                flows.sort(key=lambda t: (0 if t in chain_flows else 1, -kb[t]))
+                for t in flows:
+                    u, v = ends_of(t)
+                    if u is None or v is None or u == v:
+                        out[t] = None
+                        continue
+                    pair = (min(u, v), max(u, v))
+                    quiet = silent(t)
+                    best = None
+                    for n in net['flow_elig'][t]:
+                        plist = net['paths'].get(pair + (n,), [])
+                        cands = [pair_path[pair + (n,)]] if pair + (n,) in pair_path else range(len(plist))
+                        for p in cands:
+                            if n in bus['types']:
+                                ln = (n, p)
+                                if getv(bus['unit'][ln, u]) < 0.5 or getv(bus['unit'][ln, v]) < 0.5:
+                                    continue
+                                if not quiet and line_load.get(ln, 0.0) + net['volumes'][t] > cap_of[n] * net['bus_umax'] + 1e-9:
+                                    continue
+                            elif any(r not in switch_at for r in plist[p][1:-1]):
+                                continue
+                            rate = cap_of[n]
+                            res_list = resources(u, v, n, p)
+                            pm = message_prio(net, ('f', t))
+                            own = sum(kb[t] / rate + net['hop_ms'][n] + wait_on(r, pm) / rate for r in res_list)
+                            impact = 0.0 if quiet else sum(delay_to_chains(r, pm, kb[t]) / rate for r in res_list)
+                            score = (own if t in chain_flows else 1e-3 * own) + impact
+                            if best is None or score < best[0] - 1e-12:
+                                best = (score, n, p)
+                    if best is None:
+                        return None
+                    _score, n, p = best
+                    pair_path.setdefault(pair + (n,), p)
+                    out[t] = (u, v, n, p)
+                    if not quiet:
+                        for r in resources(u, v, n, p):
+                            placed.setdefault(r, []).append((message_prio(net, ('f', t)), kb[t], t in chain_flows))
+                        if n in bus['types']:
+                            line_load[(n, p)] = line_load.get((n, p), 0.0) + net['volumes'][t]
+                return (out,)
+
+            # --- repair: the placement is kept, the traffic is routed by repair_routes, the cable counts follow the
+            # loads; handed to Gurobi as a heuristic solution if it passes all checks
+            if m._lazy_cuts > cuts_before:
+                m._cb_stats['rejected'] += 1
+            if not placement_ok:
+                m._cb_stats['repair_fail']['placement'] = m._cb_stats['repair_fail'].get('placement', 0) + 1
             if m._lazy_cuts > cuts_before and placement_ok and m._repair is None:
+                m._cb_stats['repair_tries'] += 1
+                stage = None
                 fix = {var: (getv(var) if id(var) in cont_ids else round(getv(var))) for var in cb_vars}
                 for var in net['sel'].values():
                     fix[var] = 0
                 for b in bus['inst']:
                     fix[bus['len'][b]] = bus_members.get(b, 0.0)
-                rep_routes, rload, need, feasible = {}, {}, set(), True
-                for t, (src, dst) in net['flow_ends'].items():
-                    u, v = ends_of(t)
-                    if u is None or v is None or u == v:
-                        rep_routes[t] = None
+                # queue-aware routing: chain messages first, then the heavy ones; every flow takes the option
+                # (cable type, path or bus line) that adds the least delay to itself and to the chain messages
+                # already placed on the same resources; one path per unit pair and type; bus lines within their
+                # utilization limit; relays only over cells that have a switch
+                routed = repair_routes()
+                feasible = routed is not None
+                stage = None if feasible else 'no route option'
+                rep_routes, rload, need = (routed[0] if routed else {}), {}, set()
+                for t, rt in rep_routes.items():
+                    if rt is None:
                         continue
-                    elig = net['flow_elig'][t]
-                    w_if = elig[0] if len(elig) == 1 else max(elig, key=lambda n: getv(net['w'][t, n]))
+                    u, v, w_if, p = rt
                     pair = (min(u, v), max(u, v))
-                    p = 0
-                    if w_if in bus['types']:
-                        # a bus-type flow takes the first line both units are on, else moves to Ethernet if it may
-                        p = next((k for k in range(len(net['paths'][pair + (w_if,)]))
-                                  if getv(bus['unit'][(w_if, k), u]) > 0.5 and getv(bus['unit'][(w_if, k), v]) > 0.5), None)
-                        if p is None:
-                            if 'ETH' in elig and 'ETH' not in bus['types'] and len(elig) > 1:
-                                for n in elig:
-                                    fix[net['w'][t, n]] = 1 if n == 'ETH' else 0
-                                w_if, p = 'ETH', 0
-                            else:
-                                feasible = False
-                                break
+                    if len(net['flow_elig'][t]) > 1:
+                        for n in net['flow_elig'][t]:
+                            fix[net['w'][t, n]] = 1 if n == w_if else 0
                     fix[net['sel'][pair + (w_if, p)]] = 1
-                    rep_routes[t] = (u, v, w_if, p)
                     if w_if not in bus['types']:
                         need.add(pair + (w_if,))
                     if not silent(t):
@@ -1788,19 +1963,32 @@ class AssignmentOptimizer:
                 for key in need:
                     n_cab = max(1, int(np.ceil(rload.get(key, 0.0) / cap_of[key[2]] - 1e-9)))
                     if n_cab > net['comm_ub'][key[2]]:
-                        feasible = False
+                        feasible, stage = False, stage or 'cable count'
                     fix[comm[key]] = n_cab
                 for key, ld in rload.items():   # a bus line cannot be widened: its traffic must fit as it is
                     if key[0] == 'line' and ld > capacity_left(key, None) + 1e-6:
-                        feasible = False
+                        feasible, stage = False, stage or 'bus line capacity'
                 if feasible and net['chains']:
                     feasible = all(c['ok'] for c in chain_latencies(net, rep_routes, getv).values())
+                    stage = stage or (None if feasible else 'chain latency')
                 if feasible and net['critical']:
                     feasible = scenario_check(rep_routes, False) == 0
+                    stage = stage or (None if feasible else 'failure survival')
                 if feasible and net['critical'] and net['chains']:
                     feasible = degraded_check(rep_states, rep_routes, False) == 0
+                    stage = stage or (None if feasible else 'degraded latency')
                 if feasible:
                     m._repair = fix
+                    m._cb_stats['repair_valid'] += 1
+                else:
+                    m._cb_stats['repair_fail'][stage] = m._cb_stats['repair_fail'].get(stage, 0) + 1
+            now = time.time()
+            if now - m._cb_last_print >= 60.0:
+                m._cb_last_print = now
+                st = m._cb_stats
+                print(f"[callback] candidates {st['candidates']}, rejected {st['rejected']}, repair tries {st['repair_tries']}, "
+                      f"valid repairs {st['repair_valid']}, used {m._repairs_used}, repair failures {st['repair_fail']}, "
+                      f"rejected by {st['rejected_by']}, cuts by {st['cuts_by']}", flush=True)
 
         def _solve_lexicographic():
             """Phase 1: primary objective. Phase 2: secondary objective with the primary fixed at its phase-1 value."""
@@ -1811,6 +1999,7 @@ class AssignmentOptimizer:
             print(f"\n[Lexicographic] Phase 1: minimize {primary_name}")
             model.optimize(lazy_cb)
             phases.append(self._phase_info(model, primary_name))
+            print(f"[callback] after phase 1: {model._cb_stats}, repairs used {model._repairs_used}", flush=True)
             lex_constr = None
             if model.SolCount > 0 and model.status in (GRB.OPTIMAL, GRB.TIME_LIMIT):
                 primary_val = primary_expr.getValue()
@@ -1833,6 +2022,7 @@ class AssignmentOptimizer:
                 print(f"\n[Lexicographic] Phase 2: minimize {secondary_name} with {primary_name} <= {primary_val:.6f}")
                 model.optimize(lazy_cb)
                 phases.append(self._phase_info(model, secondary_name))
+                print(f"[callback] after phase 2: {model._cb_stats}, repairs used {model._repairs_used}", flush=True)
                 if model.SolCount == 0:
                     # never lose the phase-1 design: re-accept it under the primary objective (start solution)
                     print(f"\n[Lexicographic] Phase 2 found no solution in its time; the phase-1 design is kept")
@@ -1903,6 +2093,7 @@ class AssignmentOptimizer:
                 'critical': len(net['critical']),
                 'failure_cuts': int(getattr(model, '_fail_cuts', 0)),
                 'repairs_used': int(getattr(model, '_repairs_used', 0)),
+                'callback_stats': dict(getattr(model, '_cb_stats', {})),
                 'gurobi_params': gurobi_params,
                 'runtime_s': sum(ph['runtime_s'] for ph in phases),
                 'num_vars': int(model.NumVars),

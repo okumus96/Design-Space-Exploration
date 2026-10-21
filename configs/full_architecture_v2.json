@@ -10,7 +10,7 @@
       "asil_req": 3,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 30.0
+      "rate_hz": 10.0
     },
     {
       "id": "SC_1_Driver_CAM_Front_Center",
@@ -22,7 +22,7 @@
       "asil_req": 4,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 30.0
+      "rate_hz": 10.0
     },
     {
       "id": "SC_2_Driver_CAM_Rear_Right_Corner",
@@ -34,7 +34,7 @@
       "asil_req": 4,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 30.0
+      "rate_hz": 10.0
     },
     {
       "id": "SC_3_Driver_CAM_Front_Left",
@@ -46,7 +46,7 @@
       "asil_req": 4,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 30.0
+      "rate_hz": 10.0
     },
     {
       "id": "SC_4_Driver_CAM_Front_Right",
@@ -58,7 +58,7 @@
       "asil_req": 3,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 30.0
+      "rate_hz": 10.0
     },
     {
       "id": "SC_5_Driver_CAM_Left_Side",
@@ -70,7 +70,7 @@
       "asil_req": 3,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 30.0
+      "rate_hz": 10.0
     },
     {
       "id": "SC_6_Driver_CAM_Right_Side",
@@ -82,7 +82,7 @@
       "asil_req": 4,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 30.0
+      "rate_hz": 10.0
     },
     {
       "id": "SC_7_Driver_CAM_Rear_Center",
@@ -94,7 +94,7 @@
       "asil_req": 3,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 30.0
+      "rate_hz": 10.0
     },
     {
       "id": "SC_8_Driver_LIDAR_Front",
@@ -106,7 +106,9 @@
       "asil_req": 3,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 10.0
+      "rate_hz": 20.0,
+      "msg_kbit": 2304.0,
+      "msg_source": "decoded point cloud: 18k points per sweep x 16 B (PointXYZIRC)"
     },
     {
       "id": "SC_9_Driver_LIDAR_Left_Pillar",
@@ -118,7 +120,9 @@
       "asil_req": 4,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 10.0
+      "rate_hz": 20.0,
+      "msg_kbit": 4608.0,
+      "msg_source": "decoded point cloud: 36k points per sweep x 16 B (PointXYZIRC)"
     },
     {
       "id": "SC_10_Driver_LIDAR_Right_Pillar",
@@ -130,7 +134,9 @@
       "asil_req": 4,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 10.0
+      "rate_hz": 20.0,
+      "msg_kbit": 4608.0,
+      "msg_source": "decoded point cloud: 36k points per sweep x 16 B (PointXYZIRC)"
     },
     {
       "id": "SC_11_Driver_LIDAR_Rear",
@@ -142,7 +148,9 @@
       "asil_req": 3,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 10.0
+      "rate_hz": 20.0,
+      "msg_kbit": 2304.0,
+      "msg_source": "decoded point cloud: 18k points per sweep x 16 B (PointXYZIRC)"
     },
     {
       "id": "SC_12_Driver_LIDAR_Top",
@@ -154,7 +162,9 @@
       "asil_req": 4,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 10.0
+      "rate_hz": 20.0,
+      "msg_kbit": 4608.0,
+      "msg_source": "decoded point cloud: 36k points per sweep x 16 B (PointXYZIRC)"
     },
     {
       "id": "SC_13_Driver_IMU_Top_Center",
@@ -166,7 +176,9 @@
       "asil_req": 3,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 100.0
+      "rate_hz": 100.0,
+      "msg_kbit": 2.528,
+      "msg_source": "sensor_msgs/Imu (orientation, rates, accelerations, covariances)"
     },
     {
       "id": "SC_14_Driver_GPS_Center",
@@ -178,7 +190,9 @@
       "asil_req": 4,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 10.0
+      "rate_hz": 20.0,
+      "msg_kbit": 0.968,
+      "msg_source": "sensor_msgs/NavSatFix"
     },
     {
       "id": "AW_Map_PointCloud_Loader",
@@ -190,7 +204,9 @@
       "asil_req": 2,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 10.0
+      "rate_hz": 1.0,
+      "msg_kbit": 8000.0,
+      "msg_source": "differential point cloud map tiles, about 1 MB per update (estimate)"
     },
     {
       "id": "AW_Map_Lanelet2_Loader",
@@ -202,7 +218,9 @@
       "asil_req": 2,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 10.0
+      "rate_hz": 0.01,
+      "msg_kbit": 80000.0,
+      "msg_source": "Lanelet2 map binary, about 10 MB, published once (latched; estimate)"
     },
     {
       "id": "AW_Sensing_Lidar_Preprocessor",
@@ -220,7 +238,9 @@
         "SC_11_Driver_LIDAR_Rear",
         "SC_12_Driver_LIDAR_Top"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 20.0,
+      "msg_kbit": 18432.0,
+      "msg_source": "concatenated point cloud of the five lidars: 144k points x 16 B"
     },
     {
       "id": "AW_RM_Monitor_Sensing_Lidar_Preprocessor",
@@ -234,7 +254,9 @@
       "receives_from": [
         "AW_Sensing_Lidar_Preprocessor"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 0.8,
+      "msg_source": "runtime monitor status (estimate)"
     },
     {
       "id": "AW_Sensing_Camera_Preprocessor",
@@ -257,7 +279,9 @@
         "SC_6_Driver_CAM_Right_Side",
         "SC_7_Driver_CAM_Rear_Center"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 230400.0,
+      "msg_source": "eight rectified images at sensor size (12 bit per pixel)"
     },
     {
       "id": "AW_RM_Monitor_Sensing_Camera_Preprocessor",
@@ -271,7 +295,9 @@
       "receives_from": [
         "AW_Sensing_Camera_Preprocessor"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 0.8,
+      "msg_source": "runtime monitor status (estimate)"
     },
     {
       "id": "AW_Localization_Twist_Estimator",
@@ -285,7 +311,9 @@
       "receives_from": [
         "SC_13_Driver_IMU_Top_Center"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 100.0,
+      "msg_kbit": 2.848,
+      "msg_source": "TwistWithCovarianceStamped per IMU sample (gyro odometer)"
     },
     {
       "id": "AW_Localization_NDT_Matcher",
@@ -300,7 +328,9 @@
         "AW_Sensing_Lidar_Preprocessor",
         "AW_Map_PointCloud_Loader"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 2.912,
+      "msg_source": "PoseWithCovarianceStamped per scan match"
     },
     {
       "id": "AW_Localization_EKF_Localizer",
@@ -316,7 +346,9 @@
         "AW_Localization_NDT_Matcher",
         "SC_14_Driver_GPS_Center"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 50.0,
+      "msg_kbit": 5.696,
+      "msg_source": "nav_msgs/Odometry at the EKF predict frequency 50 Hz (Autoware default)"
     },
     {
       "id": "AW_Perception_Lidar_Cluster",
@@ -330,7 +362,9 @@
       "receives_from": [
         "AW_Sensing_Lidar_Preprocessor"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 1570.8,
+      "msg_source": "DetectedObjectsWithFeature: 50 clusters with about 200 points each"
     },
     {
       "id": "AW_Perception_Lidar_CenterPoint",
@@ -347,7 +381,9 @@
       "receives_from": [
         "AW_Sensing_Lidar_Preprocessor"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 290.8,
+      "msg_source": "DetectedObjects: 50 objects x 727 B"
     },
     {
       "id": "AW_RM_Monitor_Lidar_CenterPoint",
@@ -362,7 +398,9 @@
       "receives_from": [
         "AW_Perception_Lidar_CenterPoint"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 0.8,
+      "msg_source": "runtime monitor status (estimate)"
     },
     {
       "id": "AW_Perception_Camera_TrafficLight",
@@ -378,7 +416,9 @@
       "receives_from": [
         "AW_Sensing_Camera_Preprocessor"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 3.2,
+      "msg_source": "TrafficLightGroupArray, about 10 groups"
     },
     {
       "id": "AW_RM_Monitor_Camera_TrafficLight",
@@ -392,7 +432,9 @@
       "receives_from": [
         "AW_Perception_Camera_TrafficLight"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 0.8,
+      "msg_source": "runtime monitor status (estimate)"
     },
     {
       "id": "AW_Perception_Camera_YOLO",
@@ -409,7 +451,9 @@
       "receives_from": [
         "AW_Sensing_Camera_Preprocessor"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 297.6,
+      "msg_source": "DetectedObjectsWithFeature with 2D boxes: 50 objects"
     },
     {
       "id": "AW_RM_Monitor_Camera_YOLO",
@@ -424,7 +468,9 @@
       "receives_from": [
         "AW_Perception_Camera_YOLO"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 0.8,
+      "msg_source": "runtime monitor status (estimate)"
     },
     {
       "id": "AW_Perception_Occupancy_Grid",
@@ -439,7 +485,9 @@
         "AW_Perception_Lidar_Cluster",
         "AW_Sensing_Camera_Preprocessor"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 720.8,
+      "msg_source": "OccupancyGrid 150 m at 0.5 m = 300 x 300 cells (Autoware defaults)"
     },
     {
       "id": "AW_Perception_Sensor_Fusion",
@@ -454,7 +502,9 @@
         "AW_Perception_Lidar_Cluster",
         "AW_Perception_Lidar_CenterPoint"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 290.8,
+      "msg_source": "DetectedObjects: 50 objects x 727 B"
     },
     {
       "id": "AW_Perception_Object_Tracker",
@@ -468,7 +518,9 @@
       "receives_from": [
         "AW_Perception_Sensor_Fusion"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 433.2,
+      "msg_source": "TrackedObjects: 50 objects x 1083 B"
     },
     {
       "id": "AW_Perception_Trajectory_Predictor",
@@ -482,7 +534,9 @@
       "receives_from": [
         "AW_Perception_Object_Tracker"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 1834.8,
+      "msg_source": "PredictedObjects: 50 objects, 2 paths of 31 poses (15 s at 0.5 s, Autoware defaults)"
     },
     {
       "id": "AW_Planning_Scenario_Selector",
@@ -496,7 +550,9 @@
       "receives_from": [
         "AW_Localization_EKF_Localizer"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 0.32,
+      "msg_source": "Scenario"
     },
     {
       "id": "AW_Planning_Costmap_Generator",
@@ -511,7 +567,9 @@
         "AW_Perception_Occupancy_Grid",
         "AW_Map_Lanelet2_Loader"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 438.848,
+      "msg_source": "OccupancyGrid 70 m at 0.3 m = 234 x 234 cells, 10 Hz (Autoware defaults)"
     },
     {
       "id": "AW_Planning_Mission_Route",
@@ -526,7 +584,9 @@
         "AW_Localization_EKF_Localizer",
         "AW_Map_Lanelet2_Loader"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 1.0,
+      "msg_kbit": 9.6,
+      "msg_source": "LaneletRoute, about 30 segments (event driven; estimate 1 Hz)"
     },
     {
       "id": "AW_Planning_Behavior_Path",
@@ -542,7 +602,9 @@
         "AW_Planning_Scenario_Selector",
         "AW_Perception_Trajectory_Predictor"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 219.2,
+      "msg_source": "PathWithLaneId: 200 points (200 m ahead) with lane ids and bounds"
     },
     {
       "id": "AW_Planning_Obstacle_Avoidance",
@@ -557,7 +619,9 @@
         "AW_Planning_Behavior_Path",
         "AW_Planning_Costmap_Generator"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 140.8,
+      "msg_source": "Trajectory: 200 points x 88 B (estimate)"
     },
     {
       "id": "AW_Planning_Velocity_Smoother",
@@ -572,7 +636,9 @@
         "AW_Planning_Obstacle_Avoidance",
         "AW_Perception_Camera_TrafficLight"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 42.24,
+      "msg_source": "Trajectory resampled to about 60 points x 88 B (Autoware resampling defaults)"
     },
     {
       "id": "AW_Control_Lateral_MPC",
@@ -587,7 +653,9 @@
         "AW_Planning_Velocity_Smoother",
         "AW_Localization_Twist_Estimator"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 33.0,
+      "msg_kbit": 0.2,
+      "msg_source": "autoware_control_msgs/Lateral; control cycle 33 Hz (Autoware control_cmd interface)"
     },
     {
       "id": "AW_Control_Longitudinal_PID",
@@ -602,7 +670,9 @@
         "AW_Planning_Velocity_Smoother",
         "AW_Localization_Twist_Estimator"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 33.0,
+      "msg_kbit": 0.24,
+      "msg_source": "autoware_control_msgs/Longitudinal; control cycle 33 Hz"
     },
     {
       "id": "AW_System_Emergency_Handler",
@@ -617,7 +687,9 @@
         "AW_Planning_Obstacle_Avoidance",
         "AW_Localization_EKF_Localizer"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 0.4,
+      "msg_source": "emergency state and hazard command (estimate)"
     },
     {
       "id": "AW_Vehicle_Cmd_Gate",
@@ -633,7 +705,9 @@
         "AW_Control_Longitudinal_PID",
         "AW_System_Emergency_Handler"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 33.0,
+      "msg_kbit": 0.568,
+      "msg_source": "autoware_control_msgs/Control at 33 Hz (Autoware control_cmd interface)"
     },
     {
       "id": "DT_Powertrain_Supervisor",
@@ -647,7 +721,9 @@
       "receives_from": [
         "AW_Vehicle_Cmd_Gate"
       ],
-      "rate_hz": 100.0
+      "rate_hz": 100.0,
+      "msg_kbit": 0.064,
+      "msg_source": "one 8-byte signal frame per 10 ms (estimate)"
     },
     {
       "id": "DT_Torque_Distributor",
@@ -661,7 +737,9 @@
       "receives_from": [
         "DT_Powertrain_Supervisor"
       ],
-      "rate_hz": 100.0
+      "rate_hz": 100.0,
+      "msg_kbit": 0.064,
+      "msg_source": "one 8-byte signal frame per 10 ms (estimate)"
     },
     {
       "id": "DT_Brake_Blend_Controller",
@@ -675,7 +753,9 @@
       "receives_from": [
         "AW_Vehicle_Cmd_Gate"
       ],
-      "rate_hz": 100.0
+      "rate_hz": 100.0,
+      "msg_kbit": 0.064,
+      "msg_source": "one 8-byte signal frame per 10 ms (estimate)"
     },
     {
       "id": "DT_Steering_Assist_Controller",
@@ -689,7 +769,9 @@
       "receives_from": [
         "AW_Vehicle_Cmd_Gate"
       ],
-      "rate_hz": 100.0
+      "rate_hz": 100.0,
+      "msg_kbit": 0.064,
+      "msg_source": "one 8-byte signal frame per 10 ms (estimate)"
     },
     {
       "id": "BC_Climate_Control",
@@ -701,7 +783,9 @@
       "asil_req": 1,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 0.064,
+      "msg_source": "one 8-byte signal frame per 100 ms (estimate)"
     },
     {
       "id": "BC_Lighting_Manager",
@@ -716,7 +800,9 @@
         "AW_Planning_Behavior_Path",
         "INFO_Dashboard_Display"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 0.064,
+      "msg_source": "one 8-byte signal frame per 100 ms (estimate)"
     },
     {
       "id": "BC_Door_Window_Control",
@@ -730,7 +816,9 @@
       "receives_from": [
         "INFO_Dashboard_Display"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 0.064,
+      "msg_source": "one 8-byte signal frame per 100 ms (estimate)"
     },
     {
       "id": "CONN_Telematics",
@@ -742,7 +830,9 @@
       "asil_req": 1,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 1000.0,
+      "msg_source": "cellular downlink about 10 Mbit/s (estimate)"
     },
     {
       "id": "CONN_V2X_Gateway",
@@ -757,7 +847,9 @@
         "AW_Localization_EKF_Localizer",
         "AW_Planning_Behavior_Path"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 6.4,
+      "msg_source": "ETSI CAM, up to about 800 B with security envelope (estimate), 10 Hz"
     },
     {
       "id": "CONN_OTA_Manager",
@@ -771,7 +863,9 @@
       "receives_from": [
         "CONN_Telematics"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 1000.0,
+      "msg_source": "background download about 10 Mbit/s (estimate)"
     },
     {
       "id": "INFO_Media_Player",
@@ -787,7 +881,9 @@
       "receives_from": [
         "CONN_Telematics"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 141.12,
+      "msg_source": "CD-quality audio 1.41 Mbit/s"
     },
     {
       "id": "INFO_Navigation_UI",
@@ -804,7 +900,9 @@
         "AW_Localization_EKF_Localizer",
         "AW_Planning_Mission_Route"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 80.0,
+      "msg_source": "route and map display data, about 10 kB (estimate)"
     },
     {
       "id": "INFO_Dashboard_Display",
@@ -819,7 +917,9 @@
         "AW_Vehicle_Cmd_Gate",
         "BC_Climate_Control"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "msg_kbit": 0.064,
+      "msg_source": "one 8-byte signal frame per 100 ms (estimate)"
     },
     {
       "id": "SC_15_Driver_ACT_Steering",

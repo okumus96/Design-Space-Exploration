@@ -5,88 +5,96 @@
       "type": "STEERING",
       "id": "ACT_Steering",
       "interface": "CAN",
-      "volume": 1.0,
+      "volume": 0.0135,
       "position": {
         "x": 0.0,
         "y": 1.4,
         "z": 0.3
       },
       "source": "assumption: steering rack on the front subframe below the drive unit",
-      "rate_hz": 100.0
+      "rate_hz": 100.0,
+      "data_source": "one classic CAN frame with 8 data bytes per 10 ms command period: 135 bit worst case with bit stuffing (Davis et al., Real-Time Systems 2007); period provisional"
     },
     {
       "type": "MOTOR",
       "id": "ACT_Motor_Front",
       "interface": "CAN",
-      "volume": 3.0,
+      "volume": 0.0135,
       "position": {
         "x": 0.0,
         "y": 1.5,
         "z": 0.6
       },
-      "rate_hz": 100.0
+      "rate_hz": 100.0,
+      "data_source": "one classic CAN frame with 8 data bytes per 10 ms command period: 135 bit worst case with bit stuffing (Davis et al., Real-Time Systems 2007); period provisional"
     },
     {
       "type": "BRAKE",
       "id": "ACT_Brake_Front",
       "interface": "CAN",
-      "volume": 2.0,
+      "volume": 0.0135,
       "position": {
         "x": 0.45,
         "y": 1.45,
         "z": 0.5
       },
-      "rate_hz": 100.0
+      "rate_hz": 100.0,
+      "data_source": "one classic CAN frame with 8 data bytes per 10 ms command period: 135 bit worst case with bit stuffing (Davis et al., Real-Time Systems 2007); period provisional"
     },
     {
       "type": "BRAKE",
       "id": "ACT_Brake_Rear",
       "interface": "CAN",
-      "volume": 2.0,
+      "volume": 0.0135,
       "position": {
         "x": 0.45,
         "y": -1.45,
         "z": 0.4
       },
-      "rate_hz": 100.0
+      "rate_hz": 100.0,
+      "data_source": "one classic CAN frame with 8 data bytes per 10 ms command period: 135 bit worst case with bit stuffing (Davis et al., Real-Time Systems 2007); period provisional"
     },
     {
       "type": "HVAC",
       "id": "ACT_HVAC_Cabin",
       "interface": "LIN",
-      "volume": 0.5,
+      "volume": 0.00174,
       "position": {
         "x": 0.0,
         "y": 1.0,
         "z": 0.7
       },
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "data_source": "one LIN frame with 8 data bytes per 100 ms: (34 + 10*9) bit nominal, x1.4 maximum = 174 bit (ISO 17987); period provisional"
     },
     {
       "type": "LIGHT",
       "id": "ACT_Light_Front",
       "interface": "LIN",
-      "volume": 0.2,
+      "volume": 0.00174,
       "position": {
         "x": 0.6,
         "y": 1.98,
         "z": 0.72
       },
       "source": "assumption: lamp control inside the body behind the lens",
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "data_source": "one LIN frame with 8 data bytes per 100 ms: (34 + 10*9) bit nominal, x1.4 maximum = 174 bit (ISO 17987); period provisional"
     },
     {
       "type": "LIGHT",
       "id": "ACT_Light_Rear",
       "interface": "LIN",
-      "volume": 0.2,
+      "volume": 0.00174,
       "position": {
         "x": 0.58,
         "y": -2.0,
         "z": 0.92
       },
       "source": "assumption: lamp control inside the body behind the lens",
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "data_source": "one LIN frame with 8 data bytes per 100 ms: (34 + 10*9) bit nominal, x1.4 maximum = 174 bit (ISO 17987); period provisional"
     }
-  ]
+  ],
+  "_data_comment": "volume = data rate (Mbit/s), rate_hz = message rate; one message = volume * 1000 / rate_hz kbit. Data pass 2026-10-21, sources per device (data_source); estimates are marked."
 }

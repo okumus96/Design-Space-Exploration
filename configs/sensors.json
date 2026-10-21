@@ -5,195 +5,211 @@
       "type": "CAMERA",
       "id": "CAM_Rear_Left_Corner",
       "interface": "ETH",
-      "volume": 80.0,
+      "volume": 288.0,
       "position": {
         "x": -0.561,
         "y": -1.321,
         "z": 1.476
       },
       "snapped": "moved 0.16 m onto the car skin of the reference model",
-      "rate_hz": 30.0
+      "rate_hz": 10.0,
+      "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): D3 Engineering D3RCM camera, 2000x1200 at 10 Hz; Sony IMX390 sensor, 12-bit A/D (Sony 2017); uncompressed 2000*1200*12 bit = 28.8 Mbit per frame. The real link is FPD-Link III (SerDes), modelled as a dedicated Ethernet attachment"
     },
     {
       "type": "CAMERA",
       "id": "CAM_Front_Center",
       "interface": "ETH",
-      "volume": 80.0,
+      "volume": 288.0,
       "position": {
         "x": -0.0,
         "y": 0.388,
         "z": 1.447
       },
       "snapped": "moved 0.17 m onto the car skin of the reference model",
-      "rate_hz": 30.0
+      "rate_hz": 10.0,
+      "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): D3 Engineering D3RCM camera, 2000x1200 at 10 Hz; Sony IMX390 sensor, 12-bit A/D (Sony 2017); uncompressed 2000*1200*12 bit = 28.8 Mbit per frame. The real link is FPD-Link III (SerDes), modelled as a dedicated Ethernet attachment"
     },
     {
       "type": "CAMERA",
       "id": "CAM_Rear_Right_Corner",
       "interface": "ETH",
-      "volume": 80.0,
+      "volume": 288.0,
       "position": {
         "x": 0.561,
         "y": -1.321,
         "z": 1.476
       },
       "snapped": "moved 0.16 m onto the car skin of the reference model",
-      "rate_hz": 30.0
+      "rate_hz": 10.0,
+      "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): D3 Engineering D3RCM camera, 2000x1200 at 10 Hz; Sony IMX390 sensor, 12-bit A/D (Sony 2017); uncompressed 2000*1200*12 bit = 28.8 Mbit per frame. The real link is FPD-Link III (SerDes), modelled as a dedicated Ethernet attachment"
     },
     {
       "type": "CAMERA",
       "id": "CAM_Front_Left",
       "interface": "ETH",
-      "volume": 80.0,
+      "volume": 288.0,
       "position": {
         "x": -0.559,
         "y": 0.36,
         "z": 1.407
       },
       "snapped": "moved 0.22 m onto the car skin of the reference model",
-      "rate_hz": 30.0
+      "rate_hz": 10.0,
+      "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): D3 Engineering D3RCM camera, 2000x1200 at 10 Hz; Sony IMX390 sensor, 12-bit A/D (Sony 2017); uncompressed 2000*1200*12 bit = 28.8 Mbit per frame. The real link is FPD-Link III (SerDes), modelled as a dedicated Ethernet attachment"
     },
     {
       "type": "CAMERA",
       "id": "CAM_Front_Right",
       "interface": "ETH",
-      "volume": 80.0,
+      "volume": 288.0,
       "position": {
         "x": 0.559,
         "y": 0.36,
         "z": 1.407
       },
       "snapped": "moved 0.22 m onto the car skin of the reference model",
-      "rate_hz": 30.0
+      "rate_hz": 10.0,
+      "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): D3 Engineering D3RCM camera, 2000x1200 at 10 Hz; Sony IMX390 sensor, 12-bit A/D (Sony 2017); uncompressed 2000*1200*12 bit = 28.8 Mbit per frame. The real link is FPD-Link III (SerDes), modelled as a dedicated Ethernet attachment"
     },
     {
       "type": "CAMERA",
       "id": "CAM_Left_Side",
       "interface": "ETH",
-      "volume": 80.0,
+      "volume": 288.0,
       "position": {
         "x": -0.618,
         "y": -0.302,
         "z": 1.493
       },
       "snapped": "moved 0.15 m onto the car skin of the reference model",
-      "rate_hz": 30.0
+      "rate_hz": 10.0,
+      "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): D3 Engineering D3RCM camera, 2000x1200 at 10 Hz; Sony IMX390 sensor, 12-bit A/D (Sony 2017); uncompressed 2000*1200*12 bit = 28.8 Mbit per frame. The real link is FPD-Link III (SerDes), modelled as a dedicated Ethernet attachment"
     },
     {
       "type": "CAMERA",
       "id": "CAM_Right_Side",
       "interface": "ETH",
-      "volume": 80.0,
+      "volume": 288.0,
       "position": {
         "x": 0.617,
         "y": -0.302,
         "z": 1.494
       },
       "snapped": "moved 0.15 m onto the car skin of the reference model",
-      "rate_hz": 30.0
+      "rate_hz": 10.0,
+      "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): D3 Engineering D3RCM camera, 2000x1200 at 10 Hz; Sony IMX390 sensor, 12-bit A/D (Sony 2017); uncompressed 2000*1200*12 bit = 28.8 Mbit per frame. The real link is FPD-Link III (SerDes), modelled as a dedicated Ethernet attachment"
     },
     {
       "type": "CAMERA",
       "id": "CAM_Rear_Center",
       "interface": "ETH",
-      "volume": 80.0,
+      "volume": 288.0,
       "position": {
         "x": -0.0,
         "y": -1.319,
         "z": 1.512
       },
       "snapped": "moved 0.16 m onto the car skin of the reference model",
-      "rate_hz": 30.0
+      "rate_hz": 10.0,
+      "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): D3 Engineering D3RCM camera, 2000x1200 at 10 Hz; Sony IMX390 sensor, 12-bit A/D (Sony 2017); uncompressed 2000*1200*12 bit = 28.8 Mbit per frame. The real link is FPD-Link III (SerDes), modelled as a dedicated Ethernet attachment"
     },
     {
       "type": "LIDAR",
       "id": "LIDAR_Front",
       "interface": "ETH",
-      "volume": 15.0,
+      "volume": 9.42,
       "position": {
         "x": -0.0,
         "y": 2.297,
         "z": 0.555
       },
       "snapped": "moved 0.06 m onto the car skin of the reference model",
-      "rate_hz": 10.0
+      "rate_hz": 20.0,
+      "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): Hesai Pandar20A/B at 20 Hz, 360k points/s; data rate estimated as half the Pandar40P stream (same packet format, half the point rate)"
     },
     {
       "type": "LIDAR",
       "id": "LIDAR_Left_Pillar",
       "interface": "ETH",
-      "volume": 15.0,
+      "volume": 18.84,
       "position": {
         "x": -0.749,
         "y": 0.83,
         "z": 1.131
       },
       "snapped": "moved 0.26 m onto the car skin of the reference model",
-      "rate_hz": 10.0
+      "rate_hz": 20.0,
+      "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): Hesai Pandar40P at 20 Hz, 720k points/s; point cloud data rate 18.84 Mbit/s single return (Hesai Pandar40P user manual)"
     },
     {
       "type": "LIDAR",
       "id": "LIDAR_Right_Pillar",
       "interface": "ETH",
-      "volume": 15.0,
+      "volume": 18.84,
       "position": {
         "x": 0.745,
         "y": 0.831,
         "z": 1.132
       },
       "snapped": "moved 0.26 m onto the car skin of the reference model",
-      "rate_hz": 10.0
+      "rate_hz": 20.0,
+      "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): Hesai Pandar40P at 20 Hz, 720k points/s; point cloud data rate 18.84 Mbit/s single return (Hesai Pandar40P user manual)"
     },
     {
       "type": "LIDAR",
       "id": "LIDAR_Rear",
       "interface": "ETH",
-      "volume": 15.0,
+      "volume": 9.42,
       "position": {
         "x": -0.0,
         "y": -2.267,
         "z": 0.609
       },
       "snapped": "moved 0.03 m onto the car skin of the reference model",
-      "rate_hz": 10.0
+      "rate_hz": 20.0,
+      "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): Hesai Pandar20A/B at 20 Hz, 360k points/s; data rate estimated as half the Pandar40P stream (same packet format, half the point rate)"
     },
     {
       "type": "LIDAR",
       "id": "LIDAR_Top",
       "interface": "ETH",
-      "volume": 15.0,
+      "volume": 18.84,
       "position": {
         "x": -0.0,
         "y": -0.305,
         "z": 1.549
       },
       "snapped": "moved 0.16 m onto the car skin of the reference model",
-      "rate_hz": 10.0
+      "rate_hz": 20.0,
+      "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): Hesai Pandar40P at 20 Hz, 720k points/s; point cloud data rate 18.84 Mbit/s single return (Hesai Pandar40P user manual)"
     },
     {
       "type": "IMU",
       "id": "IMU_Top_Center",
       "interface": "SPI",
-      "volume": 1.0,
+      "volume": 0.04,
       "position": {
         "x": 0.0,
         "y": 0.1,
         "z": 0.62
       },
-      "rate_hz": 100.0
+      "rate_hz": 100.0,
+      "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): Honeywell HG1120 at 100 Hz (SPI or RS-422); about 50 B per sample (3 rates, 3 accelerations, status; estimate) = 0.4 kbit"
     },
     {
       "type": "GPS",
       "id": "GPS_Center",
       "interface": "UART",
-      "volume": 2.0,
+      "volume": 0.02,
       "position": {
         "x": -0.001,
         "y": -1.204,
         "z": 1.586
       },
       "snapped": "moved 0.02 m onto the car skin of the reference model",
-      "rate_hz": 10.0
+      "rate_hz": 20.0,
+      "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): Trimble BX992 at 20 Hz; about 125 B per fix (position, velocity, covariance; estimate) = 1 kbit"
     }
-  ]
+  ],
+  "_data_comment": "volume = data rate (Mbit/s), rate_hz = message rate; one message = volume * 1000 / rate_hz kbit. Data pass 2026-10-21, sources per device (data_source); estimates are marked."
 }

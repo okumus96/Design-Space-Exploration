@@ -35,11 +35,11 @@ TOL = 1e-4
 # name, extra flags, growth levels written into the case's uncertainty.json, proven (cost, cable length) per solution
 CASES = [
     ('nominal', ['--num_points', '1'], None,
-     [(7828.418, 54.7111)]),
+     [(8101.0385, 56.2920)]),
     ('growth', ['--growth', '--sw_margin', '--derating', '--redundancy', '--ai_contention', '--robust_latency'], [0.0, 1.0],
-     [(8226.788, 48.2287), (8226.788, 48.2287)]),
+     [(8491.7525, 48.9631), (8531.7405, 52.5428)]),
     ('failures', ['--uncertainty'], [0.0],
-     [(10905.163, 55.0613)]),
+     [(11205.688, 58.2231)]),
 ]
 
 

@@ -163,8 +163,11 @@ class SolutionCheck:
         cfg = lambda f: _load(os.path.join(self.config_dir, f))
         buses = cfg('buses.json')
         self.ct = {n: {'cost': float(s['cost_per_meter']), 'cap': float(s.get('capacity', float('inf'))),
-                       'port': float(s.get('port_cost', 0)), 'hop': float(s.get('hop_latency_ms', 0.0))}
+                       'port': float(s.get('port_cost', 0)), 'hop': float(s.get('hop_latency_ms', 0.0)),
+                       'frame': float(s.get('frame_kbit', float('inf')))}
                    for n, s in buses['cable_types'].items()}
+        self.priorities = bool(buses.get('backbone', {}).get('priorities'))
+        self._prio = None
         self.k_paths = max(1, int(buses.get('backbone', {}).get('candidate_paths', 3)))
         parts = cfg('partitions.json')
         self.part, self.site_cfg = parts.get('partition', {}), parts.get('site', {})
@@ -206,6 +209,7 @@ class SolutionCheck:
             sc = {'id': c['id'], 'domain': c.get('domain', 'Unknown'), 'asil': int(c.get('asil_req', 0)),
                   'hw': list(c.get('hw_required', [])), 'redundant_with': c.get('redundant_with'),
                   'rate': float(c.get('rate_hz', 10.0) or 10.0), 'type': c.get('type', ''),
+                  'msg_kbit': (float(c['msg_kbit']) if c.get('msg_kbit') is not None else None),
                   'receives_from': list(c.get('receives_from', [])), 'devices': []}
             for r in RES:
                 sc[r] = float(int(c.get(f'{r}_req', 0)))
@@ -473,8 +477,29 @@ class SolutionCheck:
     def rate(self, res):
         return self.ct[self.bus_by_id[res[1]]['type'] if res[0] == 'line' else res[2]]['cap']
 
+    def prio(self, m):
+        """priority key of a message (lower = served first): with backbone.priorities, a flow of a chain (any instance)
+        has the smallest network budget of the chains it belongs to, so has an end device of a chain; all else last"""
+        if not self.priorities:
+            return 0.0
+        if self._prio is None:
+            by_base, by_dev = {}, {}
+            for ch in self.chains:
+                budget = float(ch['net_budget_ms'])
+                for b in self.chain_flows(ch):
+                    by_base[b] = min(by_base.get(b, float('inf')), budget)
+                for d in self.end_devices(ch):
+                    by_dev[d] = min(by_dev.get(d, float('inf')), budget)
+            self._prio = ({id(f): by_base.get(f['base'], float('inf')) for f in self.flows}, by_dev)
+        return self._prio[0].get(m[1], float('inf')) if m[0] == 'f' else self._prio[1].get(m[1], float('inf'))
+
     def queue(self, res, me, msgs):
-        return sum(k for m, k in msgs.get(res, []) if m != me) / self.rate(res)
+        """wait in front of `me`: every other message of equal or higher priority once, and at most one frame of a
+        lower-priority message (fixed priorities, non-preemptive); without priorities every other message once"""
+        p, frame = self.prio(me), self.ct[self.bus_by_id[res[1]]['type'] if res[0] == 'line' else res[2]]['frame']
+        wait = sum(k for m, k in msgs.get(res, []) if m != me and self.prio(m) <= p)
+        block = max((min(k, frame) for m, k in msgs.get(res, []) if m != me and self.prio(m) > p), default=0.0)
+        return (wait + block) / self.rate(res)
 
     def device_bus_ms(self, ch, msgs):
         """bus crossings of the end devices of a chain, each with the queue of its line"""
@@ -606,7 +631,9 @@ class SolutionCheck:
                     continue
                 s = self.scs[src]
                 volume, rate = 10.0, s['rate']
-                if s['devices']:
+                if s['msg_kbit'] is not None:
+                    volume = s['msg_kbit'] * rate / 1000.0
+                elif s['devices']:
                     dev = self.devices[s['devices'][0]]
                     volume, rate = dev['volume'], dev['rate']
                 if volume > 0:
@@ -795,7 +822,7 @@ class SolutionCheck:
 
     # --------------------------------------------------------------------------------------------- latency
     def crossing_ms(self, f, msgs):
-        """per hop: own transmission, per-hop bound, and every other message on the resource once before it"""
+        """per hop: own transmission, per-hop bound, and the queue on the resource (see queue)"""
         t = self.ct[f['iface']]
         base = sum(f['kbit'] / t['cap'] + t['hop'] + self.queue(res, ('f', id(f)), msgs) for res in self.resources(f))
         return self.robust(base)

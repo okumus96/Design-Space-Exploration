@@ -3,44 +3,56 @@
     "ETH": {
       "cost_per_meter": 100.0,
       "weight_per_meter": 50,
-      "capacity": 1000,
+      "capacity": 1000.0,
       "port_cost": 10,
-      "hop_latency_ms": 0.1
+      "hop_latency_ms": 0.1,
+      "frame_kbit": 12.336,
+      "data_source": "1000BASE-T1 (IEEE 802.3bp); longest frame 1522 B tagged + 8 B preamble + 12 B gap"
     },
     "FLEXRAY": {
       "cost_per_meter": 30.0,
       "weight_per_meter": 30,
-      "capacity": 300,
+      "capacity": 10.0,
       "port_cost": 5,
-      "hop_latency_ms": 1.0
+      "hop_latency_ms": 1.0,
+      "frame_kbit": 2.64,
+      "data_source": "FlexRay 10 Mbit/s (ISO 17458); longest frame 262 B (254 B payload), 10 bit per byte"
     },
     "CAN": {
       "cost_per_meter": 20.0,
       "weight_per_meter": 20,
-      "capacity": 100,
+      "capacity": 0.5,
       "port_cost": 5,
-      "hop_latency_ms": 2.0
+      "hop_latency_ms": 2.0,
+      "frame_kbit": 0.135,
+      "data_source": "high-speed CAN at 500 kbit/s (ISO 11898-2); 8-byte frame 135 bit worst case (Davis et al. 2007)"
     },
     "LIN": {
       "cost_per_meter": 10.0,
       "weight_per_meter": 10,
-      "capacity": 20,
+      "capacity": 0.0192,
       "port_cost": 5,
-      "hop_latency_ms": 10.0
+      "hop_latency_ms": 10.0,
+      "frame_kbit": 0.174,
+      "data_source": "LIN at 19.2 kbit/s (ISO 17987); 8-byte frame 174 bit maximum"
     },
     "UART": {
       "cost_per_meter": 5.0,
       "weight_per_meter": 5,
-      "capacity": 10,
+      "capacity": 0.1152,
       "port_cost": 5,
-      "hop_latency_ms": 1.0
+      "hop_latency_ms": 1.0,
+      "frame_kbit": 0.01,
+      "data_source": "UART at 115.2 kbaud (typical GNSS receiver port); one 10-bit character"
     },
     "SPI": {
       "cost_per_meter": 5.0,
       "weight_per_meter": 5,
-      "capacity": 50,
+      "capacity": 10.0,
       "port_cost": 5,
-      "hop_latency_ms": 0.1
+      "hop_latency_ms": 0.1,
+      "frame_kbit": 0.032,
+      "data_source": "SPI at 10 MHz (typical limit of MEMS IMU ports); one 32-bit transfer"
     }
   },
   "backbone": {
@@ -48,9 +60,16 @@
     "_comment": "Candidate backbone paths per site pair handed to the optimiser: the direct link plus the (candidate_paths - 1) shortest routes over one relaying site (needs a SWITCH there); all traffic of a site pair uses one path per cable type. The traffic constraints (a pair with traffic needs a selected path, link load within cables x capacity, chain latency, failure scenarios) are lazy constraints added in a callback. path_link_cut (on): static LP strengthening, a selected path has a cable on each of its links.",
     "path_link_cut": true,
     "_bus_lines_comment": "Bus lines available per bus type (CAN, LIN, FlexRay): the optimiser decides which units and devices share a line; a line is a cable through all its members (exact Steiner tree on the cable channels), its members share its bit rate. Upper limit, set by hand for now (2026-10-21): more interchangeable lines made the search much slower without a better design (lite: 4/3/2 lines 133 s, 1/2/1 lines 20 s, same optimum); a run reports when every line of a type is in use. To be replaced by an automatic bound with symmetry breaking (HANDOFF 16.12).",
-    "bus_lines": {"CAN": 1, "LIN": 2, "FLEXRAY": 1},
+    "bus_lines": {
+      "CAN": 1,
+      "LIN": 2,
+      "FLEXRAY": 1
+    },
     "_bus_max_utilization_comment": "Share of its bit rate a bus line may be loaded with (devices + unit traffic, both directions). The latency bound (every other message on a resource is sent once before a message) assumes a bus that is not saturated. Provisional 0.7 (common guidance for CAN bus load), HANDOFF 17.",
-    "bus_max_utilization": 0.7
+    "bus_max_utilization": 0.7,
+    "_priorities_comment": "Fixed-priority, non-preemptive queues on every cable and bus line, as CAN arbitrates by identifier and Ethernet switches serve IEEE 802.1Q traffic classes: a chain message gets the tightest network budget of its chains (deadline-monotonic), the end device of a chain that of the chain, all other traffic comes last. A message waits for every message of equal or higher priority once and for at most one frame of a lower-priority one (cable_types.frame_kbit). false = every other message once (no priorities).",
+    "priorities": true
   },
-  "_comment": "cable_types: cost per metre, weight per metre, capacity = bit rate (Mbit/s, same units as flow volumes), port cost, hop_latency_ms = per-hop processing/queueing bound (switch forwarding, bus arbitration). Every type may connect two control units; the optimiser picks per data flow which type carries it. Latency of a message over a link of a type = message kbit / capacity + hop_latency_ms per hop (HANDOFF 14.3)."
+  "_comment": "cable_types: cost per metre, weight per metre, capacity = bit rate (Mbit/s, same units as flow volumes), port cost, hop_latency_ms = per-hop processing/queueing bound (switch forwarding, bus arbitration). Every type may connect two control units; the optimiser picks per data flow which type carries it. Latency of a message over a link of a type = message kbit / capacity + hop_latency_ms per hop (HANDOFF 14.3).",
+  "_data_comment": "capacity = bit rate (Mbit/s), frame_kbit = longest frame of the type; data pass 2026-10-21, sources in data_source; hop_latency_ms, costs and weights unchanged (provisional, HANDOFF 17)"
 }

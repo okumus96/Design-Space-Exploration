@@ -38,6 +38,7 @@ class Interface:
     capacity: float = float('inf')  # traffic capacity in the same units as comm_matrix[*]['volume']
     port_cost: float = 0.0    # cost per port/interface on ECU or SC
     hop_latency_ms: float = 0.0  # per-hop processing/queueing bound of a link of this type (switch forwarding, bus arbitration)
+    frame_kbit: float = float('inf')  # longest frame (kbit): what a lower-priority message can block a higher one with
 
 @dataclass
 class Sensor:
@@ -71,6 +72,7 @@ class SoftwareComponent:
     actuators: list = None
     redundant_with: str = None  # ID of redundant SC pair
     rate_hz: float = 10.0       # output message rate; message size (kbit) = link volume (Mbit/s) * 1000 / rate_hz
+    msg_kbit: float = None      # size of one output message (kbit); None = default link volume or the device stream
 
     def __post_init__(self):
         if self.interface_required is None:
