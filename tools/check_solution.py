@@ -7,7 +7,8 @@ Independent check of optimisation results.
 
 Re-evaluates every rule of the model on a stored solution with plain Python and recomputes every cost and length:
 placement, partitions and their capacities, control-unit caps, hardware, redundancy, AI contention, peripheral
-wiring, ports and shared-bus trunks, backbone cables and paths, link capacities, chain latencies, and with single
+wiring, bus lines (members, ASIL group, shared bit rate, Steiner length), ports, backbone cables and paths, link
+capacities, chain latencies (with the bus crossings of the end devices), and with single
 failures the standbys, survival in every scenario, degraded chain latencies, link capacity after every failure and
 the cold-standby capacity.
 
@@ -227,6 +228,9 @@ class SolutionCheck:
         self.lat = {'robust': bool(self.flags.get('robust_latency')), 'factor': float(rl.get('network_safety_factor', 1.0)),
                     'sync': float(rl.get('sync_ms', 0.0)), 'platform': float(rl.get('platform_ms', 0.0))}
         self.has_switch_hw = 'SWITCH' in self.hw_price
+        lines_cfg = buses.get('backbone', {}).get('bus_lines', {})
+        self.bus_umax = float(buses.get('backbone', {}).get('bus_max_utilization', 1.0))
+        self.flow_types = [n for n in self.ct if n not in SHARED_BUSES or int(lines_cfg.get(n, 1)) > 0]
 
     # ------------------------------------------------------------------------------------------- solution parsing
     def parse(self):
@@ -250,8 +254,15 @@ class SolutionCheck:
             self.cables[_pk(lk['src_loc'], lk['dst_loc']) + (lk['iface'],)] += int(lk.get('count', 1))
         self.attach = dict(s.get('eth_sensor_attachments', {}))
         self.attach.update(s.get('eth_actuator_attachments', {}))
-        self.shared_attach = dict(s.get('shared_sensor_attachments', {}))
-        self.shared_attach.update(s.get('shared_actuator_attachments', {}))
+        self.buses = list(s.get('buses') or [])
+        self.bus_by_id = {b['id']: b for b in self.buses}
+        self.bus_of = defaultdict(list)                 # device -> ids of the bus lines it sits on
+        for b in self.buses:
+            for d in b.get('devices', []):
+                self.bus_of[d].append(b['id'])
+        if 'buses' not in s and (s.get('shared_sensor_attachments') or s.get('shared_actuator_attachments')):
+            self.err('format', 'solution of the older shared-bus model (attachments + trunks): not checkable with this version')
+        self._st_cache = {}
         self.switches = {site for (site, h) in self.hw if h == 'SWITCH'}
         self.active = set(self.pos_x.values()) | set(self.pos_r.values())       # sites with a control unit (y)
         self.node_active = self.active | self.switches                          # may terminate cables / peripherals
@@ -384,8 +395,103 @@ class SolutionCheck:
                     self.err('ai_contention', f"{site}: {n} components need {cfg['ai_hw_feature']} > {cfg['max_per_location']}")
 
     # -------------------------------------------------------------------------------------------- peripherals
+    def steiner(self, terminals):
+        """minimum Steiner tree length of the terminals in the complete graph over the candidate sites and all
+        devices with the channel cable lengths (classic Dreyfus-Wagner rooted at the first terminal)"""
+        key = tuple(sorted(set(terminals)))
+        if key in self._st_cache:
+            return self._st_cache[key]
+        if len(key) <= 1:
+            val = 0.0
+        elif len(key) == 2:
+            val = self.dist(key[0], key[1])
+        else:
+            nodes = sorted(set(self.cands) | set(self.devices))
+            d = {(a, b): min(self.dist(a, b), self.dist(b, a)) for a in nodes for b in nodes}
+            root, rest = key[0], key[1:]
+            best = {}                                    # (frozenset of terminals, node) -> tree joining them and the node
+            for c in rest:
+                for v in nodes:
+                    best[frozenset([c]), v] = d[c, v]
+            for size in range(2, len(rest) + 1):
+                for combo in __import__('itertools').combinations(rest, size):
+                    S = frozenset(combo)
+                    members = sorted(S)
+                    first, others = members[0], members[1:]
+                    split = {}
+                    for u in nodes:                      # join two parts at u (each split once: part with `first`)
+                        val_u = float('inf')
+                        for r in range(0, len(others)):
+                            for part in __import__('itertools').combinations(others, r):
+                                E = frozenset((first,) + part)
+                                val_u = min(val_u, best[E, u] + best[S - E, u])
+                        split[u] = val_u
+                    for v in nodes:
+                        best[S, v] = min(split[u] + d[u, v] for u in nodes)
+            val = best[frozenset(rest), root]
+        self._st_cache[key] = val
+        return val
+
+    def robust(self, base):
+        return base * self.lat['factor'] + self.lat['sync'] + self.lat['platform'] if self.lat['robust'] else base
+
+    def dev_kbit(self, d):
+        return self.devices[d]['volume'] * 1000.0 / self.devices[d]['rate']
+
+    def end_devices(self, ch):
+        """bus devices at the ends of a chain: a bus sensor at its first and a bus actuator at its last component
+        (per end the device with the longest own crossing)"""
+        idx = [s for s in ch.get('swcs', []) if s in self.scs]
+        ends = []
+        for sc, kind in (((idx[0], 'sensor'), (idx[-1], 'actuator')) if idx else ()):
+            cands = [d for d in self.scs[sc]['devices'] if self.devices[d]['kind'] == kind and self.devices[d]['iface'] in SHARED_BUSES]
+            if cands:
+                ends.append(max(cands, key=lambda d: self.dev_kbit(d) / self.ct[self.devices[d]['iface']]['cap'] + self.ct[self.devices[d]['iface']]['hop']))
+        return ends
+
+    def messages(self, flows, failed_line=None):
+        """what waits on each resource: {resource: [(message, kbit)]}; resources are directed cables (a, b, type) and
+        bus lines ('line', id); messages are the given flows and the devices of every line except a failed one"""
+        msgs = defaultdict(list)
+        for f in flows:
+            if f['path'] is None:
+                continue
+            for res in self.resources(f):
+                msgs[res].append((('f', id(f)), f['kbit']))
+        for b in self.buses:
+            if b['id'] != failed_line:
+                for d in b['devices']:
+                    if d in self.devices:
+                        msgs[('line', b['id'])].append((('d', d), self.dev_kbit(d)))
+        return msgs
+
+    def resources(self, f):
+        if f.get('line'):
+            return [('line', f['line'])]
+        return [(a, b, f['iface']) for a, b in zip(f['path'], f['path'][1:])]
+
+    def rate(self, res):
+        return self.ct[self.bus_by_id[res[1]]['type'] if res[0] == 'line' else res[2]]['cap']
+
+    def queue(self, res, me, msgs):
+        return sum(k for m, k in msgs.get(res, []) if m != me) / self.rate(res)
+
+    def device_bus_ms(self, ch, msgs):
+        """bus crossings of the end devices of a chain, each with the queue of its line"""
+        total = 0.0
+        for d in self.end_devices(ch):
+            t = self.ct[self.devices[d]['iface']]
+            line = (self.bus_of.get(d) or [None])[0]
+            base = self.dev_kbit(d) / t['cap'] + t['hop'] + (self.queue(('line', line), ('d', d), msgs) if line else 0.0)
+            total += self.robust(base)
+        return total
+
     def check_peripherals(self):
         users = defaultdict(list)           # device -> [(sc, site)] of the primaries driving it
+        drivers = defaultdict(list)         # device -> components of the architecture driving it
+        for sc_id in self.sc_order:
+            for d in self.scs[sc_id]['devices']:
+                drivers[d].append(sc_id)
         for sc, site in self.pos_x.items():
             for d in self.scs.get(sc, {}).get('devices', []):
                 users[d].append((sc, site))
@@ -401,82 +507,95 @@ class SolutionCheck:
                     self.err('peripheral', f"{d} attached at {att} without a control unit or switch")
                 if not _le(dev['volume'], eth_cap):
                     self.err('peripheral', f"{d} volume {dev['volume']} > Ethernet capacity {eth_cap}")
-            elif dev['iface'] in SHARED_BUSES:
-                att = self.shared_attach.get(d)
-                for sc, site in users.get(d, []):
-                    self.checked['peripheral'] += 1
-                    if att != site:
-                        self.err('peripheral', f"{dev['iface']} device {d} driven by {sc} at {site} but attached at {att}")
-                if att is not None and att not in self.node_active:
-                    self.err('peripheral', f"{d} attached at {att} without a control unit or switch")
-        for d in list(self.attach) + list(self.shared_attach):
+        for d in self.attach:
             if d not in self.devices:
                 self.err('peripheral', f"unknown device {d} attached")
+        # bus lines: members, one ASIL group, shared bit rate, cable at least the Steiner tree of the members
+        by_id = {}
+        for b in self.buses:
+            bid, n = b['id'], b['type']
+            by_id[bid] = b
+            self.checked['bus'] += 1
+            if n not in SHARED_BUSES or n not in self.ct:
+                self.err('bus', f"{bid}: {n} is not a bus type")
+                continue
+            if not b['units']:
+                self.err('bus', f"{bid}: line without a control unit")
+            for u in b['units']:
+                if u not in self.cand_set:
+                    self.err('bus', f"{bid}: member {u} is not a candidate site")
+                elif u not in self.active:
+                    self.err('bus', f"{bid}: member {u} has no control unit")
+            groups = set()
+            for d in b['devices']:
+                dev = self.devices.get(d)
+                if dev is None:
+                    self.err('bus', f"{bid}: unknown device {d}")
+                    continue
+                if dev['iface'] != n:
+                    self.err('bus', f"{bid}: {dev['iface']} device {d} on a {n} line")
+                groups.add('HIGH' if any(self.scs[u]['asil'] >= 3 for u in drivers[d]) else 'LOW')
+            if len(groups) > 1:
+                self.err('bus', f"{bid}: devices of both ASIL groups on one line")
+            elif groups and b.get('asil_group') not in groups:
+                self.err('report', f"{bid}: reported ASIL group {b.get('asil_group')}, devices {groups.pop()}")
+            load = sum(self.devices[d]['volume'] for d in b['devices'] if d in self.devices)
+            self.checked['bus_capacity'] += 1
+            if not _le(load, self.bus_umax * self.ct[n]['cap']):
+                self.err('bus_capacity', f"{bid}: device load {load} > {self.bus_umax} x {self.ct[n]['cap']}")
+            st = self.steiner(list(b['units']) + list(b['devices']))
+            self.checked['bus_length'] += 1
+            if float(b['length_m']) < st - 1e-6:
+                self.err('bus_length', f"{bid}: cable {float(b['length_m']):.3f} m shorter than the Steiner tree of its members {st:.3f} m")
+            elif float(b['length_m']) > st + 1e-4:
+                self.warn('bus_length', f"{bid}: cable {float(b['length_m']):.3f} m longer than needed ({st:.3f} m)")
+        for d, dev in self.devices.items():
+            if dev['iface'] not in SHARED_BUSES:
+                continue
+            lines = self.bus_of.get(d, [])
+            if not drivers[d]:
+                if len(lines) > 1:
+                    self.err('bus', f"{d} on {len(lines)} lines")
+                continue
+            self.checked['bus'] += 1
+            if len(lines) != 1:
+                self.err('bus', f"{dev['iface']} device {d} on {len(lines)} lines (needs exactly one)")
+                continue
+            b = by_id[lines[0]]
+            for sc, site in users.get(d, []):
+                if site not in b['units']:
+                    self.err('bus', f"{d} on {b['id']} but its software {sc} runs at {site}, not a member")
+                if sc in self.pos_r and self.pos_r[sc] not in b['units']:
+                    self.err('bus', f"{d} on {b['id']}: the standby of {sc} at {self.pos_r[sc]} is not a member")
         # ports per site and interface
         bb_ports = defaultdict(int)
         for (a, b, n), cnt in self.cables.items():
             bb_ports[(a, n)] += cnt
             bb_ports[(b, n)] += cnt
-        groups = defaultdict(set)           # (site, shared bus) -> ASIL groups of the components using it
+        bus_ports = defaultdict(int)        # (site, bus type) -> lines the unit belongs to
+        for b in self.buses:
+            for u in b['units']:
+                bus_ports[(u, b['type'])] += 1
         direct = defaultdict(int)           # (site, iface) -> peripherals wired directly to the hosting unit
         for sc, site in self.pos_x.items():
             for d in self.scs.get(sc, {}).get('devices', []):
                 n = self.devices[d]['iface']
-                if n in SHARED_BUSES:
-                    groups[(site, n)].add('HIGH' if self.scs[sc]['asil'] >= 3 else 'LOW')
-                elif n != 'ETH':
+                if n != 'ETH' and n not in SHARED_BUSES:
                     direct[(site, n)] += 1
-        sites = set(self.cands)
-        for s in sites:
+        for s in set(self.cands):
             for n, t in self.ct.items():
                 have = self.ports.get((s, n), 0)
                 if n == 'ETH':
                     need = sum(1 for d, a in self.attach.items() if a == s and self.devices.get(d, {}).get('iface') == 'ETH') + bb_ports[(s, n)]
                     cover = have + (SWITCH_ETH_PORTS if (self.has_switch_hw and s in self.switches) else 0)
                 elif n in SHARED_BUSES:
-                    need = max(len(groups[(s, n)]), bb_ports[(s, n)])
-                    cover = have
-                    vol = sum(self.devices[d]['volume'] for d, a in self.shared_attach.items() if a == s and self.devices.get(d, {}).get('iface') == n)
-                    if vol > 0 and t['cap'] != float('inf'):
-                        self.checked['ports'] += 1
-                        if not _le(vol, t['cap'] * have):
-                            self.err('ports', f"{s} {n}: shared-bus load {vol} > {have} bus(es) x {t['cap']}")
+                    need, cover = bus_ports[(s, n)] + bb_ports[(s, n)], have
                 else:
-                    need = direct[(s, n)] + bb_ports[(s, n)]
-                    cover = have
+                    need, cover = direct[(s, n)] + bb_ports[(s, n)], have
                 if need > 0 or have > 0:
                     self.checked['ports'] += 1
                 if need > cover:
                     self.err('ports', f"{s} {n}: {need} ports needed, {cover} provided")
-        # shared-bus trunks: the main segment reaches the farthest attached device; a second (ASIL-split) bus
-        # repeats it when both ASIL groups use the bus at that site
-        trunks = self.sol.get('shared_trunks')
-        if trunks is None:
-            self.warn('format', 'shared_trunks not in the solution: minimum trunk lengths assumed')
-        self.trunk_len = {}
-        for s in sites:
-            for n in SHARED_BUSES:
-                far = max((self.dist(d, s) for d, a in self.shared_attach.items() if a == s and self.devices.get(d, {}).get('iface') == n), default=None)
-                split = len(groups[(s, n)]) == 2
-                if trunks is None:
-                    main = far or 0.0
-                    extra = main if split else 0.0
-                else:
-                    t = trunks.get(f"{s}|{n}", {'main': 0.0, 'extra': 0.0})
-                    main, extra = float(t['main']), float(t['extra'])
-                if far is None:
-                    if main > 1e-6 or extra > 1e-6:
-                        self.err('trunk', f"{s} {n}: trunk {main:.3f} + {extra:.3f} m without an attached device")
-                else:
-                    self.checked['trunk'] += 1
-                    if main < far - 1e-6:
-                        self.err('trunk', f"{s} {n}: trunk {main:.3f} m shorter than the farthest device {far:.3f} m")
-                    if split and extra < main - 1e-6:
-                        self.err('trunk', f"{s} {n}: ASIL-split bus without its second trunk ({extra:.3f} < {main:.3f} m)")
-                    if not split and extra > 1e-6:
-                        self.err('trunk', f"{s} {n}: second trunk {extra:.3f} m without an ASIL split")
-                if main > 1e-9 or extra > 1e-9:
-                    self.trunk_len[(s, n)] = (main, extra)
 
     # ---------------------------------------------------------------------------------------------- backbone
     def build_flows(self):
@@ -529,6 +648,7 @@ class SolutionCheck:
                 e = q.pop(0) if q else None
                 f['iface'] = e['iface'] if e else None
                 f['path'] = list(e['path']) if (e and e.get('path')) else None
+                f['line'] = e.get('line') if e else None
                 f['known'] = e is not None
                 if e is None:
                     self.err('report', f"flow {f['src']} -> {f['dst']} ({f['si']}/{f['di']}) missing in flow_routes")
@@ -542,7 +662,7 @@ class SolutionCheck:
                 by_pair[_pk(r['src_loc'], r['dst_loc'])].append(r)
             for f in self.flows:
                 u, v = self.ends(f)
-                f['iface'], f['path'], f['known'] = None, None, True
+                f['iface'], f['path'], f['line'], f['known'] = None, None, None, True
                 if u is None or v is None or u == v:
                     continue
                 rs = by_pair.get(_pk(u, v), [])
@@ -587,6 +707,10 @@ class SolutionCheck:
         cand_index = {s: k for k, s in enumerate(self.cands)}
         path_of = {}
         self.load = defaultdict(float)
+        self.line_traffic = defaultdict(float)
+        for (a, b, n), cnt in self.cables.items():
+            if n in SHARED_BUSES:
+                self.err('backbone', f"point-to-point {n} cable {a}-{b}: units are joined by {n} bus lines only")
         for f in self.flows:
             u, v = self.ends(f)
             name = f"{f['type']} {f['src']} -> {f['dst']} ({f['si']}/{f['di']})"
@@ -603,9 +727,25 @@ class SolutionCheck:
             if path[0] != u or path[-1] != v:
                 self.err('route', f"{name}: path {'-'.join(path)} does not join {u} and {v}")
                 continue
-            elig = [m for m in caps if f['volume'] <= caps[m]] or [max(caps, key=caps.get)]
+            elig = [m for m in self.flow_types if f['volume'] <= caps[m]] or [max(self.flow_types, key=caps.get)]
             if n not in elig:
                 self.err('route', f"{name}: {n} cannot carry {f['volume']}")
+            if n in SHARED_BUSES:
+                line = self.bus_by_id.get(f['line'])
+                if line is None or line['type'] != n:
+                    self.err('route', f"{name}: {n} flow without a {n} bus line ({f['line']})")
+                    continue
+                if len(path) != 2:
+                    self.err('route', f"{name}: a bus line is one hop, path {'-'.join(path)}")
+                for s_ in (u, v):
+                    if s_ not in line['units']:
+                        self.err('route', f"{name}: {s_} is not a member of bus line {line['id']}")
+                key = _pk(u, v) + (n,)
+                if path_of.setdefault(key, ('line', line['id'])) != ('line', line['id']):
+                    self.err('route', f"{u}-{v} {n}: two different lines ({path_of[key][1]} and {line['id']})")
+                if not self.silent(f):
+                    self.line_traffic[line['id']] += f['volume']
+                continue
             if len(path) == 3:
                 relay = path[1]
                 if n != 'ETH':
@@ -634,6 +774,14 @@ class SolutionCheck:
             cap = caps[n] * self.cables.get(_pk(a, b) + (n,), 0)
             if not _le(ld, cap):
                 self.err('link_capacity', f"{a}->{b} {n}: load {ld:.1f} > {cap:.1f}")
+        # a bus line: its devices and the unit-to-unit traffic of both directions share its bit rate
+        for b in self.buses:
+            self.checked['bus_capacity'] += 1
+            total = sum(self.devices[d]['volume'] for d in b['devices'] if d in self.devices) + self.line_traffic.get(b['id'], 0.0)
+            if b['type'] in self.ct and not _le(total, self.bus_umax * self.ct[b['type']]['cap']):
+                self.err('bus_capacity', f"{b['id']}: devices + traffic {total:.1f} > {self.bus_umax} x {self.ct[b['type']]['cap']}")
+            if not _close(b.get('traffic_load', 0.0), self.line_traffic.get(b['id'], 0.0), tol=1e-3):
+                self.err('report', f"{b['id']}: reported traffic {b.get('traffic_load')}, recomputed {self.line_traffic.get(b['id'], 0.0)}")
         # reported peak load per link (both directions, nominal state)
         rep = self.sol.get('comm_link_peak_load', {})
         calc = defaultdict(float)
@@ -646,11 +794,11 @@ class SolutionCheck:
                     self.err('report', f"comm_link_peak_load {k}: reported {rep.get(k, 0.0)}, nominal load {calc.get(k, 0.0)}")
 
     # --------------------------------------------------------------------------------------------- latency
-    def crossing_ms(self, f):
-        hops = len(f['path']) - 1
+    def crossing_ms(self, f, msgs):
+        """per hop: own transmission, per-hop bound, and every other message on the resource once before it"""
         t = self.ct[f['iface']]
-        base = hops * (f['kbit'] / t['cap'] + t['hop'])
-        return base * self.lat['factor'] + self.lat['sync'] + self.lat['platform'] if self.lat['robust'] else base
+        base = sum(f['kbit'] / t['cap'] + t['hop'] + self.queue(res, ('f', id(f)), msgs) for res in self.resources(f))
+        return self.robust(base)
 
     def chain_flows(self, ch):
         """base flows of a chain: sensor -> first component, consecutive components, last component -> actuator"""
@@ -665,6 +813,7 @@ class SolutionCheck:
 
     def check_chains(self):
         reported = self.sol.get('chain_latency', {})
+        nominal = self.messages([f for f in self.flows if not self.silent(f) and f['known']])
         for ch in self.chains:
             total, unknown = 0.0, False
             for b in self.chain_flows(ch):
@@ -678,9 +827,10 @@ class SolutionCheck:
                     continue
                 if f['path'] is None:
                     continue                    # reported by the route check
-                total += self.crossing_ms(f)
+                total += self.crossing_ms(f, nominal)
             if unknown:
                 continue
+            total += self.device_bus_ms(ch, nominal)
             self.checked['chain_latency'] += 1
             budget = float(ch['net_budget_ms'])
             if not _le(total, budget):
@@ -730,6 +880,7 @@ class SolutionCheck:
             scen += [('switch', c) for c in sorted(self.switches)]
         if 'cable' in self.classes:
             scen += [('cable', k) for k in sorted(self.cables)]
+            scen += [('line', ln) for ln in sorted({f['line'] for f in self.flows if f.get('line') and f['path'] and self.ends(f)[0] != self.ends(f)[1]})]
 
         def alive(f, kind, elem):
             u, v = self.ends(f)
@@ -744,7 +895,9 @@ class SolutionCheck:
                 return False
             if kind == 'switch' and f['iface'] == 'ETH' and elem in (u, v):
                 return False                    # the Ethernet ports of a switched cell are the switch's ports
-            if kind == 'cable' and elem[2] == f['iface'] and any(_pk(a, b) == elem[:2] for a, b in zip(path, path[1:])):
+            if kind == 'cable' and f['iface'] not in SHARED_BUSES and elem[2] == f['iface'] and any(_pk(a, b) == elem[:2] for a, b in zip(path, path[1:])):
+                return False
+            if kind == 'line' and f.get('line') == elem:
                 return False
             return True
 
@@ -770,11 +923,21 @@ class SolutionCheck:
 
         chain_flows = {ch['id']: self.chain_flows(ch) for ch in self.chains}
         for kind, elem in scen:
-            label = f"{kind} {elem if kind != 'cable' else '-'.join(elem[:2]) + ' ' + elem[2]}"
+            label = f"{kind} {'-'.join(elem[:2]) + ' ' + elem[2] if kind == 'cable' else elem}"
             for sc in sorted(self.crit):
                 self.checked['failure_survival'] += 1
                 if not (served(sc, 'x', kind, elem) or served(sc, 'r', kind, elem)):
                     self.err('failure_survival', f"{label}: {sc} has no instance with all critical partners")
+            # traffic after the failure: the flows that keep running (alive, primaries and hot standbys) and, per data
+            # flow, its first surviving variant (the variant rule of the degraded latency)
+            carried = {id(f): f for f in self.flows if not self.silent(f) and alive(f, kind, elem)}
+            for b in range(len(self.base)):
+                pick = next((self.variants[b][k] for k in VARIANT_ORDER[self.base[b]['type']]
+                             if k in self.variants[b] and alive(self.variants[b][k], kind, elem)), None)
+                if pick is not None:
+                    carried.setdefault(id(pick), pick)
+            after = self.messages([f for f in carried.values() if self.ends(f)[0] != self.ends(f)[1]],
+                                  failed_line=(elem if kind == 'line' else None))
             for ch in self.chains:
                 total, broken = 0.0, False
                 for b in chain_flows[ch['id']]:
@@ -785,9 +948,12 @@ class SolutionCheck:
                         break
                     u, v = self.ends(pick)
                     if u != v:
-                        total += self.crossing_ms(pick)
+                        total += self.crossing_ms(pick, after)
+                if kind == 'line' and any((self.bus_of.get(d) or [None])[0] == elem for d in self.end_devices(ch)):
+                    broken = True               # the end device's own line failed: out of scope (devices are single)
                 if broken:
                     continue
+                total += self.device_bus_ms(ch, after)
                 self.checked['degraded_latency'] += 1
                 bound = float(ch.get('degraded_bound_ms', 2.0 * float(ch['net_budget_ms'])))
                 if not _le(total, bound):
@@ -797,20 +963,25 @@ class SolutionCheck:
             # link capacity after the failure: the flows that keep running (alive, primaries and hot standbys) and,
             # per data flow, its first surviving variant (the variant rule of the degraded latency), which activates
             # the cold standbys it needs, against the remaining cables
-            carried = {id(f): f for f in self.flows if not self.silent(f) and alive(f, kind, elem)}
-            for b in range(len(self.base)):
-                pick = next((self.variants[b][k] for k in VARIANT_ORDER[self.base[b]['type']]
-                             if k in self.variants[b] and alive(self.variants[b][k], kind, elem)), None)
-                if pick is not None:
-                    carried.setdefault(id(pick), pick)
             dl = defaultdict(float)
             for f in carried.values():
                 if f['path'] is None:
                     continue
+                if f.get('line'):
+                    dl[('line', f['line'])] += f['volume']
+                    continue
                 for a, c2 in zip(f['path'], f['path'][1:]):
                     dl[(a, c2, f['iface'])] += f['volume']
-            for (a, c2, n), ld in dl.items():
+            for key, ld in dl.items():
                 self.checked['failure_link_capacity'] += 1
+                if key[0] == 'line':
+                    b = self.bus_by_id[key[1]]
+                    ld += sum(self.devices[d]['volume'] for d in b['devices'] if d in self.devices)
+                    cap = self.bus_umax * self.ct[b['type']]['cap']
+                    if not _le(ld, cap):
+                        self.err('failure_link_capacity', f"{label}: bus line {key[1]} devices + traffic {ld:.1f} > {cap:.1f} after the failure")
+                    continue
+                a, c2, n = key
                 cap = self.ct[n]['cap'] * self.cables.get(_pk(a, c2) + (n,), 0)
                 if not _le(ld, cap):
                     self.err('failure_link_capacity', f"{label}: {a}->{c2} {n} load {ld:.1f} > {cap:.1f} after the failure")
@@ -867,19 +1038,20 @@ class SolutionCheck:
             for d in self.scs.get(sc, {}).get('devices', []):
                 n = self.devices[d]['iface']
                 if n == 'ETH' or n in SHARED_BUSES:
-                    continue
+                    continue                    # Ethernet: attachment cable; bus types: bus line
                 dl = self.dist(d, site)
                 per_len += dl
                 per_cost += dl * self.ct[n]['cost']
-        for d, site in list(self.attach.items()) + list(self.shared_attach.items()):
+        for d, site in self.attach.items():
             if d not in self.devices:
                 continue
             dl = self.dist(d, site)
             per_len += dl
             per_cost += dl * self.ct[self.devices[d]['iface']]['cost']
-        for (site, n), (main, extra) in self.trunk_len.items():
-            per_len += main + extra
-            per_cost += (main + extra) * self.ct[n]['cost']
+        for b in self.buses:
+            if b['type'] in self.ct:
+                per_len += float(b['length_m'])
+                per_cost += float(b['length_m']) * self.ct[b['type']]['cost']
         bb_len = sum(cnt * self.dist(a, b) for (a, b, _n), cnt in self.cables.items())
         bb_cost = sum(cnt * self.dist(a, b) * self.ct[n]['cost'] for (a, b, n), cnt in self.cables.items())
         total = part_cost + site_cost + hw_cost + if_cost + per_cost + bb_cost

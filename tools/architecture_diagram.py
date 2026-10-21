@@ -6,7 +6,8 @@ Technical architecture diagram of one optimisation result.
 
 Draws every active control unit (candidate cell) as a box: header with cell id, zone, hardware (DSP, HW_ACC, SWITCH)
 and ports; inside, one block per partition (ASIL, CPU/RAM/ROM utilisation) listing its software components coloured
-by domain; below the box the peripherals attached to the unit with their interface; between the boxes the backbone
+by domain; below the box the peripherals attached to the unit with their interface (devices on a bus line under every
+member unit, with the line); between the boxes the backbone
 cables (type and count, relays over a switch as a path). A table of the cause-effect chains with their network
 latency and budget closes the figure. Output: <out>.pdf and <out>.png (default: next to the solution file).
 """
@@ -54,9 +55,15 @@ def unit_data(sol, arch, devices):
         cnt, rest = p.split('x', 1)
         iface, site = rest.split('@')
         units[site]['ports'].append((iface, int(cnt)))
-    for key in ('eth_sensor_attachments', 'eth_actuator_attachments', 'shared_sensor_attachments', 'shared_actuator_attachments'):
+    for key in ('eth_sensor_attachments', 'eth_actuator_attachments'):
         for dev, site in sol.get(key, {}).items():
-            units[site]['periph'].append(dev)
+            units[site]['periph'].append((dev, ''))
+    # bus lines: their devices under every member unit, with the line and the other members
+    for b in sol.get('buses', []):
+        for site in b['units']:
+            others = [u for u in b['units'] if u != site]
+            for dev in b['devices']:
+                units[site]['periph'].append((dev, f"line {b['id']}" + (f", shared with {', '.join(others)}" if others else '')))
     for lk in sol.get('comm_links', []):
         units[lk['src_loc']]; units[lk['dst_loc']]
     return units
@@ -90,7 +97,8 @@ def draw(sol, arch, sites, devices, caps, out, title):
     periph_h = max((len(u['periph']) for u in units.values()), default=0) * periph_line + 0.35
     chains = sol.get('chain_latency', {})
     chain_h = (len(chains) + 1) * 0.16 + 0.4 if chains else 0.0
-    link_h = 0.9 + 0.22 * max(0, len(sol.get('comm_links', [])) - 1)
+    shared_lines = [b for b in sol.get('buses', []) if len(b['units']) > 1]
+    link_h = 0.9 + 0.22 * max(0, len(sol.get('comm_links', [])) + len(shared_lines) - 1)
     n = len(order)
     fig_w = max(8.0, n * (COLW + GAP) + GAP)
     fig_h = 1.0 + link_h + box_h + periph_h + chain_h + 0.5
@@ -138,11 +146,11 @@ def draw(sol, arch, sites, devices, caps, out, title):
         if not u['periph']:
             continue
         ax.text(x + 0.12, y, 'attached peripherals', fontsize=7.5, fontweight='bold', va='center', color='#333')
-        for k, dev in enumerate(sorted(u['periph'])):
+        for k, (dev, line) in enumerate(sorted(u['periph'])):
             iface = devices.get(dev, {}).get('interface', '?')
             yy = y - 0.17 - k * periph_line
             ax.add_patch(plt.Rectangle((x + 0.12, yy - 0.055), 0.11, 0.11, fc=IFACE_COLOUR.get(iface, '#999'), ec='none'))
-            ax.text(x + 0.28, yy, f"{dev}  ({iface})", fontsize=6.3, va='center')
+            ax.text(x + 0.28, yy, f"{dev}  ({iface}{', ' + line if line else ''})", fontsize=6.3, va='center')
     # backbone links above the boxes
     links = sorted(sol.get('comm_links', []), key=lambda l: (order.index(l['src_loc']), order.index(l['dst_loc'])))
     relays = {(r['src_loc'], r['dst_loc'], r['iface']): r['path'] for r in sol.get('backbone_routes', []) if len(r['path']) > 2}
@@ -158,7 +166,19 @@ def draw(sol, arch, sites, devices, caps, out, title):
         if via:
             label += '  via ' + ' → '.join(via[0][1:-1])
         ax.text((xa + xb) / 2, ya + 0.07, label, fontsize=7, ha='center', va='bottom', color=c)
-    if not links:
+    # bus lines joining several units: one bar over all members
+    for k, b in enumerate(shared_lines, start=len(links)):
+        xs = sorted(x0[u] + COLW / 2 for u in b['units'] if u in x0)
+        if len(xs) < 2:
+            continue
+        ya = top + 0.25 + k * 0.22
+        c = IFACE_COLOUR.get(b['type'], '#777')
+        for xu in xs:
+            ax.plot([xu, xu], [top + 0.02, ya], color=c, lw=1.0, ls=':')
+        ax.plot([xs[0], xs[-1]], [ya, ya], color=c, lw=2.2, ls='--')
+        ax.text((xs[0] + xs[-1]) / 2, ya + 0.07, f"bus line {b['id']}  (traffic {b.get('traffic_load', 0):.0f} + devices {b['device_load']:.1f} "
+                f"of {b['type']}, {b['length_m']:.1f} m)", fontsize=7, ha='center', va='bottom', color=c)
+    if not links and not shared_lines:
         ax.text(GAP, top + 0.3, 'no backbone cables (all software on one unit)', fontsize=7.5, style='italic', color='#555')
     # chain table
     if chains:
@@ -166,7 +186,10 @@ def draw(sol, arch, sites, devices, caps, out, title):
         ax.text(GAP, y, 'cause-effect chains: network latency / budget (ms)', fontsize=8, fontweight='bold', va='center')
         for k, (cid, c) in enumerate(sorted(chains.items())):
             yy = y - 0.2 - k * 0.16
-            cross = ', '.join(f"{x['from']}→{x['to']} {x['iface']} {x['hops']} hop {x['ms']:.1f}" for x in c['crossings']) or 'no network crossing'
+            parts = [f"{x['from']}→{x['to']} {x['iface']} {x['hops']} hop {x['ms']:.1f}" for x in c['crossings']]
+            if c.get('device_bus_ms'):
+                parts.append(f"device bus {c['device_bus_ms']:.1f}")
+            cross = ', '.join(parts) or 'no network crossing'
             ok = 'ok' if c['ok'] else 'VIOLATED'
             name = cid.split('_Driver_ACT_')[-1].replace('_positioning', ' (from positioning sensor)')
             ax.text(GAP, yy, name, fontsize=6.6, va='center', family='DejaVu Sans Mono')

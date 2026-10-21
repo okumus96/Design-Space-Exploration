@@ -39,10 +39,14 @@ def main():
     for lk in sol.get('comm_links', []):
         for _ in range(int(lk.get('count', 1))):
             cables.append((lk['src_loc'], lk['dst_loc'], lk.get('iface', 'ETH')))
-    for key in ('eth_sensor_attachments', 'eth_actuator_attachments', 'shared_sensor_attachments', 'shared_actuator_attachments'):
+    for key in ('eth_sensor_attachments', 'eth_actuator_attachments'):
         for dev, site in sol.get(key, {}).items():
             cables.append((dev, site, iface_of.get(dev, 'ETH')))
-    # peripherals without an explicit attachment: wired to the site of their driver SC
+    # bus lines: every edge of the line's tree (members and junction points) is one cable piece
+    for b in sol.get('buses', []):
+        for a, c in b.get('tree', []):
+            cables.append((a, c, b['type']))
+    # remaining peripherals (not Ethernet, not on a bus line): wired to the site of their driver SC
     assigned = {dev for a, b, _ in cables for dev in (a, b)}
     for sc, site in sol.get('assignment', {}).items():
         for dev in iface_of:

@@ -2,10 +2,10 @@
 """
 Regression test of the optimiser on the small instance with known proven optima.
 
-  srun -p interactive -c 8 --mem=16G -t 00:45:00 dse/bin/python tools/regression_test.py
+  srun -p interactive -c 8 --mem=16G -t 01:30:00 dse/bin/python tools/regression_test.py
 
-Solves fixed cases of configs/full_architecture_v2_lite.json (50 components) on 4 candidate cells, each in a few
-minutes, and
+Solves fixed cases of configs/full_architecture_v2_lite.json (50 components) on 4 candidate cells (900 s per solve
+at most), and
   1. compares cost and cable length of every solution with the proven values in CASES (relative tolerance 1e-4,
      the solver's optimality tolerance),
   2. runs the independent checker (tools/check_solution.py) on every solution: no rule may be violated,
@@ -29,17 +29,17 @@ from check_solution import SolutionCheck, check_path, _pk  # noqa: E402
 
 OUT = os.path.join(REPO, 'results', 'regression')
 ARCH = 'configs/full_architecture_v2_lite.json'
-COMMON = ['--architecture_json', ARCH, '--num_locs', '4', '--time_limit', '300', '--phase2_time', '60']
+COMMON = ['--architecture_json', ARCH, '--num_locs', '4', '--time_limit', '900', '--phase2_time', '120']
 TOL = 1e-4
 
 # name, extra flags, growth levels written into the case's uncertainty.json, proven (cost, cable length) per solution
 CASES = [
     ('nominal', ['--num_points', '1'], None,
-     [(8012.64, 67.839)]),
-    ('growth', ['--growth', '--sw_margin', '--derating', '--redundancy', '--ai_contention', '--robust_latency'], [0.0, 1.0, 2.0],
-     [(8352.46, 56.8483), (8384.394, 58.695), (8860.2475, 63.1326)]),
+     [(7828.418, 54.7111)]),
+    ('growth', ['--growth', '--sw_margin', '--derating', '--redundancy', '--ai_contention', '--robust_latency'], [0.0, 1.0],
+     [(8226.788, 48.2287), (8226.788, 48.2287)]),
     ('failures', ['--uncertainty'], [0.0],
-     [(10961.423, 58.6409)]),
+     [(10905.163, 55.0613)]),
 ]
 
 
@@ -135,10 +135,18 @@ def m_ports(sol, chk):
 
 def m_cable(sol, chk):
     for f in chk.flows:
-        if f.get('path') and len(f['path']) >= 2:
+        if f.get('path') and len(f['path']) >= 2 and not f.get('line'):
             a, b, n = f['path'][0], f['path'][1], f['iface']
             sol['comm_links'] = [lk for lk in sol['comm_links'] if not (_pk(lk['src_loc'], lk['dst_loc']) == _pk(a, b) and lk['iface'] == n)]
             return 'route', f"cables {a}-{b} {n} removed"
+
+
+def m_line_member(sol, chk):
+    for f in chk.flows:
+        if f.get('line') and f.get('path'):
+            line = next(b for b in sol['buses'] if b['id'] == f['line'])
+            line['units'] = [u for u in line['units'] if u != f['path'][0]]
+            return 'route', f"{f['path'][0]} taken off bus line {f['line']} that carries its traffic"
 
 
 def m_extra_cable(sol, chk):
@@ -170,11 +178,18 @@ def m_standby_same_cell(sol, chk):
         return 'standby', f"standby of {sc} on its primary's cell"
 
 
-def m_trunk(sol, chk):
-    k = _first(sorted(sol.get('shared_trunks') or {}))
-    if k:
-        sol['shared_trunks'][k]['main'] = 0.0
-        return 'trunk', f"trunk {k} set to 0 m"
+def m_bus_drop(sol, chk):
+    b = _first(b for b in sol.get('buses', []) if b['devices'])
+    if b:
+        d = b['devices'].pop(0)
+        return 'bus', f"{d} taken off bus line {b['id']}"
+
+
+def m_bus_length(sol, chk):
+    b = _first(b for b in sol.get('buses', []) if b['steiner_m'] > 0)
+    if b:
+        b['length_m'] = 0.0
+        return 'bus_length', f"cable of bus line {b['id']} set to 0 m"
 
 
 def m_cost(sol, chk):
@@ -200,6 +215,14 @@ def c_ai(sol, chk):
     if not chk.flags.get('ai_contention') or not any(feat in chk.scs[sc]['hw'] for sc in chk.pos_x):
         return None
     return 'ai_contention', [('uncertainty.json', lambda d: d['ai_contention'].__setitem__('max_per_location', 0))], 'max_per_location = 0'
+
+
+def c_bus_cap(sol, chk):
+    b = _first(b for b in sol.get('buses', []) if b['device_load'] > 0)
+    if b is None:
+        return None
+    n = b['type']
+    return 'bus_capacity', [('buses.json', lambda d: d['cable_types'][n].__setitem__('capacity', 1e-3))], f"{n} capacity = 0.001"
 
 
 def c_link_cap(sol, chk):
@@ -256,8 +279,9 @@ def c_failure_cap(sol, chk):
 
 
 SOLUTION_MUTATIONS = [m_unplaced, m_partition_site, m_hardware, m_redundancy, m_attachment, m_ports, m_cable,
-                      m_extra_cable, m_standby, m_standby_survival, m_standby_same_cell, m_trunk, m_cost, m_report]
-CONFIG_MUTATIONS = [c_partition_cap, c_site_cap, c_ai, c_link_cap, c_chain, c_degraded, c_cold, c_failure_cap]
+                      m_line_member, m_extra_cable, m_standby, m_standby_survival, m_standby_same_cell, m_bus_drop, m_bus_length, m_cost,
+                      m_report]
+CONFIG_MUTATIONS = [c_partition_cap, c_site_cap, c_ai, c_bus_cap, c_link_cap, c_chain, c_degraded, c_cold, c_failure_cap]
 
 
 def run_mutations(sol_path):

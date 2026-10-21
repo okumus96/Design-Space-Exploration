@@ -1,3 +1,4 @@
+import itertools
 import os
 import numpy as np
 os.environ.setdefault("GRB_LICENSE_FILE", os.path.expanduser("~/gurobi.lic"))
@@ -5,7 +6,8 @@ import gurobipy as gp
 from gurobipy import GRB
 from optimizer_utils import (get_distance, build_sensor_lookup, build_actuator_lookup,
                              build_cost_map, build_latency_map, extract_solution,
-                             sw_multiplier, site_derating, pack_partitions, flow_routes, crossing_latency_ms, chain_latencies)
+                             sw_multiplier, site_derating, pack_partitions, flow_routes, chain_latencies, steiner_tree,
+                             resource_messages, message_kbit, resource_rate, crossing_ms, robust_ms, device_line, device_ms)
 
 # Uncertainty-aware constraint blocks, each switched on by its own CLI flag (parameters in configs/uncertainty.json)
 UNCERTAINTY_BLOCKS = ('sw_margin', 'derating', 'redundancy', 'ai_contention', 'robust_latency', 'growth', 'failures')
@@ -19,185 +21,53 @@ class AssignmentOptimizer:
         print("Initialized AssignmentOptimizerNew with quadratic ECU-ECU costs and linear sensor/actuator costs")
         self.last_values = None   # variable values of the last solve, the start solution of the next one in a sweep
 
-    def calculate_cable_expressions(self, x, scs, locations, sensors, actuators, cable_types, comm_matrix, feasible_locs_per_sc, comm=None, attach_s=None, attach_a=None, shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None, shared_extra_trunk_len=None):
+    def calculate_cable_expressions(self, x, scs, locations, sensors, actuators, cable_types, comm_matrix, feasible_locs_per_sc, comm=None, attach_s=None, attach_a=None, bus=None):
         """
-        Calculate cable cost, distance, and latency as Gurobi linear expressions (NOT constraints).
-        Includes: sensor/actuator cables and ECU-ECU/Location communication cables.
-        
-        Args:
-            comm: Dict of ECU-ECU communication variables [j1, j2, iface] (LEGO model)
-                  If None or empty, skips communication backbone calculation
-        
-        Returns:
-            cable_cost_expr: Gurobi expression for total cable costs (includes all components)
-            cable_distance_expr: Gurobi expression for total cable distance/length
-            latency_expr: Gurobi expression for total latency (distance-based)
+        Cable cost and cable length as Gurobi linear expressions (not constraints): devices wired directly to the
+        unit of their software, Ethernet device attachments, bus lines (CAN, LIN, FlexRay) and backbone cables.
         """
-        # Precompute lookups
         cost_map = build_cost_map(cable_types)
-        latency_map = build_latency_map(cable_types)
         sensor_lookup = build_sensor_lookup(sensors)
         actuator_lookup = build_actuator_lookup(actuators)
-        
-        # Precompute cable cost, distance, and latency coefficients (only non-zero)
-        cable_cost_terms = []  # List of (variable, cable_cost) tuples
-        cable_distance_terms = []  # List of (variable, distance) tuples
-        latency_terms = []  # List of (variable, latency) tuples
-        
-        n_sc = len(scs)
-        shared_bus_ifaces = {'CAN', 'LIN', 'FLEXRAY'}
+        bus_types = set((bus or {}).get('types', ()))
+        cost_terms, dist_terms = [], []
 
-        for i in range(n_sc):
-            sc = scs[i]
+        # devices wired directly to the unit hosting their software (not Ethernet, not on a bus line)
+        for i, sc in enumerate(scs):
+            devs = [sensor_lookup.get(s_id) for s_id in (sc.sensors or [])] + [actuator_lookup.get(a_id) for a_id in (sc.actuators or [])]
+            devs = [d for d in devs if d is not None and d.location and d.interface != 'ETH' and d.interface not in bus_types]
+            if not devs:
+                continue
             for j in feasible_locs_per_sc[i]:
-                cable_cost = 0.0
-                cable_distance = 0.0
-                latency = 0.0
+                dist = sum(get_distance(d.location, locations[j].location) for d in devs)
+                cost = sum(get_distance(d.location, locations[j].location) * cost_map.get(d.interface, 0.0) for d in devs)
+                if dist > 0:
+                    cost_terms.append((x[i, j], cost))
+                    dist_terms.append((x[i, j], dist))
 
-                # Sum sensor cable costs, distances, and latencies
-                for s_id in (sc.sensors or []):
-                    sensor = sensor_lookup.get(s_id)
-                    # If ETH attachments are modeled, ETH sensors are wired to their attachment point,
-                    # not directly to the ECU hosting the SWC.
-                    if attach_s is not None and sensor and sensor.interface == "ETH":
-                        continue
-                    # Shared bus interfaces are charged via shared attachment vars (single physical cable).
-                    if shared_attach_s is not None and sensor and sensor.interface in shared_bus_ifaces:
-                        continue
-                    if sensor and sensor.location:
-                        dist = get_distance(sensor.location, locations[j].location)
-                        cable_cost += dist * cost_map.get(sensor.interface, 0.0)
-                        cable_distance += dist
-                        latency += dist * latency_map.get(sensor.interface, 0.0)
+        # Ethernet devices: cable to their attachment unit
+        for att, devs in ((attach_s, sensors), (attach_a, actuators)):
+            for (di, j), av in (att or {}).items():
+                if getattr(devs[di], 'location', None):
+                    dist = get_distance(devs[di].location, locations[j].location)
+                    cost_terms.append((av, dist * cost_map.get(getattr(devs[di], 'interface', 'ETH'), 0.0)))
+                    dist_terms.append((av, dist))
 
-                # Sum actuator cable costs, distances, and latencies
-                for a_id in (sc.actuators or []):
-                    actuator = actuator_lookup.get(a_id)
-                    # If ETH attachments are modeled, ETH actuators are wired to their attachment point.
-                    if attach_a is not None and actuator and actuator.interface == "ETH":
-                        continue
-                    # Shared bus interfaces are charged via shared attachment vars (single physical cable).
-                    if shared_attach_a is not None and actuator and actuator.interface in shared_bus_ifaces:
-                        continue
-                    if actuator and actuator.location:
-                        dist = get_distance(actuator.location, locations[j].location)
-                        cable_cost += dist * cost_map.get(actuator.interface, 0.0)
-                        cable_distance += dist
-                        latency += dist * latency_map.get(actuator.interface, 0.0)
+        # bus lines: one cable through all members (length variable, set by the Steiner cuts)
+        for b, lv in (bus or {}).get('len', {}).items():
+            cost_terms.append((lv, cost_map.get(b[0], 0.0)))
+            dist_terms.append((lv, 1.0))
 
-                x_ij_expr = x[i, j]
+        # backbone cables between units
+        for (j1, j2, iface), comm_var in (comm or {}).items():
+            dist = get_distance(locations[j1].location, locations[j2].location)
+            cost_terms.append((comm_var, dist * cable_types[iface].cost_per_meter))
+            dist_terms.append((comm_var, dist))
 
-                # Only add to expression if values are non-zero
-                if cable_cost > 0:
-                    cable_cost_terms.append((x_ij_expr, cable_cost))
-                if cable_distance > 0:
-                    cable_distance_terms.append((x_ij_expr, cable_distance))
-                if latency > 0:
-                    latency_terms.append((x_ij_expr, latency))
+        cable_cost_expr = gp.quicksum(v * c for v, c in cost_terms) if cost_terms else 0
+        cable_distance_expr = gp.quicksum(v * d for v, d in dist_terms) if dist_terms else 0
+        return cable_cost_expr, cable_distance_expr, 0
 
-        # ECU-to-ECU/Location communication backbone (LEGO model with sparse comm variables)
-        comm_cost_terms = []
-        comm_distance_terms = []
-        comm_latency_terms = []
-
-        if comm:  # LEGO model: sparse communication variables
-            for (j1, j2, iface), comm_var in comm.items():
-                dist = get_distance(locations[j1].location, locations[j2].location)
-                cost = dist * cable_types[iface].cost_per_meter
-                lat = dist * latency_map.get(iface, 0.0)
-                
-                comm_cost_terms.append((comm_var, cost))
-                comm_distance_terms.append((comm_var, dist))
-                comm_latency_terms.append((comm_var, lat))
-
-        # ETH sensor/actuator attachment cables (only when attachments are modeled)
-        if attach_s:
-            for (si, j), av in attach_s.items():
-                s = sensors[si]
-                if not getattr(s, 'location', None):
-                    continue
-                dist = get_distance(s.location, locations[j].location)
-                iface = getattr(s, 'interface', 'ETH')
-                cable_cost_terms.append((av, dist * cost_map.get(iface, 0.0)))
-                cable_distance_terms.append((av, dist))
-                latency_terms.append((av, dist * latency_map.get(iface, 0.0)))
-
-        if attach_a:
-            for (ai, j), av in attach_a.items():
-                a = actuators[ai]
-                if not getattr(a, 'location', None):
-                    continue
-                dist = get_distance(a.location, locations[j].location)
-                iface = getattr(a, 'interface', 'ETH')
-                cable_cost_terms.append((av, dist * cost_map.get(iface, 0.0)))
-                cable_distance_terms.append((av, dist))
-                latency_terms.append((av, dist * latency_map.get(iface, 0.0)))
-
-        # Shared-bus (CAN/LIN/FLEXRAY) sensor/actuator attachment cables
-        if shared_attach_s:
-            for (si, j), av in shared_attach_s.items():
-                s = sensors[si]
-                if not getattr(s, 'location', None):
-                    continue
-                iface = getattr(s, 'interface', None)
-                if iface not in shared_bus_ifaces:
-                    continue
-                dist = get_distance(s.location, locations[j].location)
-                cable_cost_terms.append((av, dist * cost_map.get(iface, 0.0)))
-                cable_distance_terms.append((av, dist))
-                latency_terms.append((av, dist * latency_map.get(iface, 0.0)))
-
-        if shared_attach_a:
-            for (ai, j), av in shared_attach_a.items():
-                aobj = actuators[ai]
-                if not getattr(aobj, 'location', None):
-                    continue
-                iface = getattr(aobj, 'interface', None)
-                if iface not in shared_bus_ifaces:
-                    continue
-                dist = get_distance(aobj.location, locations[j].location)
-                cable_cost_terms.append((av, dist * cost_map.get(iface, 0.0)))
-                cable_distance_terms.append((av, dist))
-                latency_terms.append((av, dist * latency_map.get(iface, 0.0)))
-
-        # Shared-bus trunk lengths (count shared main segment once per location/interface)
-        if shared_trunk_len:
-            for (j, iface), tvar in shared_trunk_len.items():
-                cable_cost_terms.append((tvar, cost_map.get(iface, 0.0)))
-                cable_distance_terms.append((tvar, 1.0))
-                latency_terms.append((tvar, latency_map.get(iface, 0.0)))
-
-        # Extra shared-bus trunks for ASIL-group split instances
-        if shared_extra_trunk_len:
-            for (j, iface), tvar in shared_extra_trunk_len.items():
-                cable_cost_terms.append((tvar, cost_map.get(iface, 0.0)))
-                cable_distance_terms.append((tvar, 1.0))
-                latency_terms.append((tvar, latency_map.get(iface, 0.0)))
-        
-        # Create compact linear expressions
-        if cable_cost_terms:
-            cable_cost_expr = gp.quicksum(var * cost for var, cost in cable_cost_terms)
-        else:
-            cable_cost_expr = 0
-        if comm_cost_terms:
-            cable_cost_expr += gp.quicksum(var * cost for var, cost in comm_cost_terms)
-            
-        if cable_distance_terms:
-            cable_distance_expr = gp.quicksum(var * dist for var, dist in cable_distance_terms)
-        else:
-            cable_distance_expr = 0
-        if comm_distance_terms:
-            cable_distance_expr += gp.quicksum(var * dist for var, dist in comm_distance_terms)
-            
-        if latency_terms:
-            latency_expr = gp.quicksum(var * lat for var, lat in latency_terms)
-        else:
-            latency_expr = 0
-        if comm_latency_terms:
-            latency_expr += gp.quicksum(var * lat for var, lat in comm_latency_terms)
-            
-        return cable_cost_expr, cable_distance_expr, latency_expr
-    
     def _create_model_and_variables(self, n_sc, n_locs, scs, locations, unique_asils, all_hw, sensors, actuators, all_interfaces, infeasible_ij=None, comm_matrix=None, partitions=None, backbone=None, cable_types=None, uncertainty=None, chains=None):
         """
         Create Gurobi model and define all decision variables
@@ -310,44 +180,54 @@ class AssignmentOptimizer:
             for j in range(n_locs):
                 attach_a[ai, j] = model.addVar(vtype=GRB.BINARY, name=f"attachA_{actuators[ai].id}_{locations[j].id}")
 
-        # Shared-bus peripheral attachment variables (CAN/LIN/FLEXRAY):
-        # shared_attach_s[s_idx, j] = 1 if non-ETH shared-bus sensor s is physically wired to location j.
-        # shared_attach_a[a_idx, j] = 1 if non-ETH shared-bus actuator a is physically wired to location j.
-        shared_bus_ifaces = {'CAN', 'LIN', 'FLEXRAY'}
-        shared_sensor_indices = [si for si, s in enumerate(sensors) if getattr(s, 'interface', None) in shared_bus_ifaces]
-        shared_actuator_indices = [ai for ai, a in enumerate(actuators) if getattr(a, 'interface', None) in shared_bus_ifaces]
+        # Bus lines (CAN, LIN, FlexRay; configs/buses.json: backbone.bus_lines = lines available per type). A line b
+        # has members: units (bus_unit[b, j]) and devices of its type (bus_dev[b, d]); bus_len[b] is its cable length,
+        # bus_high[b] its ASIL group (devices of ASIL >= 3 software and of lower ASIL never share a line).
+        bus_types = [n for n in ('CAN', 'LIN', 'FLEXRAY') if n in all_interfaces]
+        bus_cfg = dict((backbone or {}).get('bus_lines', {}))
+        bus = {'types': [], 'inst': [], 'act': {}, 'len': {}, 'high': {}, 'unit': {}, 'dev': {}, 'devices': {},
+               'points': {**{loc.id: loc.location for loc in locations}, **{d.id: d.location for d in list(sensors) + list(actuators)}}}
+        for kind, devs in (('sensor', sensors), ('actuator', actuators)):
+            for dev in devs:
+                if getattr(dev, 'interface', None) not in bus_types:
+                    continue
+                users = [i for i, sc in enumerate(scs) if dev.id in (sc.sensors or []) + (sc.actuators or [])]
+                bus['devices'][dev.id] = {'iface': dev.interface, 'kind': kind, 'users': users,
+                                          'volume': float(getattr(dev, 'volume', 0.0) or 0.0),
+                                          'kbit': float(getattr(dev, 'volume', 0.0) or 0.0) * 1000.0 / float(getattr(dev, 'rate_hz', 10.0) or 10.0),
+                                          'group': 'HIGH' if any(int(scs[i].asil_req) >= 3 for i in users) else 'LOW'}
+        bus['all_types'] = list(bus_types)
+        for w_if in bus_types:
+            devs = [d for d, info in bus['devices'].items() if info['iface'] == w_if]
+            n_lines = int(bus_cfg.get(w_if, max(1, len(devs))))
+            if n_lines > 0:
+                bus['types'].append(w_if)
+            for k in range(n_lines):
+                b = (w_if, k)
+                bus['inst'].append(b)
+                bus['act'][b] = model.addVar(vtype=GRB.BINARY, name=f"bus_{w_if}{k + 1}")
+                bus['len'][b] = model.addVar(vtype=GRB.CONTINUOUS, lb=0.0, name=f"busLen_{w_if}{k + 1}")
+                bus['high'][b] = model.addVar(vtype=GRB.BINARY, name=f"busHigh_{w_if}{k + 1}")
+                for j in range(n_locs):
+                    bus['unit'][b, j] = model.addVar(vtype=GRB.BINARY, name=f"busUnit_{w_if}{k + 1}_{locations[j].id}")
+                for d in devs:
+                    bus['dev'][b, d] = model.addVar(vtype=GRB.BINARY, name=f"busDev_{w_if}{k + 1}_{d}")
+        if bus['inst']:
+            print(f"  Bus lines: " + ", ".join(f"{n} {sum(1 for b in bus['inst'] if b[0] == n)} line(s) for "
+                                               f"{sum(1 for d in bus['devices'].values() if d['iface'] == n)} device(s)" for n in bus['types']))
 
-        shared_attach_s = {}
-        for si in shared_sensor_indices:
-            for j in range(n_locs):
-                shared_attach_s[si, j] = model.addVar(vtype=GRB.BINARY, name=f"sharedAttachS_{sensors[si].id}_{locations[j].id}")
-
-        shared_attach_a = {}
-        for ai in shared_actuator_indices:
-            for j in range(n_locs):
-                shared_attach_a[ai, j] = model.addVar(vtype=GRB.BINARY, name=f"sharedAttachA_{actuators[ai].id}_{locations[j].id}")
-
-        # Shared-bus trunk length variables:
-        # shared_trunk_len[j, iface] is the main shared segment length at location j for iface.
-        shared_trunk_len = {}
-        for j in range(n_locs):
-            for iface in shared_bus_ifaces:
-                shared_trunk_len[j, iface] = model.addVar(vtype=GRB.CONTINUOUS, lb=0.0, name=f"sharedTrunkLen_{locations[j].id}_{iface}")
-
-        # Additional trunk length variables for ASIL-group split shared buses.
-        shared_extra_trunk_len = {}
-        for j in range(n_locs):
-            for iface in shared_bus_ifaces:
-                shared_extra_trunk_len[j, iface] = model.addVar(vtype=GRB.CONTINUOUS, lb=0.0, name=f"sharedExtraTrunkLen_{locations[j].id}_{iface}")
-        
         # comm[j1,j2,w] = number of cables of type w between sites j1 and j2 (integer). Every cable type of
         # configs/buses.json may connect two units; a site pair may carry cables of several types.
-        bb_ifaces = list(all_interfaces)
+        # Bus types (CAN, LIN, FlexRay) connect units only through their bus lines; a unit-to-unit flow of a bus type
+        # takes one line both units belong to (one hop). Types without a line cannot carry backbone traffic.
+        bb_ifaces = [n for n in all_interfaces if n not in bus['all_types'] or n in bus['types']]
         cap_of = {n: float(getattr((cable_types or {}).get(n), 'capacity', float('inf'))) for n in bb_ifaces}
         comm = {}
         for j1 in range(n_locs):
             for j2 in range(j1 + 1, n_locs):
                 for w_if in bb_ifaces:
+                    if w_if in bus['types']:
+                        continue
                     comm[j1, j2, w_if] = model.addVar(vtype=GRB.INTEGER, lb=0, name=f"comm_{locations[j1].id}_{locations[j2].id}_{w_if}")
 
         # --- TRAFFIC FLOW GENERATION ---
@@ -486,11 +366,15 @@ class AssignmentOptimizer:
         for (u, v) in sorted({(min(a, b), max(a, b)) for (a, b) in pair_vol}):
             relays = sorted((r for r in range(n_locs) if r not in (u, v)), key=lambda r: site_dist[u, r] + site_dist[r, v])
             for w_if in bb_ifaces:
-                # relaying over a switch exists for Ethernet only; every other type is a direct cable between the two units
-                paths[u, v, w_if] = [[u, v]] + ([[u, r, v] for r in relays[:k_paths - 1]] if w_if == 'ETH' else [])
+                # relaying over a switch exists for Ethernet only; other point-to-point types are a direct cable; a bus
+                # type offers its lines (candidate p = line p, a one-hop path)
+                if w_if in bus['types']:
+                    paths[u, v, w_if] = [[u, v] for b in bus['inst'] if b[0] == w_if]
+                else:
+                    paths[u, v, w_if] = [[u, v]] + ([[u, r, v] for r in relays[:k_paths - 1]] if w_if == 'ETH' else [])
                 for p in range(len(paths[u, v, w_if])):
                     sel[u, v, w_if, p] = model.addVar(vtype=GRB.BINARY, name=f"sel_{locations[u].id}_{locations[v].id}_{w_if}_p{p}")
-        net = {'paths': paths, 'sel': sel, 'flow_ends': flow_ends,
+        net = {'paths': paths, 'sel': sel, 'flow_ends': flow_ends, 'bus': bus,
                'bb_ifaces': bb_ifaces, 'cap_of': cap_of, 'w': w, 'flow_elig': flow_elig,
                'r': r, 'hot': hot, 'hr': hr, 'critical': critical, 'fail_cfg': fail_cfg,
                'x_vars': x, 'y_vars': y, 'switch_vars': {j: hw_use.get((j, 'SWITCH')) for j in range(n_locs)},
@@ -499,7 +383,10 @@ class AssignmentOptimizer:
                'kbit': {tr['id']: float(tr.get('kbit', 0.0)) for tr in traffic_flows},
                'site_ids': [loc.id for loc in locations],
                'hop_ms': {n: float(getattr((cable_types or {}).get(n), 'hop_latency_ms', 0.0)) for n in bb_ifaces},
-               'path_link_cut': bool((backbone or {}).get('path_link_cut', False))}
+               'path_link_cut': bool((backbone or {}).get('path_link_cut', False)),
+               # a bus line may be loaded up to this share of its bit rate (the queue bound of the latency assumes
+               # a bus that is not saturated; configs/buses.json: backbone.bus_max_utilization)
+               'bus_umax': float((backbone or {}).get('bus_max_utilization', 1.0))}
 
         var_stats = {
             'x': len(x),
@@ -509,10 +396,7 @@ class AssignmentOptimizer:
             'if_use': len(if_use),
             'attach_s': len(attach_s),
             'attach_a': len(attach_a),
-            'shared_attach_s': len(shared_attach_s),
-            'shared_attach_a': len(shared_attach_a),
-            'shared_trunk_len': len(shared_trunk_len),
-            'shared_extra_trunk_len': len(shared_extra_trunk_len),
+            'bus': len(bus['act']) + len(bus['len']) + len(bus['high']) + len(bus['unit']) + len(bus['dev']),
             'comm': len(comm),
             'traffic_flows': len(traffic_flows),
             'sel': len(sel),
@@ -529,10 +413,7 @@ class AssignmentOptimizer:
             + var_stats['if_use']
             + var_stats['attach_s']
             + var_stats['attach_a']
-            + var_stats['shared_attach_s']
-            + var_stats['shared_attach_a']
-            + var_stats['shared_trunk_len']
-            + var_stats['shared_extra_trunk_len']
+            + var_stats['bus']
             + var_stats['comm']
             + var_stats['sel']
             + var_stats['w']
@@ -540,9 +421,9 @@ class AssignmentOptimizer:
             + var_stats['hot']
         )
 
-        return model, x, P, y, hw_use, if_use, attach_s, attach_a, shared_attach_s, shared_attach_a, shared_trunk_len, shared_extra_trunk_len, comm, traffic_flows, net, feasible_locs_per_sc, feasible_scs_per_loc, var_stats
+        return model, x, P, y, hw_use, if_use, attach_s, attach_a, bus, comm, traffic_flows, net, feasible_locs_per_sc, feasible_scs_per_loc, var_stats
 
-    def _add_constraints(self, model, x, P, y, hw_use, if_use, attach_s, attach_a, shared_attach_s, shared_attach_a, shared_trunk_len, shared_extra_trunk_len, comm, traffic_flows, net, scs, locations, sensors, actuators, 
+    def _add_constraints(self, model, x, P, y, hw_use, if_use, attach_s, attach_a, bus, comm, traffic_flows, net, scs, locations, sensors, actuators, 
                               cable_types, comm_matrix, partitions, unique_asils,
                               feasible_locs_per_sc, feasible_scs_per_loc, enable_comm_bw_constraints=True,
                               comm_bw_big_m=None, uncertainty=None):
@@ -566,14 +447,11 @@ class AssignmentOptimizer:
             'c2_capacity': 0,
             'c3_hw_required': 0,
             'c4_if_required': 0,
-            'c4_asil_bus_split': 0,
-            'c4_shared_bus_bw': 0,
             'c5_redundancy': 0,
             'c6_ai_contention': 0,
             'c9_if_activation': 0,
             'c9_attach': 0,
-            'c9_shared_attach': 0,
-            'c9_shared_trunk': 0,
+            'c11_bus': 0,
             'c10_pair_traffic': 0,
             'c10_path_choice': 0,
             'c10_relay_switch': 0,
@@ -602,22 +480,6 @@ class AssignmentOptimizer:
             comm_var.UB = comm_ub[w_if]
         net['comm_ub'] = comm_ub
         print(f"  Backbone cable upper bounds per type: {comm_ub} (total traffic {total_traffic_volume:.1f})")
-
-        # max_periph_dist[j, iface]: farthest peripheral of a shared bus from location j (upper bound of its trunk length)
-        max_periph_dist = {}
-        for j in range(n_locs):
-            for iface in ('CAN', 'LIN', 'FLEXRAY'):
-                dists = [get_distance(d.location, locations[j].location)
-                         for d in list(sensors) + list(actuators)
-                         if getattr(d, 'interface', None) == iface and getattr(d, 'location', None) is not None]
-                max_periph_dist[j, iface] = max(dists, default=0.0)
-
-        def asil_safety_group(sc):
-            a = getattr(sc, 'asil_req', 0)
-            if isinstance(a, str):
-                a_norm = a.strip().upper()
-                return 'HIGH' if a_norm in {'C', 'D'} else 'LOW'
-            return 'HIGH' if int(a) >= 3 else 'LOW'
 
         # Constraint 1a: every SC is hosted at exactly one site
         for i in range(n_sc):
@@ -732,8 +594,6 @@ class AssignmentOptimizer:
         # Total ports = Sum of ports required by SCs (sensors/actuators) + Backbone connections
         s_lookup = build_sensor_lookup(sensors)
         a_lookup = build_actuator_lookup(actuators)
-        shared_bus_ifaces = {'CAN', 'LIN', 'FLEXRAY'}
-        
         for j in range(n_locs):
             for i_name in all_interfaces:
                 comm_port_demand = gp.LinExpr()
@@ -743,132 +603,13 @@ class AssignmentOptimizer:
                     elif (j2 == j) and (iface == i_name):
                         comm_port_demand.add(comm_var, 1)
 
-                # 4a. Shared-bus interfaces (CAN/LIN/FLEXRAY):
-                # A location needs only one interface endpoint if at least one assigned SC at this
-                # location uses a peripheral on that bus.
-                if i_name in shared_bus_ifaces:
-                    low_group_use = model.addVar(vtype=GRB.BINARY, name=f"busGroupLow_{locations[j].id}_{i_name}")
-                    high_group_use = model.addVar(vtype=GRB.BINARY, name=f"busGroupHigh_{locations[j].id}_{i_name}")
-                    split_active = model.addVar(vtype=GRB.BINARY, name=f"busGroupSplit_{locations[j].id}_{i_name}")
-
-                    for i in feasible_scs_per_loc[j]:
-                        sc = scs[i]
-                        uses_iface = any(
-                            s_lookup.get(s_id) and s_lookup.get(s_id).interface == i_name
-                            for s_id in (sc.sensors or [])
-                        ) or any(
-                            a_lookup.get(a_id) and a_lookup.get(a_id).interface == i_name
-                            for a_id in (sc.actuators or [])
-                        )
-                        if uses_iface:
-                            grp = asil_safety_group(sc)
-                            bus_assign_var = model.addVar(
-                                vtype=GRB.BINARY,
-                                name=f"busAssign_{sc.id}_{locations[j].id}_{i_name}_{grp}"
-                            )
-
-                            # Explicit mapping: if SC is placed at location j, it is assigned to
-                            # its ASIL-group candidate bus instance for this shared interface.
-                            model.addConstr(
-                                bus_assign_var == x_expr(i, j),
-                                name=f"shared_bus_assign_eq_{locations[j].id}_{i_name}_{sc.id}"
-                            )
-
-                            model.addConstr(
-                                if_use[j, i_name] >= x_expr(i, j),
-                                name=f"shared_bus_if_use_{locations[j].id}_{i_name}_{sc.id}"
-                            )
-
-                            if grp == 'HIGH':
-                                model.addConstr(
-                                    high_group_use >= x_expr(i, j),
-                                    name=f"shared_bus_group_high_{locations[j].id}_{i_name}_{sc.id}"
-                                )
-                                model.addConstr(
-                                    bus_assign_var <= high_group_use,
-                                    name=f"shared_bus_assign_to_high_{locations[j].id}_{i_name}_{sc.id}"
-                                )
-                            else:
-                                model.addConstr(
-                                    low_group_use >= x_expr(i, j),
-                                    name=f"shared_bus_group_low_{locations[j].id}_{i_name}_{sc.id}"
-                                )
-                                model.addConstr(
-                                    bus_assign_var <= low_group_use,
-                                    name=f"shared_bus_assign_to_low_{locations[j].id}_{i_name}_{sc.id}"
-                                )
-                            cstats['c4_asil_bus_split'] += 1
-
-                    # Enforce ASIL 0/1/2 and ASIL 3/4 segregation on shared buses.
-                    # If both groups are present on the same location+interface, at least two bus instances are required.
+                # 4a. Bus types (CAN, LIN, FlexRay): one port per bus line the unit belongs to, plus one per
+                # point-to-point cable of that type
+                if i_name in bus['types']:
                     model.addConstr(
-                        if_use[j, i_name] >= low_group_use + high_group_use,
-                        name=f"shared_bus_asil_split_count_{locations[j].id}_{i_name}"
+                        if_use[j, i_name] >= gp.quicksum(bus['unit'][b, j] for b in bus['inst'] if b[0] == i_name) + comm_port_demand,
+                        name=f"bus_ports_{locations[j].id}_{i_name}"
                     )
-                    cstats['c4_asil_bus_split'] += 1
-
-                    # split_active = 1 iff both low and high groups are active on this shared bus.
-                    model.addConstr(split_active <= low_group_use, name=f"shared_bus_split_le_low_{locations[j].id}_{i_name}")
-                    model.addConstr(split_active <= high_group_use, name=f"shared_bus_split_le_high_{locations[j].id}_{i_name}")
-                    model.addConstr(split_active >= low_group_use + high_group_use - 1, name=f"shared_bus_split_ge_sum_{locations[j].id}_{i_name}")
-                    cstats['c4_asil_bus_split'] += 3
-
-                    model.addConstr(
-                        if_use[j, i_name] >= comm_port_demand,
-                        name=f"shared_bus_comm_port_count_{locations[j].id}_{i_name}"
-                    )
-
-                    # Shared-bus bandwidth capacity at this location/interface.
-                    # Without this, CAN/LIN/FLEXRAY trunks can be over-subscribed.
-                    cap_obj = cable_types.get(i_name)
-                    cap_val = getattr(cap_obj, 'capacity', None) if cap_obj is not None else None
-                    try:
-                        cap_val = float(cap_val) if cap_val is not None else None
-                    except Exception:
-                        cap_val = None
-
-                    if cap_val is not None and cap_val > 0 and cap_val != float('inf'):
-                        shared_bus_load = gp.LinExpr()
-                        if shared_attach_s:
-                            for (si, jj), av in shared_attach_s.items():
-                                if jj != j:
-                                    continue
-                                if getattr(sensors[si], 'interface', None) != i_name:
-                                    continue
-                                vol = float(getattr(sensors[si], 'volume', 0.0) or 0.0)
-                                if vol > 0:
-                                    shared_bus_load.add(av, vol)
-                        if shared_attach_a:
-                            for (ai, jj), av in shared_attach_a.items():
-                                if jj != j:
-                                    continue
-                                if getattr(actuators[ai], 'interface', None) != i_name:
-                                    continue
-                                vol = float(getattr(actuators[ai], 'volume', 0.0) or 0.0)
-                                if vol > 0:
-                                    shared_bus_load.add(av, vol)
-
-                        model.addConstr(
-                            shared_bus_load <= cap_val * if_use[j, i_name],
-                            name=f"shared_bus_bw_{locations[j].id}_{i_name}"
-                        )
-                        cstats['c4_shared_bus_bw'] += 1
-
-                    # If ASIL split is active, second shared trunk length equals main trunk length.
-                    if (j, i_name) in shared_extra_trunk_len and (j, i_name) in shared_trunk_len:
-                        split_m = max_periph_dist[j, i_name]
-                        model.addConstr(
-                            shared_extra_trunk_len[j, i_name] <= split_active * split_m,
-                            name=f"shared_extra_trunk_gate_{locations[j].id}_{i_name}"
-                        )
-                        model.addConstr(
-                            shared_extra_trunk_len[j, i_name] <= shared_trunk_len[j, i_name],
-                            name=f"shared_extra_trunk_le_main_{locations[j].id}_{i_name}"
-                        )
-                        model.addConstr(
-                            shared_extra_trunk_len[j, i_name] >= shared_trunk_len[j, i_name] - split_m * (1 - split_active),
-                            name=f"shared_extra_trunk_eq_main_if_split_{locations[j].id}_{i_name}"
-                        )
 
                 else:
                     # 4b. Point-to-point style counting (ETH and other non-shared interfaces)
@@ -1037,148 +778,91 @@ class AssignmentOptimizer:
                 )
                 cstats['c9_attach'] += 1
 
-        # Constraint 9-SHARED-ATT: CAN/LIN/FLEXRAY peripheral attachments
-        # - Must connect to an active location
-        # - Must satisfy local max-latency for its own interface
-        # - A peripheral is physically attached to at most one location
-        shared_bus_ifaces = {'CAN', 'LIN', 'FLEXRAY'}
-        if shared_attach_s:
-            for (si, j), av in shared_attach_s.items():
-                iface = getattr(sensors[si], 'interface', None)
-                if iface not in shared_bus_ifaces:
-                    model.addConstr(av == 0, name=f"sharedAttachS_iface_inactive_{sensors[si].id}_{locations[j].id}")
-                    cstats['c9_shared_attach'] += 1
-                    continue
-                model.addConstr(av <= loc_active[j], name=f"sharedAttachS_active_{sensors[si].id}_{locations[j].id}")
-                cstats['c9_shared_attach'] += 1
+        # Constraint 11 (bus lines, CAN / LIN / FlexRay): every bus device with software sits on exactly one line of its
+        # type, together with the unit of every component driving it and, with failures on, the unit of that
+        # component's standby (the device stays reachable when the primary's cell fails); one ASIL group per line;
+        # the devices of a line share its bit rate; members are units that exist; the cable length of a line is at
+        # least the Steiner tree of its members (pairs here, the exact tree as lazy cuts in optimize()).
+        for d, info in bus['devices'].items():
+            lines = [b for b in bus['inst'] if b[0] == info['iface']]
+            total = gp.quicksum(bus['dev'][b, d] for b in lines)
+            model.addConstr(total == 1 if info['users'] else total <= 1, name=f"bus_device_{d}")
+            cstats['c11_bus'] += 1
+            for b in lines:
+                dv = bus['dev'][b, d]
+                model.addConstr(dv <= bus['act'][b], name=f"bus_dev_act_{d}_{b[0]}{b[1] + 1}")
+                if info['group'] == 'HIGH':
+                    model.addConstr(dv <= bus['high'][b], name=f"bus_dev_high_{d}_{b[0]}{b[1] + 1}")
+                else:
+                    model.addConstr(dv <= 1 - bus['high'][b], name=f"bus_dev_low_{d}_{b[0]}{b[1] + 1}")
+                cstats['c11_bus'] += 2
+                for i in info['users']:
+                    for j in feasible_locs_per_sc[i]:
+                        model.addConstr(bus['unit'][b, j] >= dv + x[i, j] - 1, name=f"bus_driver_{d}_{scs[i].id}_{b[0]}{b[1] + 1}_{locations[j].id}")
+                        cstats['c11_bus'] += 1
+                        if (i, j) in net['r']:
+                            model.addConstr(bus['unit'][b, j] >= dv + net['r'][i, j] - 1, name=f"bus_standby_{d}_{scs[i].id}_{b[0]}{b[1] + 1}_{locations[j].id}")
+                            cstats['c11_bus'] += 1
+        for b in bus['inst']:
+            name = f"{b[0]}{b[1] + 1}"
+            devs = [d for d in bus['devices'] if (b, d) in bus['dev']]
+            for j in range(n_locs):
+                model.addConstr(bus['unit'][b, j] <= y[j], name=f"bus_unit_exists_{name}_{locations[j].id}")
+                model.addConstr(bus['unit'][b, j] <= bus['act'][b], name=f"bus_unit_act_{name}_{locations[j].id}")
+                cstats['c11_bus'] += 2
+            line_sel = [sv for (u, v, w_if, p), sv in net['sel'].items() if w_if == b[0] and p == b[1]]
+            model.addConstr(bus['act'][b] <= gp.quicksum(bus['dev'][b, d] for d in devs) + gp.quicksum(line_sel), name=f"bus_has_use_{name}")
+            cap = float(getattr(cable_types.get(b[0]), 'capacity', float('inf'))) * net['bus_umax']
+            if cap < float('inf'):
+                model.addConstr(gp.quicksum(bus['devices'][d]['volume'] * bus['dev'][b, d] for d in devs) <= cap, name=f"bus_capacity_{name}")
+                cstats['c11_bus'] += 1
+            members = [(locations[j].id, bus['unit'][b, j]) for j in range(n_locs)] + [(d, bus['dev'][b, d]) for d in devs]
+            # length >= half the sum, over the members, of the distance to the nearest other possible member (an Euler
+            # tour of the line passes every member and is twice its length)
+            nn = {e: min((get_distance(bus['points'][e], bus['points'][f]) for f, _v in members if f != e), default=0.0) for e, _v in members}
+            model.addConstr(bus['len'][b] >= 0.5 * gp.quicksum(nn[e] * v for e, v in members), name=f"bus_len_tour_{name}")
+            cstats['c11_bus'] += 1
+            for k1 in range(len(members)):
+                for k2 in range(k1 + 1, len(members)):
+                    (ida, va), (idb, vb) = members[k1], members[k2]
+                    dist = get_distance(bus['points'][ida], bus['points'][idb])
+                    if dist > 0:
+                        model.addConstr(bus['len'][b] >= dist * (va + vb - 1), name=f"bus_len_pair_{name}_{k1}_{k2}")
+                        cstats['c11_bus'] += 1
+            nxt = (b[0], b[1] + 1)
+            if nxt in bus['act']:
+                model.addConstr(bus['act'][b] >= bus['act'][nxt], name=f"bus_order_{name}")   # interchangeable lines: open in order
+                cstats['c11_bus'] += 1
+            # the lines of one type are interchangeable: the k-th device of the type may only use lines 1..k
+            allowed = []
+            for k_dev, d in enumerate(sorted(devs)):
+                if b[1] > k_dev:
+                    model.addConstr(bus['dev'][b, d] == 0, name=f"bus_symmetry_{name}_{d}")
+                    cstats['c11_bus'] += 1
+                else:
+                    allowed.append(d)
+            # exact trees of the small member sets up front (device groups up to 4 alone, with one unit and with two
+            # units; up to 12 candidate cells also unit triples): valid because the Steiner tree only grows with its
+            # members; larger sets come as lazy cuts
+            def tree_bound(members, label):
+                st_len = steiner_tree([e for e, _v in members], bus['points'])[0]
+                if st_len > 0:
+                    model.addConstr(bus['len'][b] >= st_len * (gp.quicksum(v for _e, v in members) - (len(members) - 1)), name=f"bus_tree_{name}_{label}")
+                    cstats['c11_bus'] += 1
+            units = [(locations[j].id, bus['unit'][b, j]) for j in range(n_locs)]
+            for size in range(1, min(4, len(allowed)) + 1):
+                for group in itertools.combinations(allowed, size):
+                    gm = [(d, bus['dev'][b, d]) for d in group]
+                    if size >= 2:
+                        tree_bound(gm, '_'.join(group))
+                    for u1 in range(n_locs):
+                        tree_bound(gm + [units[u1]], f"{'_'.join(group)}_{units[u1][0]}")
+                        for u2 in range(u1 + 1, n_locs):
+                            tree_bound(gm + [units[u1], units[u2]], f"{'_'.join(group)}_{units[u1][0]}_{units[u2][0]}")
+            if n_locs <= 12:
+                for trio in itertools.combinations(range(n_locs), 3):
+                    tree_bound([units[k] for k in trio], '_'.join(units[k][0] for k in trio))
 
-            for si in {k[0] for k in shared_attach_s.keys()}:
-                model.addConstr(
-                    gp.quicksum(shared_attach_s[si, j] for j in range(n_locs) if (si, j) in shared_attach_s) <= 1,
-                    name=f"sharedAttachS_one_{sensors[si].id}"
-                )
-                cstats['c9_shared_attach'] += 1
-
-        if shared_attach_a:
-            for (ai, j), av in shared_attach_a.items():
-                iface = getattr(actuators[ai], 'interface', None)
-                if iface not in shared_bus_ifaces:
-                    model.addConstr(av == 0, name=f"sharedAttachA_iface_inactive_{actuators[ai].id}_{locations[j].id}")
-                    cstats['c9_shared_attach'] += 1
-                    continue
-                model.addConstr(av <= loc_active[j], name=f"sharedAttachA_active_{actuators[ai].id}_{locations[j].id}")
-                cstats['c9_shared_attach'] += 1
-
-            for ai in {k[0] for k in shared_attach_a.keys()}:
-                model.addConstr(
-                    gp.quicksum(shared_attach_a[ai, j] for j in range(n_locs) if (ai, j) in shared_attach_a) <= 1,
-                    name=f"sharedAttachA_one_{actuators[ai].id}"
-                )
-                cstats['c9_shared_attach'] += 1
-
-        # Link shared peripheral attachments to SC placements:
-        # if SC i uses a shared-bus peripheral and is placed at location j, that peripheral must be attached at j.
-        sensor_id_to_idx = {s.id: si for si, s in enumerate(sensors)}
-        actuator_id_to_idx = {a.id: ai for ai, a in enumerate(actuators)}
-
-        for i in range(n_sc):
-            sc = scs[i]
-            for s_id in (getattr(sc, 'sensors', None) or []):
-                si = sensor_id_to_idx.get(s_id)
-                if si is None:
-                    continue
-                iface = getattr(sensors[si], 'interface', None)
-                if iface not in shared_bus_ifaces:
-                    continue
-                for j in feasible_locs_per_sc[i]:
-                    if (si, j) in shared_attach_s:
-                        model.addConstr(
-                            x_expr(i, j) <= shared_attach_s[si, j],
-                            name=f"sharedAttachS_link_{sc.id}_{sensors[si].id}_{locations[j].id}"
-                        )
-                        cstats['c9_shared_attach'] += 1
-
-            for a_id in (getattr(sc, 'actuators', None) or []):
-                ai = actuator_id_to_idx.get(a_id)
-                if ai is None:
-                    continue
-                iface = getattr(actuators[ai], 'interface', None)
-                if iface not in shared_bus_ifaces:
-                    continue
-                for j in feasible_locs_per_sc[i]:
-                    if (ai, j) in shared_attach_a:
-                        model.addConstr(
-                            x_expr(i, j) <= shared_attach_a[ai, j],
-                            name=f"sharedAttachA_link_{sc.id}_{actuators[ai].id}_{locations[j].id}"
-                        )
-                        cstats['c9_shared_attach'] += 1
-
-        # Constraint 9-SHARED-TRUNK:
-        # shared_trunk_len[j, iface] is at least the farthest attached peripheral distance
-        # for that location/interface, so the common trunk segment is counted once.
-        if shared_trunk_len:
-            for (j, iface), trunk_var in shared_trunk_len.items():
-                if iface not in shared_bus_ifaces:
-                    model.addConstr(trunk_var == 0.0, name=f"sharedTrunk_iface_zero_{locations[j].id}_{iface}")
-                    cstats['c9_shared_trunk'] += 1
-                    continue
-
-                has_endpoint_expr = gp.LinExpr()
-
-                if shared_attach_s:
-                    for (si, jj), av in shared_attach_s.items():
-                        if jj != j:
-                            continue
-                        s_iface = getattr(sensors[si], 'interface', None)
-                        if s_iface != iface:
-                            continue
-                        dist = get_distance(sensors[si].location, locations[j].location) if getattr(sensors[si], 'location', None) is not None else 0.0
-                        model.addConstr(
-                            trunk_var >= dist * av,
-                            name=f"sharedTrunk_lb_s_{locations[j].id}_{iface}_{sensors[si].id}"
-                        )
-                        cstats['c9_shared_trunk'] += 1
-                        has_endpoint_expr.add(av, 1.0)
-
-                if shared_attach_a:
-                    for (ai, jj), av in shared_attach_a.items():
-                        if jj != j:
-                            continue
-                        a_iface = getattr(actuators[ai], 'interface', None)
-                        if a_iface != iface:
-                            continue
-                        dist = get_distance(actuators[ai].location, locations[j].location) if getattr(actuators[ai], 'location', None) is not None else 0.0
-                        model.addConstr(
-                            trunk_var >= dist * av,
-                            name=f"sharedTrunk_lb_a_{locations[j].id}_{iface}_{actuators[ai].id}"
-                        )
-                        cstats['c9_shared_trunk'] += 1
-                        has_endpoint_expr.add(av, 1.0)
-
-                # If no shared endpoint is attached at this location/interface, trunk must be zero.
-                # M is bounded by max possible distance in the vehicle envelope for this location.
-                max_dist_loc = 0.0
-                for s in sensors:
-                    if getattr(s, 'interface', None) == iface and getattr(s, 'location', None) is not None:
-                        max_dist_loc = max(max_dist_loc, get_distance(s.location, locations[j].location))
-                for a in actuators:
-                    if getattr(a, 'interface', None) == iface and getattr(a, 'location', None) is not None:
-                        max_dist_loc = max(max_dist_loc, get_distance(a.location, locations[j].location))
-
-                model.addConstr(
-                    trunk_var <= max_dist_loc * has_endpoint_expr,
-                    name=f"sharedTrunk_zero_if_no_ep_{locations[j].id}_{iface}"
-                )
-                cstats['c9_shared_trunk'] += 1
-
-                # Extra split trunk length is bounded by the same physical envelope.
-                if shared_extra_trunk_len and (j, iface) in shared_extra_trunk_len:
-                    model.addConstr(
-                        shared_extra_trunk_len[j, iface] <= trunk_var,
-                        name=f"sharedExtraTrunk_le_main_{locations[j].id}_{iface}"
-                    )
-                    cstats['c9_shared_trunk'] += 1
-            
         for (j1, j2, iface), comm_var in comm.items():
             M = comm_ub[iface]  # a cable count never exceeds its data-derived upper bound
             model.addConstr(
@@ -1261,7 +945,17 @@ class AssignmentOptimizer:
             # Optional (configs/buses.json: backbone.path_link_cut): a selected path has a cable on each of its links.
             # Implied for integer solutions; in the LP it makes a fractional placement pay a proportional share of a
             # whole cable instead of load / capacity.
-            if net.get('path_link_cut'):
+            if w_if in bus['types']:
+                # a bus line carries a unit-to-unit flow only when both units are members of it, and it is then at least
+                # as long as the cable between them (the bus counterpart of the path-link cut: keeps the LP honest)
+                d_uv = get_distance(locations[u].location, locations[v].location)
+                for p in range(len(plist)):
+                    for j in (u, v):
+                        model.addConstr(sel[u, v, w_if, p] <= bus['unit'][(w_if, p), j], name=f"line_member_{locations[u].id}_{locations[v].id}_{w_if}{p + 1}_{locations[j].id}")
+                        cstats['c10_path_choice'] += 1
+                    model.addConstr(bus['len'][(w_if, p)] >= d_uv * sel[u, v, w_if, p], name=f"line_length_{locations[u].id}_{locations[v].id}_{w_if}{p + 1}")
+                    cstats['c10_path_choice'] += 1
+            elif net.get('path_link_cut'):
                 for p, path in enumerate(plist):
                     for a, b in zip(path, path[1:]):
                         key = (a, b, w_if) if a < b else (b, a, w_if)
@@ -1282,7 +976,7 @@ class AssignmentOptimizer:
     def _build_objective_function(self, model, x, P, y, hw_use, if_use, comm, scs, locations, sensors, actuators, 
                                   cable_types, comm_matrix, partitions, hardwares, interfaces,
                                   n_locs, unique_asils, all_hw, all_interfaces,
-                                  feasible_locs_per_sc, attach_s=None, attach_a=None, shared_attach_s=None, shared_attach_a=None, shared_trunk_len=None, shared_extra_trunk_len=None,
+                                  feasible_locs_per_sc, attach_s=None, attach_a=None, bus=None,
                                   minimize_cable_length=False, cable_length_limit=None, cost_limit=None):
         """
         Build and set the objective function for the optimization model
@@ -1317,9 +1011,7 @@ class AssignmentOptimizer:
         # Cable cost (sensor/actuator cables + ECU-to-ECU communication backbone)
         cable_cost_expr, cable_distance_expr, _ = self.calculate_cable_expressions(
             x, scs, locations, sensors, actuators, cable_types, comm_matrix,
-            feasible_locs_per_sc, comm=comm, attach_s=attach_s, attach_a=attach_a,
-            shared_attach_s=shared_attach_s, shared_attach_a=shared_attach_a,
-            shared_trunk_len=shared_trunk_len, shared_extra_trunk_len=shared_extra_trunk_len
+            feasible_locs_per_sc, comm=comm, attach_s=attach_s, attach_a=attach_a, bus=bus
         )
 
         total_cost = partition_cost_expr + site_cost_expr + hw_cost_expr + if_cost_expr + cable_cost_expr
@@ -1391,14 +1083,14 @@ class AssignmentOptimizer:
         infeasible_ij = set()   # placement restrictions from timing are enforced through the chain constraints
 
         # ======================= CREATE MODEL & VARIABLES =======================
-        model, x, P, y, hw_use, if_use, attach_s, attach_a, shared_attach_s, shared_attach_a, shared_trunk_len, shared_extra_trunk_len, comm, traffic_flows, net, feasible_locs_per_sc, feasible_scs_per_loc, var_stats = self._create_model_and_variables(
+        model, x, P, y, hw_use, if_use, attach_s, attach_a, bus, comm, traffic_flows, net, feasible_locs_per_sc, feasible_scs_per_loc, var_stats = self._create_model_and_variables(
             n_sc, n_locs, scs, locations, unique_asils, all_hw, sensors, actuators, all_interfaces, infeasible_ij=infeasible_ij, comm_matrix=comm_matrix,
             partitions=partitions, backbone=backbone, cable_types=cable_types, uncertainty=uncertainty, chains=chains
         )
         
         # ======================= ADD CONSTRAINTS =======================
         model, cstats = self._add_constraints(
-            model, x, P, y, hw_use, if_use, attach_s, attach_a, shared_attach_s, shared_attach_a, shared_trunk_len, shared_extra_trunk_len, comm, traffic_flows, net, scs, locations, sensors, actuators,
+            model, x, P, y, hw_use, if_use, attach_s, attach_a, bus, comm, traffic_flows, net, scs, locations, sensors, actuators,
             cable_types, comm_matrix, partitions, unique_asils,
             feasible_locs_per_sc, feasible_scs_per_loc,
             enable_comm_bw_constraints=enable_comm_bw_constraints,
@@ -1415,10 +1107,7 @@ class AssignmentOptimizer:
         print(f"  if_use: {var_stats['if_use']}")
         print(f"  attach_s: {var_stats.get('attach_s', 0)}")
         print(f"  attach_a: {var_stats.get('attach_a', 0)}")
-        print(f"  shared_attach_s: {var_stats.get('shared_attach_s', 0)}")
-        print(f"  shared_attach_a: {var_stats.get('shared_attach_a', 0)}")
-        print(f"  shared_trunk_len: {var_stats.get('shared_trunk_len', 0)}")
-        print(f"  shared_extra_trunk_len: {var_stats.get('shared_extra_trunk_len', 0)}")
+        print(f"  bus lines: {var_stats.get('bus', 0)}")
         print(f"  comm: {var_stats['comm']} ({(100.0 * var_stats['comm'] / max(1, var_stats['total'])):.1f}%)")
         print(f"  traffic_flows: {var_stats['traffic_flows']}")
         print(f"  sel: {var_stats['sel']}  (site pairs with candidate paths: {var_stats['pairs_with_paths']})")
@@ -1432,9 +1121,7 @@ class AssignmentOptimizer:
             model, x, P, y, hw_use, if_use, comm, scs, locations, sensors, actuators,
             cable_types, comm_matrix, partitions, hardwares, interfaces,
             n_locs, unique_asils, all_hw, all_interfaces,
-            feasible_locs_per_sc, attach_s=attach_s, attach_a=attach_a,
-            shared_attach_s=shared_attach_s, shared_attach_a=shared_attach_a,
-            shared_trunk_len=shared_trunk_len, shared_extra_trunk_len=shared_extra_trunk_len,
+            feasible_locs_per_sc, attach_s=attach_s, attach_a=attach_a, bus=bus,
             minimize_cable_length=minimize_cable_length, cable_length_limit=cable_length_limit,
             cost_limit=cost_limit
         )
@@ -1496,14 +1183,27 @@ class AssignmentOptimizer:
         flow_of_pair = {(tr['src_idx'], tr['dst_idx']): tr['id'] for tr in base_flows if tr['type'] == 'SC_SC'}
         flow_into = {tr['dst_idx']: tr['id'] for tr in base_flows if tr['type'] == 'SENS_SC'}
         flow_from = {tr['src_idx']: tr['id'] for tr in base_flows if tr['type'] == 'SC_ACT'}
+        # a device on a bus line reaches the unit of its software in one bus crossing (fixed per device: kbit / bit
+        # rate + per-hop bound, robust like any crossing); a chain adds it at its first (sensor) and last (actuator) end
+        dev_end = {}       # (component, sensor/actuator) -> the bus device it drives with the longest own crossing
+        for d, info in net['bus']['devices'].items():
+            t_if = cable_types[info['iface']]
+            ms = robust_ms(net, info['kbit'] / float(t_if.capacity) + float(getattr(t_if, 'hop_latency_ms', 0.0)))
+            for i in info['users']:
+                if ms > dev_end.get((i, info['kind']), (None, -1.0))[1]:
+                    dev_end[i, info['kind']] = (d, ms)
         net['chains'] = []
         for ch in (chains or []):
             idx = [sc_index[s] for s in ch['swcs'] if s in sc_index]
             flows = [flow_into[idx[0]]] if idx and idx[0] in flow_into else []
             flows += [flow_of_pair[a, b] for a, b in zip(idx, idx[1:]) if (a, b) in flow_of_pair]
             flows += [flow_from[idx[-1]]] if idx and idx[-1] in flow_from else []
-            net['chains'].append({'id': ch['id'], 'budget': float(ch['net_budget_ms']),
+            ends = [dev_end[k] for k in ((idx[0], 'sensor'), (idx[-1], 'actuator')) if idx and k in dev_end]
+            const = sum(ms for _d, ms in ends)   # own crossings of the end devices (their queues come in the cuts)
+            net['chains'].append({'id': ch['id'], 'budget': float(ch['net_budget_ms']), 'const': const, 'dev_ends': [d for d, _ms in ends],
                                   'degraded': float(ch.get('degraded_bound_ms', 2.0 * float(ch['net_budget_ms']))), 'flows': flows})
+            if const > float(ch['net_budget_ms']):
+                print(f"  WARNING: chain {ch['id']} cannot meet its budget: its bus crossings alone take {const:.2f} ms")
         if net['chains']:
             print(f"  Chains: {len(net['chains'])} (network budgets {min(c['budget'] for c in net['chains']):.1f} - "
                   f"{max(c['budget'] for c in net['chains']):.1f} ms, robust latency {net['lat']['robust']})")
@@ -1516,6 +1216,7 @@ class AssignmentOptimizer:
         watched += list(x.values()) + list(y.values()) + list(hw_use.values()) + list(P.values())
         watched += list(net['r'].values()) + [v for v in net['hot'].values() if v is not None] + list(net['hr'].values())
         watched += list(attach_s.values()) + list(attach_a.values())
+        watched += list(bus['act'].values()) + list(bus['len'].values()) + list(bus['unit'].values()) + list(bus['dev'].values())
         seen_ids, cb_vars = set(), []
         for var in watched:
             if id(var) not in seen_ids:
@@ -1539,6 +1240,30 @@ class AssignmentOptimizer:
 
         model._repair = None
         model._repairs_used = 0
+        # Steiner cuts of the bus lines found in the callback ({(line, member names): (member variables, length)});
+        # Gurobi drops callback cuts after each optimize, but these are valid for every solution, so they are kept as
+        # model constraints between the phases (a start solution's bus lengths are recomputed by Gurobi's LP and
+        # would otherwise fall below the trees and be rejected)
+        model._st_cuts, model._st_added = {}, set()
+
+        def keep_steiner_cuts():
+            for key, (members, st_len) in model._st_cuts.items():
+                if key not in model._st_added:
+                    b = key[0]
+                    model.addConstr(bus['len'][b] >= st_len * (gp.quicksum(members) - (len(members) - 1)),
+                                    name=f"steiner_{b[0]}{b[1] + 1}_{len(model._st_added)}")
+                    model._st_added.add(key)
+
+        # a start solution brings its bus lines: their trees are added right away for the same reason
+        if start:
+            for b in bus['inst']:
+                if start.get(bus['act'][b].VarName, 0.0) < 0.5:
+                    continue
+                mem = [(locations[j].id, bus['unit'][b, j]) for j in range(n_locs) if start.get(bus['unit'][b, j].VarName, 0.0) > 0.5]
+                mem += [(d, bus['dev'][b, d]) for d in bus['devices'] if (b, d) in bus['dev'] and start.get(bus['dev'][b, d].VarName, 0.0) > 0.5]
+                if len(mem) > 1:
+                    model._st_cuts[(b, tuple(sorted(e for e, _v in mem)))] = ([v for _e, v in mem], steiner_tree([e for e, _v in mem], bus['points'])[0])
+            keep_steiner_cuts()
         cont_ids = {id(v) for v in cb_vars if v.VType == GRB.CONTINUOUS}
 
         def lazy_cb(m, where):
@@ -1588,7 +1313,53 @@ class AssignmentOptimizer:
                         expr = expr + net['hot'][tr[key]] - 1
                 return expr
 
-            # --- traffic: a pair with traffic needs a selected path; cables carry the routed volume
+            # --- bus lines: the cable length of an open line is at least the exact Steiner tree of its members (the
+            # tree only grows with more members, so the cut stays valid for every superset)
+            bus_members = {}
+            for b in bus['inst']:
+                if getv(bus['act'][b]) < 0.5:
+                    continue
+                mem = [(locations[j].id, bus['unit'][b, j]) for j in range(n_locs) if getv(bus['unit'][b, j]) > 0.5]
+                mem += [(d, bus['dev'][b, d]) for d in bus['devices'] if (b, d) in bus['dev'] and getv(bus['dev'][b, d]) > 0.5]
+                st_len = steiner_tree([e for e, _v in mem], bus['points'])[0]
+                bus_members[b] = st_len
+                if getv(bus['len'][b]) < st_len - 1e-6:
+                    m.cbLazy(bus['len'][b] >= st_len * (gp.quicksum(v for _e, v in mem) - (len(mem) - 1)))
+                    m._lazy_cuts += 1
+                    m._st_cuts[(b, tuple(sorted(e for e, _v in mem)))] = ([v for _e, v in mem], st_len)
+
+            def resources(u, v, w_if, p):
+                # what a routed flow loads: the directed links of its path (point-to-point cables) or its bus line (the
+                # two directions and the line's devices share the line's bit rate)
+                if w_if in bus['types']:
+                    return [('line', (w_if, p))]
+                pair = (min(u, v), max(u, v))
+                path = net['paths'][pair + (w_if,)][p]
+                seq = path if (u, v) == pair else path[::-1]
+                return [(a, b2, w_if) for a, b2 in zip(seq, seq[1:])]
+
+            def capacity_left(res, counts):
+                # bit rate available to unit-to-unit traffic on a resource in the current solution
+                if res[0] == 'line':
+                    ln = res[1]
+                    dev_load = sum(bus['devices'][d]['volume'] for d in bus['devices'] if (ln, d) in bus['dev'] and getv(bus['dev'][ln, d]) > 0.5)
+                    return cap_of[ln[0]] * net['bus_umax'] - dev_load
+                a, b2, w_if = res
+                return cap_of[w_if] * counts[(a, b2, w_if) if a < b2 else (b2, a, w_if)]
+
+            def capacity_cut(res, terms):
+                # capacity >= routed volume (lower-bound terms) [+ the device volumes of a line]
+                if res[0] == 'line':
+                    ln = res[1]
+                    devs = [(bus['dev'][ln, d], bus['devices'][d]['volume']) for d in bus['devices'] if (ln, d) in bus['dev']]
+                    m.cbLazy(cap_of[ln[0]] * net['bus_umax'] >= gp.quicksum(vol * dv for dv, vol in devs) + gp.quicksum(vol * ind for ind, vol in terms))
+                else:
+                    a, b2, w_if = res
+                    key = (a, b2, w_if) if a < b2 else (b2, a, w_if)
+                    m.cbLazy(cap_of[w_if] * comm[key] >= gp.quicksum(vol * ind for ind, vol in terms))
+                m._lazy_cuts += 1
+
+            # --- traffic: a pair with traffic needs a selected path; cables and lines carry the routed volume
             load, contrib = {}, {}
             for t, rt in routes.items():
                 if rt is None:
@@ -1606,31 +1377,66 @@ class AssignmentOptimizer:
                     continue
                 if silent(t):
                     continue
-                seq = plist[p] if (u, v) == pair else plist[p][::-1]
                 vol = net['volumes'][t]
-                for a, b in zip(seq, seq[1:]):
-                    load[(a, b, w_if)] = load.get((a, b, w_if), 0.0) + vol
-                    contrib.setdefault((a, b, w_if), []).append((traffic_indicator(t, u, v, w_if, p), vol))
-            for (a, b, w_if), ld in load.items():
-                key = (a, b, w_if) if a < b else (b, a, w_if)
-                if ld > cap_of[w_if] * cv[key] + 1e-6:
-                    m.cbLazy(cap_of[w_if] * comm[key] >= gp.quicksum(vol * ind for ind, vol in contrib[(a, b, w_if)]))
-                    m._lazy_cuts += 1
+                for res in resources(u, v, w_if, p):
+                    load[res] = load.get(res, 0.0) + vol
+                    contrib.setdefault(res, []).append((traffic_indicator(t, u, v, w_if, p), vol))
+            for res, ld in load.items():
+                if ld > capacity_left(res, cv) + 1e-6:
+                    capacity_cut(res, contrib[res])
 
-            # --- chain latency: the network time of a chain must stay within its budget
+            # --- chain latency: the network time of a chain must stay within its budget. A crossing waits for every
+            # other message on each of its resources, so the cut has, besides the own crossing of a flow, one term per
+            # message sharing a resource with it: (its kbit / rate) * [both there], lower-bounded by ind_t + ind_m - 1
+            nom_msgs = resource_messages(net, routes, getv)
+            qf = net['lat']['factor'] if net['lat']['robust'] else 1.0
+
+            def msg_ind(msg, res, term_of_flow):
+                return term_of_flow(msg[1]) if msg[0] == 'f' else bus['dev'][res[1], msg[1]]
+
+            def chain_terms(ch, picks, msgs, term_of_flow, add_terms, routes_now):
+                # latency of a chain in one state (picks: flow -> its lower-bound indicator) and the cut terms
+                total, terms = ch['const'], []
+                for t, ind_t in picks:
+                    rt = routes_now[t]
+                    total += crossing_ms(net, t, rt, msgs)
+                    if not add_terms:
+                        continue
+                    u, v, w_if, p = rt
+                    own = robust_ms(net, sum(net['kbit'][t] / net['cap_of'][w_if] + net['hop_ms'][w_if] for _r in resources(u, v, w_if, p)))
+                    terms.append(own * ind_t)
+                    for res in resources(u, v, w_if, p):
+                        for msg in msgs.get(res, []):
+                            if msg != ('f', t):
+                                terms.append(qf * message_kbit(net, msg) / resource_rate(net, res) * (ind_t + msg_ind(msg, res, term_of_flow) - 1))
+                for d in ch['dev_ends']:
+                    line = device_line(net, d, getv)
+                    if line is None:
+                        continue
+                    res = ('line', line)
+                    q = sum(message_kbit(net, msg) for msg in msgs.get(res, []) if msg != ('d', d)) / resource_rate(net, res)
+                    total += qf * q
+                    if add_terms:
+                        for msg in msgs.get(res, []):
+                            if msg != ('d', d):
+                                terms.append(qf * message_kbit(net, msg) / resource_rate(net, res) * (bus['dev'][line, d] + msg_ind(msg, res, term_of_flow) - 1))
+                return total, terms
+
+            def nominal_term(k):
+                rt = routes[k]
+                return traffic_indicator(k, rt[0], rt[1], rt[2], rt[3])
+
             for ch in net['chains']:
-                terms, total = [], 0.0
+                picks = []
                 for t in ch['flows']:
                     rt = routes.get(t)
                     if rt is None or rt[3] is None:
                         continue
-                    u, v, w_if, p = rt
-                    hops = len(net['paths'][(min(u, v), max(u, v), w_if)][p]) - 1
-                    ms = crossing_latency_ms(net, t, w_if, hops)
-                    terms.append(ms * indicator(t, u, v, w_if, p))
-                    total += ms
+                    picks.append((t, indicator(t, *rt)))
+                total, _ = chain_terms(ch, picks, nom_msgs, nominal_term, False, routes)
                 if total > ch['budget'] + 1e-6:
-                    m.cbLazy(gp.quicksum(terms) <= ch['budget'])
+                    _t, terms = chain_terms(ch, picks, nom_msgs, nominal_term, True, routes)
+                    m.cbLazy(gp.quicksum(terms) <= ch['budget'] - ch['const'])
                     m._lazy_cuts += 1
 
             # --- single failures: every critical SC keeps a served instance under every scenario
@@ -1669,10 +1475,12 @@ class AssignmentOptimizer:
                     return False, cfg, False
                 if kind == 'switch' and w_if == 'ETH' and elem in (u, v):
                     return False, cfg, False   # the ETH ports of a switched cell are the switch's ports
-                if kind == 'cable':
+                if kind == 'cable' and w_if not in bus['types']:
                     a, b, wtype = elem
                     if wtype == w_if and any({pa, pb} == {a, b} for pa, pb in zip(path, path[1:])):
                         return False, cfg, False
+                if kind == 'line' and (w_if, p) == elem:
+                    return False, cfg, False
                 return True, cfg, False
 
             def instance_served(i, inst, kind, elem, routes_):
@@ -1722,54 +1530,51 @@ class AssignmentOptimizer:
                     if routes_ is routes:
                         scenarios += [('cable', key) for key in comm_keys if cv[key] > 0.5]
                     else:
-                        used = {(min(u, v), max(u, v), w_if) for rt in routes_.values() if rt for u, v, w_if, _p in [rt]}
+                        used = {(min(u, v), max(u, v), w_if) for rt in routes_.values() if rt for u, v, w_if, _p in [rt] if w_if not in bus['types']}
                         scenarios += [('cable', key) for key in used]
+                    scenarios += [('line', ln) for ln in sorted({(rt[2], rt[3]) for rt in routes_.values()
+                                                                if rt and rt[2] in bus['types'] and rt[3] is not None})]
                 return scenarios
 
             VARIANT_ORDER = {'SC_SC': [('x', 'x'), ('x', 'r'), ('r', 'x'), ('r', 'r')],
                              'SENS_SC': [('a', 'x'), ('a', 'r')], 'SC_ACT': [('x', 'a'), ('r', 'a')]}
 
-            def degraded_check(routes_, add_cuts):
-                """chain network latency in every failure scenario over the surviving instances; returns the number
-                of chains over their degraded bound (with add_cuts: one cut per violation)"""
+            def degraded_check(states, routes_, add_cuts):
+                """chain network latency in every failure scenario over the surviving instances, with the queues of the
+                traffic after the failure; returns the number of chains over their degraded bound (with add_cuts: one
+                cut per violation)"""
                 violations = 0
-                for kind, elem in scenario_list(routes_):
+                for st in states:
+                    msgs = None
                     for ch in net['chains']:
-                        total, terms, broken = 0.0, [], False
+                        picks, broken = [], False
                         for t_base in ch['flows']:
-                            picked, reasons = None, []
-                            for key in VARIANT_ORDER[net['flow_meta'][t_base]['type']]:
-                                t = base_variants[t_base].get(key)
-                                if t is None:
-                                    continue
-                                ok, vs, miss = flow_alive(t, kind, elem, routes_)
-                                if miss:
-                                    picked = 'missing'
-                                    break
-                                if ok:
-                                    picked = (t, vs)
-                                    break
-                                reasons += vs
-                            if picked is None or picked == 'missing':
-                                broken = True   # a broken chain is a survival violation (cut elsewhere)
+                            pick = st['picks'].get(t_base)
+                            if pick is None or pick == 'missing':
+                                broken = True   # a lost non-critical member, or a survival violation cut elsewhere
                                 break
-                            t, vs = picked
+                            t, reasons = pick
                             u, v = ends_of(t)
                             if u == v:
                                 continue
-                            _u, _v, w_if, p = routes_[t]
-                            hops = len(net['paths'][(min(u, v), max(u, v), w_if)][p]) - 1
-                            ms = crossing_latency_ms(net, t, w_if, hops)
-                            total += ms
-                            if add_cuts:
-                                ind = indicator(t, u, v, w_if, p)
-                                for rv in reasons:
-                                    ind = ind + rv - 1
-                                terms.append(ms * ind)
-                        if not broken and total > ch['degraded'] + 1e-6:
+                            ind = indicator(t, *routes_[t])
+                            for rv in reasons:
+                                ind = ind + rv - 1
+                            picks.append((t, ind))
+                        if st['kind'] == 'line' and any(device_line(net, d, getv) == st['elem'] for d in ch['dev_ends']):
+                            broken = True       # the end device's own line failed: out of scope (devices are single)
+                        if broken:
+                            continue
+                        if msgs is None:
+                            msgs = resource_messages(net, routes_, getv, carried=set(st['carried']),
+                                                     failed_line=(st['elem'] if st['kind'] == 'line' else None))
+                        term = (lambda k, st=st: degraded_term(k, st['carried'][k], routes_))
+                        total, _ = chain_terms(ch, picks, msgs, term, False, routes_)
+                        if total > ch['degraded'] + 1e-6:
                             violations += 1
                             if add_cuts:
-                                m.cbLazy(gp.quicksum(terms) <= ch['degraded'])
+                                _t, terms = chain_terms(ch, picks, msgs, term, True, routes_)
+                                m.cbLazy(gp.quicksum(terms) <= ch['degraded'] - ch['const'])
                                 m._lazy_cuts += 1
                                 m._fail_cuts += 1
                 return violations
@@ -1807,44 +1612,50 @@ class AssignmentOptimizer:
                         break
                 return violations
 
-            def degraded_traffic(routes_):
-                """Traffic after every single failure: the flows that keep running (alive, primaries and hot standbys)
-                and, per base flow, the first surviving variant of the degraded latency rule, which activates the cold
-                standbys it needs. Returns [(load {(a, b, type): volume}, members {(a, b, type): [(t, reasons)]})]
-                per scenario; reasons is None for a flow that runs in the nominal state."""
-                out = []
+            def scenario_states(routes_):
+                """Per single-failure scenario: the traffic that keeps running (alive flows of primaries and hot
+                standbys, reasons None) and, per data flow, its first surviving variant of the degraded latency rule,
+                which activates the cold standbys it needs (with the reasons its earlier variants are dead)."""
+                states = []
                 for kind, elem in scenario_list(routes_):
-                    carried = {}
+                    carried, picks = {}, {}
                     for t in net['flow_meta']:
                         if not silent(t):
                             ok, _vs, _miss = flow_alive(t, kind, elem, routes_)
                             if ok:
                                 carried[t] = None
                     for t_base, variants in base_variants.items():
-                        reasons = []
+                        reasons, pick = [], None
                         for key in VARIANT_ORDER[net['flow_meta'][t_base]['type']]:
                             t = variants.get(key)
                             if t is None:
                                 continue
                             ok, vs, miss = flow_alive(t, kind, elem, routes_)
                             if miss:
+                                pick = 'missing'
                                 break
                             if ok:
+                                pick = (t, reasons)
                                 carried.setdefault(t, reasons)
                                 break
                             reasons = reasons + vs
+                        picks[t_base] = pick
+                    states.append({'kind': kind, 'elem': elem, 'carried': carried, 'picks': picks})
+                return states
+
+            def degraded_traffic(states, routes_):
+                """load and members per resource after every failure: [(load {res: volume}, members {res: [(t, reasons)]})]"""
+                out = []
+                for st in states:
                     load, members = {}, {}
-                    for t, reasons in carried.items():
+                    for t, reasons in st['carried'].items():
                         u, v = ends_of(t)
                         if u == v:
                             continue
                         _u, _v, w_if, p = routes_[t]
-                        pair = (min(u, v), max(u, v))
-                        path = net['paths'][pair + (w_if,)][p]
-                        seq = path if (u, v) == pair else path[::-1]
-                        for a, b in zip(seq, seq[1:]):
-                            load[(a, b, w_if)] = load.get((a, b, w_if), 0.0) + net['volumes'][t]
-                            members.setdefault((a, b, w_if), []).append((t, reasons))
+                        for res in resources(u, v, w_if, p):
+                            load[res] = load.get(res, 0.0) + net['volumes'][t]
+                            members.setdefault(res, []).append((t, reasons))
                     out.append((load, members))
                 return out
 
@@ -1860,18 +1671,16 @@ class AssignmentOptimizer:
                 return ind
 
             if net['critical']:
+                states = scenario_states(routes)
                 # link capacity after a failure (cables can be added, so this never rejects the placement)
-                for load, members in degraded_traffic(routes):
-                    for (a, b, w_if), ld in load.items():
-                        key = (a, b, w_if) if a < b else (b, a, w_if)
-                        if ld > cap_of[w_if] * cv[key] + 1e-6:
-                            m.cbLazy(cap_of[w_if] * comm[key] >= gp.quicksum(
-                                net['volumes'][t] * degraded_term(t, reasons, routes) for t, reasons in members[(a, b, w_if)]))
-                            m._lazy_cuts += 1
+                for load, members in degraded_traffic(states, routes):
+                    for res, ld in load.items():
+                        if ld > capacity_left(res, cv) + 1e-6:
+                            capacity_cut(res, [(degraded_term(t, reasons, routes), net['volumes'][t]) for t, reasons in members[res]])
                             m._fail_cuts += 1
                 if scenario_check(routes, True) > 0:
                     placement_ok = False
-                if net['chains'] and degraded_check(routes, True) > 0:
+                if net['chains'] and degraded_check(states, routes, True) > 0:
                     placement_ok = False
                 # cold standbys activated by a cell failure must fit next to the nominal load of their cell
                 for c in range(n_locs):
@@ -1936,7 +1745,9 @@ class AssignmentOptimizer:
                 fix = {var: (getv(var) if id(var) in cont_ids else round(getv(var))) for var in cb_vars}
                 for var in net['sel'].values():
                     fix[var] = 0
-                rep_routes, rload, need = {}, {}, set()
+                for b in bus['inst']:
+                    fix[bus['len'][b]] = bus_members.get(b, 0.0)
+                rep_routes, rload, need, feasible = {}, {}, set(), True
                 for t, (src, dst) in net['flow_ends'].items():
                     u, v = ends_of(t)
                     if u is None or v is None or u == v:
@@ -1945,16 +1756,32 @@ class AssignmentOptimizer:
                     elig = net['flow_elig'][t]
                     w_if = elig[0] if len(elig) == 1 else max(elig, key=lambda n: getv(net['w'][t, n]))
                     pair = (min(u, v), max(u, v))
-                    fix[net['sel'][pair + (w_if, 0)]] = 1
-                    rep_routes[t] = (u, v, w_if, 0)
-                    need.add(pair + (w_if,))
+                    p = 0
+                    if w_if in bus['types']:
+                        # a bus-type flow takes the first line both units are on, else moves to Ethernet if it may
+                        p = next((k for k in range(len(net['paths'][pair + (w_if,)]))
+                                  if getv(bus['unit'][(w_if, k), u]) > 0.5 and getv(bus['unit'][(w_if, k), v]) > 0.5), None)
+                        if p is None:
+                            if 'ETH' in elig and 'ETH' not in bus['types'] and len(elig) > 1:
+                                for n in elig:
+                                    fix[net['w'][t, n]] = 1 if n == 'ETH' else 0
+                                w_if, p = 'ETH', 0
+                            else:
+                                feasible = False
+                                break
+                    fix[net['sel'][pair + (w_if, p)]] = 1
+                    rep_routes[t] = (u, v, w_if, p)
+                    if w_if not in bus['types']:
+                        need.add(pair + (w_if,))
                     if not silent(t):
-                        rload[pair + (w_if,)] = rload.get(pair + (w_if,), 0.0) + net['volumes'][t]
-                feasible = True
-                if net['critical']:
-                    for load, _members in degraded_traffic(rep_routes):
-                        for (a, b, w_if), ld in load.items():
-                            key = (min(a, b), max(a, b), w_if)
+                        for res in resources(u, v, w_if, p):
+                            key = res if res[0] == 'line' else (min(res[0], res[1]), max(res[0], res[1]), res[2])
+                            rload[key] = rload.get(key, 0.0) + net['volumes'][t]   # both directions: conservative
+                rep_states = scenario_states(rep_routes) if (feasible and net['critical']) else []
+                if feasible and net['critical']:
+                    for load, _members in degraded_traffic(rep_states, rep_routes):
+                        for res, ld in load.items():
+                            key = res if res[0] == 'line' else (min(res[0], res[1]), max(res[0], res[1]), res[2])
                             rload[key] = max(rload.get(key, 0.0), ld)
                 for key in comm_keys:
                     fix[comm[key]] = 0
@@ -1963,12 +1790,15 @@ class AssignmentOptimizer:
                     if n_cab > net['comm_ub'][key[2]]:
                         feasible = False
                     fix[comm[key]] = n_cab
+                for key, ld in rload.items():   # a bus line cannot be widened: its traffic must fit as it is
+                    if key[0] == 'line' and ld > capacity_left(key, None) + 1e-6:
+                        feasible = False
                 if feasible and net['chains']:
-                    feasible = all(c['ok'] for c in chain_latencies(net, rep_routes).values())
+                    feasible = all(c['ok'] for c in chain_latencies(net, rep_routes, getv).values())
                 if feasible and net['critical']:
                     feasible = scenario_check(rep_routes, False) == 0
                 if feasible and net['critical'] and net['chains']:
-                    feasible = degraded_check(rep_routes, False) == 0
+                    feasible = degraded_check(rep_states, rep_routes, False) == 0
                 if feasible:
                     m._repair = fix
 
@@ -1984,19 +1814,36 @@ class AssignmentOptimizer:
             lex_constr = None
             if model.SolCount > 0 and model.status in (GRB.OPTIMAL, GRB.TIME_LIMIT):
                 primary_val = primary_expr.getValue()
+                all_vars = model.getVars()
+                phase1 = model.getAttr('X', all_vars)
+                keep_steiner_cuts()
                 # Phase 2 always runs: a phase-1 solution alone has an arbitrary secondary objective (e.g. a min-cable
                 # design with junk cost). It gets the remaining time, but at least phase2_time seconds; the phase-1
                 # solution stays feasible and is Gurobi's start solution.
+                # tolerance 0.01 (far below the 1e-4 optimality gap): the start design's bus lengths and integers are
+                # recomputed by Gurobi within its feasibility tolerances and must still meet the bound
                 lex_constr = model.addConstr(
-                    primary_expr <= primary_val + max(1e-6, 1e-9 * abs(primary_val)),
+                    primary_expr <= primary_val + max(1e-2, 1e-6 * abs(primary_val)),
                     name=f"lex_fix_{primary_name}"
                 )
                 model.setObjective(secondary_expr, GRB.MINIMIZE)
+                model.setAttr('Start', all_vars, phase1)
                 if tl is not None:
                     model.setParam('TimeLimit', max(tl - model.Runtime, float(phase2_time)))
                 print(f"\n[Lexicographic] Phase 2: minimize {secondary_name} with {primary_name} <= {primary_val:.6f}")
                 model.optimize(lazy_cb)
                 phases.append(self._phase_info(model, secondary_name))
+                if model.SolCount == 0:
+                    # never lose the phase-1 design: re-accept it under the primary objective (start solution)
+                    print(f"\n[Lexicographic] Phase 2 found no solution in its time; the phase-1 design is kept")
+                    model.remove(lex_constr)
+                    lex_constr = None
+                    keep_steiner_cuts()
+                    model.setObjective(primary_expr, GRB.MINIMIZE)
+                    model.setAttr('Start', all_vars, phase1)
+                    model.setParam('TimeLimit', float(phase2_time))
+                    model.optimize(lazy_cb)
+                    phases[-1]['status'] = 'NO_SOLUTION'
             return phases, lex_constr
 
         # The pooled capacity constraint c2 is exact unless the SCs of one (site, ASIL) group cannot be packed into
@@ -2024,22 +1871,22 @@ class AssignmentOptimizer:
                 print(f"\n[Packing] {len(members)} SCs of ASIL {a} at {locations[j].id} do not fit into {p_val} partition(s); cut added")
             if lex_constr is not None:
                 model.remove(lex_constr)
+            keep_steiner_cuts()
             print(f"[Packing] Solving again with {packing_cuts} cut(s)")
 
         # ======================= RETURN FORMATTED SOLUTION =======================
         if model.SolCount > 0 and model.status in (GRB.OPTIMAL, GRB.TIME_LIMIT):
             time_limited = any(ph['status'] != 'OPTIMAL' for ph in phases)
             if time_limited:
-                print(f"\n⚠ Time limit reached; keeping best solution found (gaps: " + ", ".join(f"{ph['objective_name']} {100.0 * ph['mip_gap']:.4f}%" for ph in phases) + ")")
+                print(f"\n⚠ Time limit reached; keeping best solution found (gaps: " + ", ".join(
+                    f"{ph['objective_name']} " + (f"{100.0 * ph['mip_gap']:.4f}%" if ph['mip_gap'] is not None else ph['status']) for ph in phases) + ")")
             else:
                 print(f"\n✓ Optimal solution found!")
             # Extract and return formatted solution
             formatted_solution = extract_solution(
                 x, P, y, hw_use, if_use, comm, scs, locations, sensors, actuators,
                 cable_types, partitions, hardwares, interfaces, comm_matrix=comm_matrix,
-                traffic_flows=traffic_flows, net=net, attach_s=attach_s, attach_a=attach_a,
-                shared_attach_s=shared_attach_s, shared_attach_a=shared_attach_a,
-                shared_trunk_len=shared_trunk_len, shared_extra_trunk_len=shared_extra_trunk_len,
+                traffic_flows=traffic_flows, net=net, attach_s=attach_s, attach_a=attach_a, bus=bus,
                 partition_map=partition_map, standby=(net['r'], net['hot']), uncertainty=uncertainty
             )
             formatted_solution['solve_info'] = {
