@@ -948,6 +948,37 @@ class SolutionCheck:
                     return False
             return True
 
+        # lost functions: non-critical components (no standby) a failure makes unavailable: host cell failed, own bus
+        # device on the failed line, a command to an Ethernet actuator without a surviving route, or an input not
+        # delivered (no surviving variant, or its source component lost; transitive)
+        non_crit = [sc for sc in self.sc_order if sc not in self.crit]
+        inputs, act_out = defaultdict(list), defaultdict(list)
+        for b, f in enumerate(self.base):
+            (act_out[f['src']] if f['type'] == 'SC_ACT' else inputs[f['dst']]).append(b)
+
+        def lost_set(kind, elem):
+            dead = lambda b: not any(alive(f, kind, elem) for f in self.variants[b].values())
+            lost = {sc for sc in non_crit if (kind == 'cell' and self.pos_x.get(sc) == elem)
+                    or (kind == 'line' and any(elem in (self.bus_of.get(d) or []) for d in self.scs[sc]['devices']))
+                    or any(dead(b) for b in act_out[sc])}
+            grown = True
+            while grown:
+                grown = False
+                for sc in non_crit:
+                    if sc not in lost and any((self.base[b]['type'] == 'SC_SC' and self.base[b]['src'] in lost) or dead(b) for b in inputs[sc]):
+                        lost.add(sc)
+                        grown = True
+            return lost
+
+        def scen_key(kind, element):
+            # the report names a cable "A-B TYPE" and a line "bus line ID"
+            if kind == 'cable':
+                pair, n = element.rsplit(' ', 1)
+                return kind, frozenset(pair.split('-')), n
+            return kind, element.replace('bus line ', '') if kind == 'line' else element
+
+        reported_lost = {scen_key(e['kind'], e['element']): e['lost_functions']
+                         for e in self.sol.get('failure_scenarios') or [] if 'lost_functions' in e}
         chain_flows = {ch['id']: self.chain_flows(ch) for ch in self.chains}
         for kind, elem in scen:
             label = f"{kind} {'-'.join(elem[:2]) + ' ' + elem[2] if kind == 'cable' else elem}"
@@ -955,6 +986,12 @@ class SolutionCheck:
                 self.checked['failure_survival'] += 1
                 if not (served(sc, 'x', kind, elem) or served(sc, 'r', kind, elem)):
                     self.err('failure_survival', f"{label}: {sc} has no instance with all critical partners")
+            key = (kind, frozenset(elem[:2]), elem[2]) if kind == 'cable' else (kind, elem)
+            if key in reported_lost:
+                self.checked['lost_functions'] += 1
+                lost = lost_set(kind, elem)
+                if set(reported_lost[key]) != lost:
+                    self.err('report', f"{label}: lost functions reported {sorted(reported_lost[key])}, recomputed {sorted(lost)}")
             # traffic after the failure: the flows that keep running (alive, primaries and hot standbys) and, per data
             # flow, its first surviving variant (the variant rule of the degraded latency)
             carried = {id(f): f for f in self.flows if not self.silent(f) and alive(f, kind, elem)}
@@ -1012,6 +1049,15 @@ class SolutionCheck:
                 cap = self.ct[n]['cap'] * self.cables.get(_pk(a, c2) + (n,), 0)
                 if not _le(ld, cap):
                     self.err('failure_link_capacity', f"{label}: {a}->{c2} {n} load {ld:.1f} > {cap:.1f} after the failure")
+        # the lost-function metric of the solution: worst and mean count over the reported scenarios
+        summary, entries = self.sol.get('lost_functions'), self.sol.get('failure_scenarios') or []
+        if summary is not None and entries:
+            self.checked['lost_functions'] += 1
+            counts = [len(e.get('lost_functions', [])) for e in entries]
+            calc = {'non_critical': len(non_crit), 'scenarios': len(counts), 'worst': max(counts), 'mean': sum(counts) / len(counts)}
+            for k, v in calc.items():
+                if not _close(float(summary.get(k, -1)), float(v), tol=1e-3):
+                    self.err('report', f"lost_functions {k}: reported {summary.get(k)}, recomputed {v}")
 
     def _failure_capacity(self, c, label):
         """cold standbys activated by the failure of cell c must fit next to the load of their cell"""

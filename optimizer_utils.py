@@ -342,7 +342,36 @@ def failure_report(net, scs, locations, getv, uncertainty=None):
             return False
         return True
 
-    hot_val = {i: (1.0 if net['hot'][i] is None else getv(net['hot'][i])) for i in net['critical']}
+    # lost functions: the non-critical components (no standby) that a failure makes unavailable
+    crit = set(net['critical'])
+    non_crit = [i for i in range(len(scs)) if i not in crit]
+    inputs, act_outputs = {}, {}
+    for t_base in net['base_variants']:
+        tr = net['flow_meta'][t_base]
+        if tr['type'] == 'SC_ACT':
+            act_outputs.setdefault(tr['src_idx'], []).append(t_base)
+        else:
+            inputs.setdefault(tr['dst_idx'], []).append(t_base)
+    dev_lines = {i: {device_line(net, d, getv) for d, info in (net.get('bus') or {}).get('devices', {}).items() if i in info['users']}
+                 for i in non_crit}
+
+    def lost_functions(kind, elem):
+        """non-critical components unavailable after the failure: their cell failed, a bus device of theirs is on the
+        failed line, a command to an Ethernet actuator of theirs has no surviving route, or an input of theirs is not
+        delivered (no surviving variant, or its source component is lost itself; transitive)"""
+        dead = lambda t_base: not any(alive(t, kind, elem) for t in net['base_variants'][t_base].values())
+        lost = {i for i in non_crit if (kind == 'cell' and pos_x.get(i) == elem) or (kind == 'line' and elem in dev_lines[i])
+                or any(dead(tb) for tb in act_outputs.get(i, []))}
+        grown = True
+        while grown:
+            grown = False
+            for i in non_crit:
+                if i not in lost and any((net['flow_meta'][tb]['type'] == 'SC_SC' and net['flow_meta'][tb]['src_idx'] in lost) or dead(tb)
+                                         for tb in inputs.get(i, [])):
+                    lost.add(i)
+                    grown = True
+        return sorted(scs[i].id for i in lost)
+
     report = []
     for kind, elem in scenarios:
         # traffic after the failure: flows that keep running plus the first surviving variant of every data flow
@@ -388,8 +417,20 @@ def failure_report(net, scs, locations, getv, uncertainty=None):
         entry['chains'] = chains
         worst = max((c for c in chains.values() if c['latency_ms'] is not None), key=lambda c: c['latency_ms'] / c['degraded_bound_ms'], default=None)
         entry['worst_chain_ratio'] = round(worst['latency_ms'] / worst['degraded_bound_ms'], 3) if worst else None
+        entry['lost_functions'] = lost_functions(kind, elem)
         report.append(entry)
     return report
+
+
+def lost_function_summary(scenarios, n_non_critical):
+    """the lost-function metric of a solution over its single-failure scenarios: worst and mean number of non-critical
+    components lost per scenario"""
+    if not scenarios:
+        return None
+    counts = [len(e.get('lost_functions', [])) for e in scenarios]
+    worst = max(range(len(counts)), key=lambda k: counts[k])
+    return {'non_critical': n_non_critical, 'scenarios': len(counts), 'worst': counts[worst],
+            'worst_scenario': f"{scenarios[worst]['kind']} {scenarios[worst]['element']}", 'mean': round(sum(counts) / len(counts), 3)}
 
 
 def chain_latencies(net, routes, getv):
@@ -874,6 +915,7 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
         backbone_routes = []
         chain_latency = {}
         failure_scenarios = []
+        lost_summary = None
         print(f"\n[DEBUG] Backbone routing (site pairs with traffic):")
         if not net:
             print("  Routing unavailable (net not provided to extract_solution)")
@@ -935,6 +977,10 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
                 print(f"\n[DEBUG] Failure scenarios: {len(failure_scenarios)} checked, {len(over)} with a chain over its degraded bound, "
                       f"{len(broken)} with a chain broken by a lost non-critical member; worst chain ratio "
                       f"{max((e['worst_chain_ratio'] or 0) for e in failure_scenarios):.2f}")
+                lost_summary = lost_function_summary(failure_scenarios, len(scs) - len(net['critical']))
+                if lost_summary:
+                    print(f"[DEBUG] Lost functions: of {lost_summary['non_critical']} non-critical components at most "
+                          f"{lost_summary['worst']} lost ({lost_summary['worst_scenario']}), mean {lost_summary['mean']} per failure")
             if net.get('chains'):
                 chain_latency = chain_latencies(net, flow_routes(net, lambda var: var.X), lambda var: var.X)
                 print(f"\n[DEBUG] Chain network latency (ms):")
@@ -1018,6 +1064,7 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
             'chain_latency': chain_latency,
             'standby': standby_map,
             'failure_scenarios': failure_scenarios,
+            'lost_functions': lost_summary,
             'eth_sensor_attachments': eth_sensor_attachments,
             'eth_actuator_attachments': eth_actuator_attachments,
             'buses': bus_report,

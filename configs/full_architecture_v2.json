@@ -848,8 +848,8 @@
         "AW_Planning_Behavior_Path"
       ],
       "rate_hz": 10.0,
-      "msg_kbit": 6.4,
-      "msg_source": "ETSI CAM, up to about 800 B with security envelope (estimate), 10 Hz"
+      "msg_kbit": 5.6,
+      "msg_source": "ETSI CAM: 200 to over 700 B depending on environment and security (Car 2 Car Communication Consortium TR 2052 survey); 1-10 Hz (ETSI EN 302 637-2); upper values used"
     },
     {
       "id": "CONN_OTA_Manager",
@@ -883,7 +883,7 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 141.12,
-      "msg_source": "CD-quality audio 1.41 Mbit/s"
+      "msg_source": "CD-quality audio 1.4112 Mbit/s (IEC 60908)"
     },
     {
       "id": "INFO_Navigation_UI",

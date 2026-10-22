@@ -31,8 +31,9 @@
   "robust_latency": {
     "_comment": "Robust chain latency: every network crossing costs nominal * network_safety_factor + sync_ms + platform_ms (ms).",
     "network_safety_factor": 1.1,
-    "sync_ms": 0.5,
-    "platform_ms": 2.0
+    "sync_ms": 0.001,
+    "platform_ms": 2.0,
+    "_sync_source": "clock synchronisation error per crossing: IEEE 802.1AS (gPTP) in-vehicle profile, +/- 1 us over 7 hops (IEEE 802.1DG time-sync profile, 2019); platform_ms and the safety factor remain estimates"
   },
   "growth": {
     "_comment": "Software growth: demand_i(alpha) = demand_i * (1 + alpha * profiles[domain_i]). alpha = growth level (1 = the reference domain doubled); profiles = relative growth per domain (reference ADAS 1.0). alpha_levels = the levels of the cost-growth sweep run with --growth / --uncertainty (Ebert and Jones, IEEE Computer 2009: embedded software volume +10..20 % per year depending on the domain; alpha 1..3 = 4..15 years at those rates).",

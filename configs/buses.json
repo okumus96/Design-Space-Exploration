@@ -1,58 +1,76 @@
 {
   "cable_types": {
     "ETH": {
-      "cost_per_meter": 100.0,
+      "cost_per_meter": 1.5,
       "weight_per_meter": 50,
       "capacity": 1000.0,
-      "port_cost": 10,
-      "hop_latency_ms": 0.1,
+      "port_cost": 17.0,
+      "hop_latency_ms": 0.015,
       "frame_kbit": 12.336,
-      "data_source": "1000BASE-T1 (IEEE 802.3bp); longest frame 1522 B tagged + 8 B preamble + 12 B gap"
+      "data_source": "1000BASE-T1 (IEEE 802.3bp); longest frame 1522 B tagged + 8 B preamble + 12 B gap",
+      "hop_source": "store-and-forward of one longest frame at 1 Gbit/s (12.3 us) plus 2 us switch forwarding (Rox, Ernst, Giusto, DATE 2012)",
+      "cost_source": "per metre: estimate: shielded automotive Ethernet pair about 3x a CAN pair (no bulk price found); per port: PHY 1000BASE-T1 TI DP83TG720 USD 11.71 at 250 pcs (Mouser) + half a sealed connector pair (USD 8-20 per pair, supplier figures; low confidence)",
+      "weight_source": "estimate"
     },
     "FLEXRAY": {
-      "cost_per_meter": 30.0,
-      "weight_per_meter": 30,
+      "cost_per_meter": 0.5,
+      "weight_per_meter": 8.6,
       "capacity": 10.0,
-      "port_cost": 5,
-      "hop_latency_ms": 1.0,
+      "port_cost": 6.5,
+      "hop_latency_ms": 5.0,
       "frame_kbit": 2.64,
-      "data_source": "FlexRay 10 Mbit/s (ISO 17458); longest frame 262 B (254 B payload), 10 bit per byte"
+      "data_source": "FlexRay 10 Mbit/s (ISO 17458); longest frame 262 B (254 B payload), 10 bit per byte",
+      "hop_source": "a static-segment message waits up to one bus cycle for its slot; cycle 5 ms assumed (design parameter, at most 16 ms by the FlexRay specification; Pop et al., Real-Time Systems 2008)",
+      "cost_source": "per metre: FLRY-A 2x0.35 mm2 twisted pair EUR 24.94 per 100 m incl. VAT (Bedia-Kabel, 500 m ring), x2 for harness making (materials are 40-65 % of a harness cost, supplier figures; low confidence); per port: transceiver NXP TJA1082 USD 3.1-4.1 + half a sealed connector pair (USD 8-20 per pair, supplier figures; low confidence)",
+      "weight_source": "two FLRY 0.35 mm2 cores, 2 x 4.3 g/m (derived)"
     },
     "CAN": {
-      "cost_per_meter": 20.0,
-      "weight_per_meter": 20,
+      "cost_per_meter": 0.5,
+      "weight_per_meter": 8.6,
       "capacity": 0.5,
-      "port_cost": 5,
+      "port_cost": 4.0,
       "hop_latency_ms": 2.0,
       "frame_kbit": 0.135,
-      "data_source": "high-speed CAN at 500 kbit/s (ISO 11898-2); 8-byte frame 135 bit worst case (Davis et al. 2007)"
+      "data_source": "high-speed CAN at 500 kbit/s (ISO 11898-2); 8-byte frame 135 bit worst case (Davis et al. 2007)",
+      "hop_source": "estimate (driver / arbitration / schedule slot), provisional",
+      "cost_source": "per metre: FLRY-A 2x0.35 mm2 twisted pair EUR 24.94 per 100 m incl. VAT (Bedia-Kabel, 500 m ring), x2 for harness making (materials are 40-65 % of a harness cost, supplier figures; low confidence); per port: transceiver NXP TJA1042 USD 0.87-1.04 (1k) + half a sealed connector pair (USD 8-20 per pair, supplier figures; low confidence)",
+      "weight_source": "two FLRY 0.35 mm2 cores, 2 x 4.3 g/m (derived)"
     },
     "LIN": {
-      "cost_per_meter": 10.0,
-      "weight_per_meter": 10,
+      "cost_per_meter": 0.5,
+      "weight_per_meter": 4.3,
       "capacity": 0.0192,
-      "port_cost": 5,
+      "port_cost": 4.0,
       "hop_latency_ms": 10.0,
       "frame_kbit": 0.174,
-      "data_source": "LIN at 19.2 kbit/s (ISO 17987); 8-byte frame 174 bit maximum"
+      "data_source": "LIN at 19.2 kbit/s (ISO 17987); 8-byte frame 174 bit maximum",
+      "hop_source": "estimate (driver / arbitration / schedule slot), provisional",
+      "cost_source": "per metre: FLRY-B 0.35 mm2 single core USD 0.21-0.29/m (TME, 100-500 m reels), x2 for harness making (materials are 40-65 % of a harness cost, supplier figures; low confidence); per port: transceiver NXP TJA1021 USD 0.73-0.97 (1k) + half a sealed connector pair (USD 8-20 per pair, supplier figures; low confidence)",
+      "weight_source": "FLRY 0.35 mm2: 4.3 g/m (FLRY data sheet)"
     },
     "UART": {
-      "cost_per_meter": 5.0,
+      "cost_per_meter": 0.5,
       "weight_per_meter": 5,
       "capacity": 0.1152,
-      "port_cost": 5,
+      "port_cost": 4.0,
       "hop_latency_ms": 1.0,
       "frame_kbit": 0.01,
-      "data_source": "UART at 115.2 kbaud (typical GNSS receiver port); one 10-bit character"
+      "data_source": "UART at 115.2 kbaud (typical GNSS receiver port); one 10-bit character",
+      "hop_source": "estimate (driver / arbitration / schedule slot), provisional",
+      "cost_source": "per metre: estimate (as a CAN pair); per port: estimate (as a LIN port)",
+      "weight_source": "estimate"
     },
     "SPI": {
-      "cost_per_meter": 5.0,
+      "cost_per_meter": 0.5,
       "weight_per_meter": 5,
-      "capacity": 10.0,
-      "port_cost": 5,
+      "capacity": 9.0,
+      "port_cost": 4.0,
       "hop_latency_ms": 0.1,
       "frame_kbit": 0.032,
-      "data_source": "SPI at 10 MHz (typical limit of MEMS IMU ports); one 32-bit transfer"
+      "data_source": "SPI at up to 9 Mbit/s (Honeywell HG1120 IMU brochure: SPI 2-9 Mbit, RS-422/CAN 1 Mbit); one 32-bit transfer",
+      "hop_source": "estimate (driver / arbitration / schedule slot), provisional",
+      "cost_source": "per metre: estimate (as a CAN pair); per port: estimate (as a LIN port)",
+      "weight_source": "estimate"
     }
   },
   "backbone": {
@@ -71,5 +89,6 @@
     "priorities": true
   },
   "_comment": "cable_types: cost per metre, weight per metre, capacity = bit rate (Mbit/s, same units as flow volumes), port cost, hop_latency_ms = per-hop processing/queueing bound (switch forwarding, bus arbitration). Every type may connect two control units; the optimiser picks per data flow which type carries it. Latency of a message over a link of a type = message kbit / capacity + hop_latency_ms per hop (HANDOFF 14.3).",
-  "_data_comment": "capacity = bit rate (Mbit/s), frame_kbit = longest frame of the type; data pass 2026-10-21, sources in data_source; hop_latency_ms, costs and weights unchanged (provisional, HANDOFF 17)"
+  "_data_comment": "capacity = bit rate (Mbit/s), frame_kbit = longest frame of the type; data pass 2026-10-21, sources in data_source; hop_latency_ms, costs and weights unchanged (provisional, HANDOFF 17)",
+  "_cost_comment": "All costs in USD (2026-10-22): cables per metre installed (wire price x harness factor), ports per end (transceiver or PHY plus half a connector pair), see cost_source; HANDOFF 17 F lists confidence."
 }

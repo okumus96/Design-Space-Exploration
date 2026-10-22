@@ -1,21 +1,25 @@
 {
-  "_comment": "Cost to provide each hardware feature at a location (once per location, not per SC)",
+  "_comment": "Cost (USD) to provide each hardware feature at a location (once per location, not per SC); distributor prices, 2026-10-22",
   "hardware_costs": {
     "DSP": {
       "description": "Digital Signal Processor for image/sensor processing",
-      "cost": 100
+      "cost": 25,
+      "cost_source": "automotive DSP ADI ADSP-21565 (AEC-Q100) USD 17-30, ADSP-21593 USD 29 (LCSC, Farnell, ADI)"
     },
     "HW_ACC": {
       "description": "Hardware accelerator for ML/vision algorithms",
-      "cost": 2000
+      "cost": 169,
+      "cost_source": "AI accelerator Hailo-8 M.2 module USD 169 (Mouser, 1 pc)"
     },
     "HSM": {
       "description": "Hardware Security Module for encryption/key management",
-      "cost": 100
+      "cost": 4,
+      "cost_source": "security IC: Infineon OPTIGA TPM EUR 2.4-3.9, NXP SE050 EUR 2.3-4.3 / USD 5.0-8.7 (Farnell, Mouser, element14)"
     },
     "SWITCH": {
       "description": "Allows this ECU to act as a network switch/router for pass-through traffic",
-      "cost": 100 
+      "cost": 23,
+      "cost_source": "automotive Ethernet switch NXP SJA1110 USD 22.87 (Digi-Key)"
     }
   }
 }

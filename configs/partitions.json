@@ -1,18 +1,20 @@
 {
   "partition": {
-    "cost": 500,
+    "cost": 800,
     "cpu_cap": 100000,
     "ram_cap": 32000,
     "rom_cap": 64000,
     "max_per_asil_per_site": 3,
-    "description": "Infrastructure cost to open/establish a partition at a location. Supports all ASIL levels (0-4). max_per_asil_per_site bounds the partitions of one ASIL at one site (3 = the slot count of the v1 model)."
+    "description": "Infrastructure cost to open/establish a partition at a location. Supports all ASIL levels (0-4). max_per_asil_per_site bounds the partitions of one ASIL at one site (3 = the slot count of the v1 model).",
+    "cost_source": "USD; central HPC unit USD 800-3,000+ (market research, Dataintelo; low confidence), low end used for one compute block of partition size (R-Car V4H class); provisional until the demands are calibrated"
   },
   "site": {
     "max_partitions": 4,
     "cpu_cap": 200000,
     "ram_cap": 64000,
     "rom_cap": 128000,
-    "fixed_cost": 0,
-    "description": "Caps and fixed activation cost of the control unit at a cell (the single unit size of configs/vehicle.json installation_space.ecu_size): at most max_partitions partitions, and the hosted demand of the whole unit (sum over all its partitions, with the demand margins and hot standbys, as in the partition capacity constraint) at most cpu/ram/rom_cap times the site derating (same units as the partition capacities). null = unlimited, fixed_cost 0 = free. Provisional values 2026-10-20 (two partitions' worth of compute, four partitions) until the data pass."
+    "fixed_cost": 70,
+    "description": "Caps and fixed activation cost of the control unit at a cell (the single unit size of configs/vehicle.json installation_space.ecu_size): at most max_partitions partitions, and the hosted demand of the whole unit (sum over all its partitions, with the demand margins and hot standbys, as in the partition capacity constraint) at most cpu/ram/rom_cap times the site derating (same units as the partition capacities). null = unlimited, fixed_cost 0 = free. Provisional values 2026-10-20 (two partitions' worth of compute, four partitions) until the data pass.",
+    "cost_source": "USD; body zone node USD 45-90 (market research, Dataintelo; low confidence), midpoint: housing, supply, board"
   }
 }

@@ -35,13 +35,13 @@ TOL = 1e-4
 # name, extra flags, growth levels written into the case's uncertainty.json, proven (cost, cable length) per solution
 CASES = [
     ('nominal', ['--num_points', '1'], None,
-     [(8101.0385, 56.2920)]),
+     [(4456.1854, 49.4093)]),
     ('growth', ['--growth', '--sw_margin', '--derating', '--redundancy', '--ai_contention', '--robust_latency'], [0.0, 1.0],
-     [(8491.7525, 48.9631), (8531.7405, 52.5428)]),
+     [(5256.1303, 49.2989), (5256.1303, 49.2989)]),
     ('failures', ['--uncertainty'], [0.0],
-     [(11205.688, 58.2231)]),
-    ('failures_a1', ['--uncertainty'], [1.0],
-     [(11663.795, 54.4529)]),
+     [(6258.5087, 50.0558)]),
+    ('failures_a1', ['--uncertainty', '--time_limit', '3600', '--phase2_time', '600'], [1.0],
+     [(11799.3635, 49.5295)]),
 ]
 
 
@@ -204,6 +204,22 @@ def m_report(sol, chk):
     return 'report', 'num_partitions + 1'
 
 
+def m_lost(sol, chk):
+    # a failure scenario reports a wrong set of lost functions
+    entries = [e for e in sol.get('failure_scenarios') or [] if 'lost_functions' in e]
+    if not entries:
+        return None
+    e = max(entries, key=lambda e: len(e['lost_functions']))
+    if e['lost_functions']:
+        e['lost_functions'] = e['lost_functions'][1:]
+        return 'report', f"{e['kind']} {e['element']}: one lost function dropped from the report"
+    others = [sc for sc in chk.sc_order if sc not in chk.crit]
+    if not others:
+        return None
+    e['lost_functions'] = [others[0]]
+    return 'report', f"{e['kind']} {e['element']}: {others[0]} reported lost"
+
+
 def c_partition_cap(sol, chk):
     return 'partition_capacity', [('partitions.json', lambda d: d['partition'].__setitem__('cpu_cap', 1))], 'partition cpu_cap = 1'
 
@@ -282,7 +298,7 @@ def c_failure_cap(sol, chk):
 
 SOLUTION_MUTATIONS = [m_unplaced, m_partition_site, m_hardware, m_redundancy, m_attachment, m_ports, m_cable,
                       m_line_member, m_extra_cable, m_standby, m_standby_survival, m_standby_same_cell, m_bus_drop, m_bus_length, m_cost,
-                      m_report]
+                      m_report, m_lost]
 CONFIG_MUTATIONS = [c_partition_cap, c_site_cap, c_ai, c_bus_cap, c_link_cap, c_chain, c_degraded, c_cold, c_failure_cap]
 
 
