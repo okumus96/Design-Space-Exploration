@@ -446,6 +446,7 @@ class AssignmentOptimizer:
             'c1d_site_caps': 0,
             'c1e_x_le_P': 0,
             'c1g_standby': 0,
+            'c1h_cold_capacity': 0,
             'c2_capacity': 0,
             'c3_hw_required': 0,
             'c4_if_required': 0,
@@ -581,6 +582,51 @@ class AssignmentOptimizer:
                     model.addConstr(hv <= net['hot'][i], name=f"hr_le_hot_{scs[i].id}_{locations[j].id}")
                     model.addConstr(hv >= rv + net['hot'][i] - 1, name=f"hr_ge_{scs[i].id}_{locations[j].id}")
                 cstats['c1g_standby'] += 1
+
+        # Constraint 1h (failures): after the failure of cell c the cold standbys of the SCs hosted at c run at their own
+        # cells, so every cell j holds its load, its hot standbys and the cold standbys activated there: per ASIL within
+        # its partitions (constraint 2), per unit within the site caps (constraint 1d). act[i,c,j] >= x[i,c] + r[i,j] -
+        # 1 - hot[i] marks an activation (a lower bound, exact at integer points). Until 2026-10-21 this rule was only
+        # checked in the callback, where it rejected most candidates at higher growth levels.
+        cold = [i for i in net['critical'] if net['hot'][i] is not None]
+        act = {}
+        for i in cold:
+            for c in feasible_locs_per_sc[i]:
+                for j in feasible_locs_per_sc[i]:
+                    if j != c and (i, j) in net['r']:
+                        act[i, c, j] = model.addVar(lb=0.0, ub=1.0, name=f"act_{scs[i].id}_{locations[c].id}_{locations[j].id}")
+                        model.addConstr(act[i, c, j] >= x[i, c] + net['r'][i, j] - 1 - net['hot'][i],
+                                        name=f"act_{scs[i].id}_{locations[c].id}_{locations[j].id}")
+                        cstats['c1h_cold_capacity'] += 1
+        if act:
+            for j in range(n_locs):
+                H_j = site_derating(locations[j], unc)
+                for res in ('cpu', 'ram', 'rom'):
+                    dem = {i: getattr(scs[i], f'{res}_req') * get_sw_multiplier(scs[i]) for i in feasible_scs_per_loc[j]}
+                    hosted = {}
+                    for a in unique_asils:
+                        hosted[a] = model.addVar(lb=0.0, name=f"hosted_{res}_{locations[j].id}_asil{a}")
+                        model.addConstr(hosted[a] == gp.quicksum(dem[i] * x[i, j] for i in feasible_scs_per_loc[j] if scs[i].asil_req == a)
+                                        + gp.quicksum(dem[i] * net['hr'][i, j] for i in feasible_scs_per_loc[j]
+                                                      if (i, j) in net['hr'] and scs[i].asil_req == a),
+                                        name=f"hosted_{res}_{locations[j].id}_asil{a}")
+                    part_cap = partitions.get(f'{res}_cap', float('inf'))
+                    site_cap = partitions.get(f'site_{res}_cap')
+                    for c in range(n_locs):
+                        woken = [(i, act[i, c, j]) for i in cold if (i, c, j) in act]
+                        if not woken:
+                            continue
+                        for a in unique_asils:
+                            terms = [dem[i] * v for i, v in woken if scs[i].asil_req == a]
+                            if terms and part_cap < float('inf'):
+                                model.addConstr(hosted[a] + gp.quicksum(terms) <= P[j, a] * part_cap * H_j,
+                                                name=f"cold_{res}_capacity_{locations[c].id}_{locations[j].id}_asil{a}")
+                                cstats['c1h_cold_capacity'] += 1
+                        if site_cap is not None:
+                            model.addConstr(gp.quicksum(hosted.values()) + gp.quicksum(dem[i] * v for i, v in woken)
+                                            <= float(site_cap) * H_j * y[j],
+                                            name=f"cold_site_{res}_cap_{locations[c].id}_{locations[j].id}")
+                            cstats['c1h_cold_capacity'] += 1
 
         # Constraint 3: HW feature required
         for i in range(n_sc):
