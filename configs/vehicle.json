@@ -1,5 +1,5 @@
 {
-  "_comment": "Reference vehicle: Hyundai IONIQ 5 (E-GMP). Coordinate frame: x lateral (+ right), y longitudinal (+ front), z up; origin at mid-length, mid-width, on the ground. All lengths in metres. 'source' values: spec = manufacturer data, reference = measured on the private IONIQ 5 N reference model (HANDOFF §15.1), assumption = engineering estimate. Candidate ECU sites (sites.json) and the cable channel graph (channels.json) are GENERATED from 'ecu_zones' and 'cable_channels' by tools/vehicle_layout/generate_layout.py; do not edit the generated files by hand.",
+  "_comment": "Reference vehicle: Hyundai IONIQ 5 (E-GMP). Coordinate frame: x lateral (+ right), y longitudinal (+ front), z up; origin at mid-length, mid-width, on the ground. All lengths in metres. 'source' values: spec = manufacturer data, reference = measured on the private IONIQ 5 N reference model (HANDOFF \u00a715.1), assumption = engineering estimate. Candidate ECU sites (sites.json) and the cable channel graph (channels.json) are GENERATED from 'ecu_zones' and 'cable_channels' by tools/vehicle_layout/generate_layout.py; do not edit the generated files by hand.",
   "name": "Hyundai IONIQ 5",
   "dimensions": {
     "length": 4.635,
@@ -25,25 +25,30 @@
   "thermal_classes": {
     "cabin": {
       "derating": 1.0,
-      "description": "passenger compartment, climate controlled"
+      "description": "passenger compartment, climate controlled",
+      "aec_q100_grade": 3
     },
     "roof": {
       "derating": 0.95,
-      "description": "headliner, solar load"
+      "description": "headliner, solar load",
+      "aec_q100_grade": 2
     },
     "trunk": {
       "derating": 0.95,
-      "description": "luggage compartment, side trims"
+      "description": "luggage compartment, side trims",
+      "aec_q100_grade": 2
     },
     "underbody": {
       "derating": 0.9,
-      "description": "below trunk floor / near rear drive unit"
+      "description": "below trunk floor / near rear drive unit",
+      "aec_q100_grade": 1
     },
     "engine_bay": {
       "derating": 0.85,
-      "description": "front drive unit bay, hot and humid"
+      "description": "front drive unit bay, hot and humid",
+      "aec_q100_grade": 1
     },
-    "_source": "assumption; replaces the single health_factor 0.85 of v1"
+    "_source": "Derating factors: assumption (sensitivity analysis planned). Installation locations mapped to AEC-Q100 ambient temperature grades (grade 3: -40..85 C, grade 2: -40..105 C, grade 1: -40..125 C; AEC-Q100 as tabulated by Renesas): cabin grade 3, roof / trunk grade 2, underbody / engine bay grade 1. Processors throttle at their junction limit (e.g. NVIDIA Jetson AGX Orin between 99 and 105 C, NVIDIA thermal design guide v1.1), so a hotter location leaves less sustained performance; the derating per class remains an estimate."
   },
   "fixed_blocks": [
     {

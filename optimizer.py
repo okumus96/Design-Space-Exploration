@@ -9,7 +9,7 @@ from optimizer_utils import (get_distance, build_sensor_lookup, build_actuator_l
                              build_cost_map, build_latency_map, extract_solution,
                              sw_multiplier, site_derating, pack_partitions, flow_routes, chain_latencies, steiner_tree,
                              resource_messages, message_kbit, resource_rate, crossing_ms, robust_ms, device_line, device_ms,
-                             message_prio, frame_kbit, queue_ms)
+                             message_prio, frame_kbit, queue_ms, device_lines)
 
 # Uncertainty-aware constraint blocks, each switched on by its own CLI flag (parameters in configs/uncertainty.json)
 UNCERTAINTY_BLOCKS = ('sw_margin', 'derating', 'redundancy', 'ai_contention', 'robust_latency', 'growth', 'failures')
@@ -23,10 +23,11 @@ class AssignmentOptimizer:
         print("Initialized AssignmentOptimizerNew with quadratic ECU-ECU costs and linear sensor/actuator costs")
         self.last_values = None   # variable values of the last solve, the start solution of the next one in a sweep
 
-    def calculate_cable_expressions(self, x, scs, locations, sensors, actuators, cable_types, comm_matrix, feasible_locs_per_sc, comm=None, attach_s=None, attach_a=None, bus=None):
+    def calculate_cable_expressions(self, x, scs, locations, sensors, actuators, cable_types, comm_matrix, feasible_locs_per_sc, comm=None, attach_s=None, attach_a=None, bus=None, standby=None):
         """
         Cable cost and cable length as Gurobi linear expressions (not constraints): devices wired directly to the
-        unit of their software, Ethernet device attachments, bus lines (CAN, LIN, FlexRay) and backbone cables.
+        unit of their software (and, with failures on, a second cable to the unit of its standby: standby = r vars),
+        Ethernet device attachments, bus lines (CAN, LIN, FlexRay) and backbone cables.
         """
         cost_map = build_cost_map(cable_types)
         sensor_lookup = build_sensor_lookup(sensors)
@@ -46,6 +47,11 @@ class AssignmentOptimizer:
                 if dist > 0:
                     cost_terms.append((x[i, j], cost))
                     dist_terms.append((x[i, j], dist))
+                    if standby and (i, j) in standby:
+                        # the standby reads / drives the device over its own cable (the device keeps a working
+                        # connection when the primary's cell fails)
+                        cost_terms.append((standby[i, j], cost))
+                        dist_terms.append((standby[i, j], dist))
 
         # Ethernet devices: cable to their attachment unit
         for att, devs in ((attach_s, sensors), (attach_a, actuators)):
@@ -686,6 +692,8 @@ class AssignmentOptimizer:
 
                         if num_sensors_if + num_actuators_if > 0:
                             sc_port_demand.add(x_expr(i, j), num_sensors_if + num_actuators_if)
+                            if (i, j) in net['r']:   # the standby's own cable to the device ends in a port there
+                                sc_port_demand.add(net['r'][i, j], num_sensors_if + num_actuators_if)
 
                     # ETH peripherals connect to an attachment point (SWITCH or ECU node) via attach vars.
                     if i_name == 'ETH':
@@ -831,10 +839,15 @@ class AssignmentOptimizer:
         # component's standby (the device stays reachable when the primary's cell fails); one ASIL group per line;
         # the devices of a line share its bit rate; members are units that exist; the cable length of a line is at
         # least the Steiner tree of its members (pairs here, the exact tree as lazy cuts in optimize()).
+        # With failures on, a device of critical software has two lanes (as dual-channel steering / brake actuators): it
+        # sits on two lines of its type, each with the units of the primary and the standby, so that the failure of a
+        # line or of a unit leaves it a working lane to a running instance.
+        crit_set = set(net['critical'])
         for d, info in bus['devices'].items():
             lines = [b for b in bus['inst'] if b[0] == info['iface']]
+            info['lanes'] = 2 if any(i in crit_set for i in info['users']) else 1
             total = gp.quicksum(bus['dev'][b, d] for b in lines)
-            model.addConstr(total == 1 if info['users'] else total <= 1, name=f"bus_device_{d}")
+            model.addConstr(total == info['lanes'] if info['users'] else total <= 1, name=f"bus_device_{d}")
             cstats['c11_bus'] += 1
             for b in lines:
                 dv = bus['dev'][b, d]
@@ -881,10 +894,12 @@ class AssignmentOptimizer:
             if nxt in bus['act']:
                 model.addConstr(bus['act'][b] >= bus['act'][nxt], name=f"bus_order_{name}")   # interchangeable lines: open in order
                 cstats['c11_bus'] += 1
-            # the lines of one type are interchangeable: the k-th device of the type may only use lines 1..k
-            allowed = []
-            for k_dev, d in enumerate(sorted(devs)):
-                if b[1] > k_dev:
+            # the lines of one type are interchangeable: numbering them in the order the devices (sorted) first use them,
+            # a device can only use the lines its predecessors opened plus as many new ones as it has lanes
+            allowed, opened = [], 0
+            for d in sorted(devs):
+                opened += bus['devices'][d].get('lanes', 1)
+                if b[1] >= opened:
                     model.addConstr(bus['dev'][b, d] == 0, name=f"bus_symmetry_{name}_{d}")
                     cstats['c11_bus'] += 1
                 else:
@@ -1025,7 +1040,7 @@ class AssignmentOptimizer:
                                   cable_types, comm_matrix, partitions, hardwares, interfaces,
                                   n_locs, unique_asils, all_hw, all_interfaces,
                                   feasible_locs_per_sc, attach_s=None, attach_a=None, bus=None,
-                                  minimize_cable_length=False, cable_length_limit=None, cost_limit=None):
+                                  minimize_cable_length=False, cable_length_limit=None, cost_limit=None, standby=None):
         """
         Build and set the objective function for the optimization model
         
@@ -1059,7 +1074,7 @@ class AssignmentOptimizer:
         # Cable cost (sensor/actuator cables + ECU-to-ECU communication backbone)
         cable_cost_expr, cable_distance_expr, _ = self.calculate_cable_expressions(
             x, scs, locations, sensors, actuators, cable_types, comm_matrix,
-            feasible_locs_per_sc, comm=comm, attach_s=attach_s, attach_a=attach_a, bus=bus
+            feasible_locs_per_sc, comm=comm, attach_s=attach_s, attach_a=attach_a, bus=bus, standby=standby
         )
 
         total_cost = partition_cost_expr + site_cost_expr + hw_cost_expr + if_cost_expr + cable_cost_expr
@@ -1171,7 +1186,7 @@ class AssignmentOptimizer:
             n_locs, unique_asils, all_hw, all_interfaces,
             feasible_locs_per_sc, attach_s=attach_s, attach_a=attach_a, bus=bus,
             minimize_cable_length=minimize_cable_length, cable_length_limit=cable_length_limit,
-            cost_limit=cost_limit
+            cost_limit=cost_limit, standby=net['r']
         )
 
         model.update()
@@ -1548,8 +1563,9 @@ class AssignmentOptimizer:
                     out.append(qf * block[0] / rate * (ind_me + msg_ind(block[1], res, term_of_flow) - 1))
                 return out
 
-            def chain_terms(ch, picks, msgs, term_of_flow, add_terms, routes_now):
-                # latency of a chain in one state (picks: flow -> its lower-bound indicator) and the cut terms
+            def chain_terms(ch, picks, msgs, term_of_flow, add_terms, routes_now, failed_line=None):
+                # latency of a chain in one state (picks: flow -> its lower-bound indicator) and the cut terms; an end
+                # device with two lanes counts with its slowest surviving lane (each lane must meet the bound alone)
                 total, terms = ch['const'], []
                 for t, ind_t in picks:
                     rt = routes_now[t]
@@ -1562,9 +1578,10 @@ class AssignmentOptimizer:
                     for res in resources(u, v, w_if, p):
                         terms += queue_terms(('f', t), ind_t, res, msgs, term_of_flow)
                 for d in ch['dev_ends']:
-                    line = device_line(net, d, getv)
-                    if line is None:
+                    lanes = device_lines(net, d, getv, failed_line)
+                    if not lanes:
                         continue
+                    line = max(lanes, key=lambda b: queue_ms(net, ('line', b), ('d', d), msgs))
                     res = ('line', line)
                     total += qf * queue_ms(net, res, ('d', d), msgs)
                     if add_terms:
@@ -1711,19 +1728,20 @@ class AssignmentOptimizer:
                             for rv in reasons:
                                 ind = ind + rv - 1
                             picks.append((t, ind))
-                        if st['kind'] == 'line' and any(device_line(net, d, getv) == st['elem'] for d in ch['dev_ends']):
-                            broken = True       # the end device's own line failed: out of scope (devices are single)
+                        if st['kind'] == 'line' and any(not device_lines(net, d, getv, st['elem']) for d in ch['dev_ends']):
+                            broken = True       # the only line of a single-lane end device failed: out of scope
                         if broken:
                             continue
                         if msgs is None:
                             msgs = resource_messages(net, routes_, getv, carried=set(st['carried']),
                                                      failed_line=(st['elem'] if st['kind'] == 'line' else None))
                         term = (lambda k, st=st: degraded_term(k, st['carried'][k], routes_))
-                        total, _ = chain_terms(ch, picks, msgs, term, False, routes_)
+                        fl = st['elem'] if st['kind'] == 'line' else None
+                        total, _ = chain_terms(ch, picks, msgs, term, False, routes_, fl)
                         if total > ch['degraded'] + 1e-6:
                             violations += 1
                             if add_cuts:
-                                _t, terms = chain_terms(ch, picks, msgs, term, True, routes_)
+                                _t, terms = chain_terms(ch, picks, msgs, term, True, routes_, fl)
                                 m.cbLazy(gp.quicksum(terms) <= ch['degraded'] - ch['const'])
                                 m._lazy_cuts += 1
                                 m._fail_cuts += 1

@@ -77,10 +77,10 @@
     "candidate_paths": 3,
     "_comment": "Candidate backbone paths per site pair handed to the optimiser: the direct link plus the (candidate_paths - 1) shortest routes over one relaying site (needs a SWITCH there); all traffic of a site pair uses one path per cable type. The traffic constraints (a pair with traffic needs a selected path, link load within cables x capacity, chain latency, failure scenarios) are lazy constraints added in a callback. path_link_cut (on): static LP strengthening, a selected path has a cable on each of its links.",
     "path_link_cut": true,
-    "_bus_lines_comment": "Bus lines available per bus type (CAN, LIN, FlexRay): the optimiser decides which units and devices share a line; a line is a cable through all its members (exact Steiner tree on the cable channels), its members share its bit rate. Upper limit, set by hand for now (2026-10-21): more interchangeable lines made the search much slower without a better design (lite: 4/3/2 lines 133 s, 1/2/1 lines 20 s, same optimum); a run reports when every line of a type is in use. To be replaced by an automatic bound with symmetry breaking (HANDOFF 16.12).",
+    "_bus_lines_comment": "Bus lines available per bus type (CAN, LIN, FlexRay): the optimiser decides which units and devices share a line; a line is a cable through all its members (exact Steiner tree on the cable channels), its members share its bit rate. Upper limit, set by hand for now (2026-10-21): more interchangeable lines made the search much slower without a better design (lite: 4/3/2 lines 133 s, 1/2/1 lines 20 s, same optimum); a run reports when every line of a type is in use. To be replaced by an automatic bound with symmetry breaking (HANDOFF 16.12). 2026-10-22: CAN 2 and LIN 3, because with failures on a device of critical software has two lanes on two lines (steering, motor, brakes on CAN; the ASIL-3 lights on LIN, the ASIL-2 HVAC on its own LIN line).",
     "bus_lines": {
-      "CAN": 1,
-      "LIN": 2,
+      "CAN": 2,
+      "LIN": 3,
       "FLEXRAY": 1
     },
     "_bus_max_utilization_comment": "Share of its bit rate a bus line may be loaded with (devices + unit traffic, both directions). The latency bound (every other message on a resource is sent once before a message) assumes a bus that is not saturated. Provisional 0.7 (common guidance for CAN bus load), HANDOFF 17.",

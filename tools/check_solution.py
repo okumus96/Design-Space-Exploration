@@ -501,14 +501,15 @@ class SolutionCheck:
         block = max((min(k, frame) for m, k in msgs.get(res, []) if m != me and self.prio(m) > p), default=0.0)
         return (wait + block) / self.rate(res)
 
-    def device_bus_ms(self, ch, msgs):
-        """bus crossings of the end devices of a chain, each with the queue of its line"""
+    def device_bus_ms(self, ch, msgs, failed_line=None):
+        """bus crossings of the end devices of a chain, each with the queue of its line; a device with two lanes counts
+        with its slowest surviving lane (each lane must meet the bound on its own)"""
         total = 0.0
         for d in self.end_devices(ch):
             t = self.ct[self.devices[d]['iface']]
-            line = (self.bus_of.get(d) or [None])[0]
-            base = self.dev_kbit(d) / t['cap'] + t['hop'] + (self.queue(('line', line), ('d', d), msgs) if line else 0.0)
-            total += self.robust(base)
+            lines = [b for b in self.bus_of.get(d, []) if b != failed_line]
+            q = max((self.queue(('line', b), ('d', d), msgs) for b in lines), default=0.0)
+            total += self.robust(self.dev_kbit(d) / t['cap'] + t['hop'] + q)
         return total
 
     def check_peripherals(self):
@@ -583,15 +584,18 @@ class SolutionCheck:
                     self.err('bus', f"{d} on {len(lines)} lines")
                 continue
             self.checked['bus'] += 1
-            if len(lines) != 1:
-                self.err('bus', f"{dev['iface']} device {d} on {len(lines)} lines (needs exactly one)")
+            # with failures on, a device of critical software has two lanes: two distinct lines of its type
+            need = 2 if any(sc in self.crit for sc in drivers[d]) else 1
+            if len(set(lines)) != len(lines) or len(lines) != need:
+                self.err('bus', f"{dev['iface']} device {d} on {len(lines)} lines (needs exactly {need})")
                 continue
-            b = by_id[lines[0]]
-            for sc, site in users.get(d, []):
-                if site not in b['units']:
-                    self.err('bus', f"{d} on {b['id']} but its software {sc} runs at {site}, not a member")
-                if sc in self.pos_r and self.pos_r[sc] not in b['units']:
-                    self.err('bus', f"{d} on {b['id']}: the standby of {sc} at {self.pos_r[sc]} is not a member")
+            for line in lines:
+                b = by_id[line]
+                for sc, site in users.get(d, []):
+                    if site not in b['units']:
+                        self.err('bus', f"{d} on {b['id']} but its software {sc} runs at {site}, not a member")
+                    if sc in self.pos_r and self.pos_r[sc] not in b['units']:
+                        self.err('bus', f"{d} on {b['id']}: the standby of {sc} at {self.pos_r[sc]} is not a member")
         # ports per site and interface
         bb_ports = defaultdict(int)
         for (a, b, n), cnt in self.cables.items():
@@ -602,11 +606,11 @@ class SolutionCheck:
             for u in b['units']:
                 bus_ports[(u, b['type'])] += 1
         direct = defaultdict(int)           # (site, iface) -> peripherals wired directly to the hosting unit
-        for sc, site in self.pos_x.items():
+        for sc, site in list(self.pos_x.items()) + [(sc, st) for sc, st in self.pos_r.items() if sc in self.crit]:
             for d in self.scs.get(sc, {}).get('devices', []):
                 n = self.devices[d]['iface']
                 if n != 'ETH' and n not in SHARED_BUSES:
-                    direct[(site, n)] += 1
+                    direct[(site, n)] += 1      # primaries, and standbys over their own cable
         for s in set(self.cands):
             for n, t in self.ct.items():
                 have = self.ports.get((s, n), 0)
@@ -959,7 +963,7 @@ class SolutionCheck:
         def lost_set(kind, elem):
             dead = lambda b: not any(alive(f, kind, elem) for f in self.variants[b].values())
             lost = {sc for sc in non_crit if (kind == 'cell' and self.pos_x.get(sc) == elem)
-                    or (kind == 'line' and any(elem in (self.bus_of.get(d) or []) for d in self.scs[sc]['devices']))
+                    or (kind == 'line' and any(self.bus_of.get(d) == [elem] for d in self.scs[sc]['devices']))
                     or any(dead(b) for b in act_out[sc])}
             grown = True
             while grown:
@@ -1013,11 +1017,11 @@ class SolutionCheck:
                     u, v = self.ends(pick)
                     if u != v:
                         total += self.crossing_ms(pick, after)
-                if kind == 'line' and any((self.bus_of.get(d) or [None])[0] == elem for d in self.end_devices(ch)):
-                    broken = True               # the end device's own line failed: out of scope (devices are single)
+                if kind == 'line' and any(self.bus_of.get(d) == [elem] for d in self.end_devices(ch)):
+                    broken = True               # the only line of a single-lane end device failed: out of scope
                 if broken:
                     continue
-                total += self.device_bus_ms(ch, after)
+                total += self.device_bus_ms(ch, after, failed_line=(elem if kind == 'line' else None))
                 self.checked['degraded_latency'] += 1
                 bound = float(ch.get('degraded_bound_ms', 2.0 * float(ch['net_budget_ms'])))
                 if not _le(total, bound):
@@ -1107,7 +1111,8 @@ class SolutionCheck:
                 self.err('cost', f"hardware {h} has no price in hardwares.json")
         if_cost = sum(cnt * self.ct[n]['port'] for (_site, n), cnt in self.ports.items())
         per_len, per_cost = 0.0, 0.0
-        for sc, site in self.pos_x.items():
+        wired = list(self.pos_x.items()) + [(sc, st) for sc, st in self.pos_r.items() if sc in self.crit]
+        for sc, site in wired:              # a critical component's standby has its own cable to a directly wired device
             for d in self.scs.get(sc, {}).get('devices', []):
                 n = self.devices[d]['iface']
                 if n == 'ETH' or n in SHARED_BUSES:

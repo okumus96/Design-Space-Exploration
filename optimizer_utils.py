@@ -280,6 +280,20 @@ def device_line(net, d, getv):
     return next((b for b in bus.get('inst', []) if (b, d) in bus['dev'] and getv(bus['dev'][b, d]) > 0.5), None)
 
 
+def device_lines(net, d, getv, failed_line=None):
+    """the bus lines device d sits on (two lanes for devices of critical software with failures on), without a failed
+    line"""
+    bus = net.get('bus') or {}
+    return [b for b in bus.get('inst', []) if (b, d) in bus['dev'] and getv(bus['dev'][b, d]) > 0.5 and b != failed_line]
+
+
+def device_lane_ms(net, d, getv, msgs, failed_line=None):
+    """bus crossing of device d over its lanes: every lane must meet the budget on its own (after a failure any lane may
+    be the one left), so the slowest surviving lane counts; None when no lane survives"""
+    lines = device_lines(net, d, getv, failed_line)
+    return max((device_ms(net, d, b, msgs) for b in lines), default=None)
+
+
 def device_ms(net, d, line, msgs):
     """crossing of a bus line between device d and the unit of its software (own frame, per-hop bound, queue)"""
     info = net['bus']['devices'][d]
@@ -352,15 +366,15 @@ def failure_report(net, scs, locations, getv, uncertainty=None):
             act_outputs.setdefault(tr['src_idx'], []).append(t_base)
         else:
             inputs.setdefault(tr['dst_idx'], []).append(t_base)
-    dev_lines = {i: {device_line(net, d, getv) for d, info in (net.get('bus') or {}).get('devices', {}).items() if i in info['users']}
+    dev_lines = {i: [set(device_lines(net, d, getv)) for d, info in (net.get('bus') or {}).get('devices', {}).items() if i in info['users']]
                  for i in non_crit}
 
     def lost_functions(kind, elem):
-        """non-critical components unavailable after the failure: their cell failed, a bus device of theirs is on the
-        failed line, a command to an Ethernet actuator of theirs has no surviving route, or an input of theirs is not
+        """non-critical components unavailable after the failure: their cell failed, a bus device of theirs has the
+        failed line as its only line, a command to an Ethernet actuator of theirs has no surviving route, or an input of theirs is not
         delivered (no surviving variant, or its source component is lost itself; transitive)"""
         dead = lambda t_base: not any(alive(t, kind, elem) for t in net['base_variants'][t_base].values())
-        lost = {i for i in non_crit if (kind == 'cell' and pos_x.get(i) == elem) or (kind == 'line' and elem in dev_lines[i])
+        lost = {i for i in non_crit if (kind == 'cell' and pos_x.get(i) == elem) or (kind == 'line' and {elem} in dev_lines[i])
                 or any(dead(tb) for tb in act_outputs.get(i, []))}
         grown = True
         while grown:
@@ -407,10 +421,11 @@ def failure_report(net, scs, locations, getv, uncertainty=None):
                 if u != v:
                     total += crossing_ms(net, picked, routes[picked], msgs)
             for d in ch.get('dev_ends', []):
-                line = device_line(net, d, getv)
-                if kind == 'line' and line == elem:
-                    broken = True          # the device's own line failed: out of scope (devices are single)
-                total += device_ms(net, d, line, msgs)
+                ms = device_lane_ms(net, d, getv, msgs, failed_line=(elem if kind == 'line' else None))
+                if ms is None:
+                    broken = True          # the only line of a single-lane device failed: out of scope
+                    continue
+                total += ms
             status = 'broken (non-critical member lost)' if broken else ('ok' if total <= ch['degraded'] + 1e-6 else 'over bound')
             chains[ch['id']] = {'latency_ms': None if broken else round(total, 3), 'degraded_bound_ms': ch['degraded'],
                                 'ok': status != 'over bound', 'status': status}
@@ -449,7 +464,7 @@ def chain_latencies(net, routes, getv):
             total += ms
             crossings.append({'flow': t, 'from': net['site_ids'][u], 'to': net['site_ids'][v], 'iface': w_if,
                               'hops': len(route_resources(net, *r)), 'ms': round(ms, 3)})
-        dev = sum(device_ms(net, d, device_line(net, d, getv), msgs) for d in ch.get('dev_ends', []))
+        dev = sum(device_lane_ms(net, d, getv, msgs) or 0.0 for d in ch.get('dev_ends', []))
         total += dev
         out[ch['id']] = {'latency_ms': round(total, 3), 'budget_ms': ch['budget'], 'ok': bool(total <= ch['budget'] + 1e-6),
                          'device_bus_ms': round(dev, 3), 'crossings': crossings}
@@ -570,7 +585,7 @@ def pack_partitions(x, P, scs, locations, partitions, uncertainty=None, standby=
 # COST CALCULATION UTILITIES
 # ============================================================================
 
-def calculate_sensor_actuator_cable_costs(x, scs, locations, sensors, actuators, cable_types, attach_s=None, attach_a=None, bus=None):
+def calculate_sensor_actuator_cable_costs(x, scs, locations, sensors, actuators, cable_types, attach_s=None, attach_a=None, bus=None, standby_r=None):
     """
     Calculate total cable costs and distances for sensor/actuator connections.
     
@@ -599,7 +614,8 @@ def calculate_sensor_actuator_cable_costs(x, scs, locations, sensors, actuators,
     
     bus_types = set((bus or {}).get('types', ()))
 
-    for (i, j), var in x.items():
+    hosts = list((x or {}).items()) + list((standby_r or {}).items())   # a standby has its own cable to the device
+    for (i, j), var in hosts:
         if var.X > 0.5:
             sc = scs[i]
             # devices wired directly to the hosting unit (not Ethernet, not on a bus line)
@@ -837,7 +853,7 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
         # Calculate cable costs and distances
         cable_length, cable_cost = calculate_sensor_actuator_cable_costs(
             x, scs, locations, sensors, actuators, cable_types,
-            attach_s=attach_s, attach_a=attach_a, bus=bus
+            attach_s=attach_s, attach_a=attach_a, bus=bus, standby_r=(standby[0] if standby else None)
         )
         
         # Calculate partition and communication costs

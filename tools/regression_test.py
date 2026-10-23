@@ -39,9 +39,9 @@ CASES = [
     ('growth', ['--growth', '--sw_margin', '--derating', '--redundancy', '--ai_contention', '--robust_latency'], [0.0, 1.0],
      [(5256.1303, 49.2989), (5256.1303, 49.2989)]),
     ('failures', ['--uncertainty'], [0.0],
-     [(6258.5087, 50.0558)]),
-    ('failures_a1', ['--uncertainty', '--time_limit', '3600', '--phase2_time', '600'], [1.0],
-     [(11799.3635, 49.5295)]),
+     [(6292.7022, 68.7940)]),
+    ('failures_a1', ['--uncertainty', '--time_limit', '7200', '--phase2_time', '600'], [1.0],
+     [(7184.7393, 67.7202)]),
 ]
 
 
@@ -149,6 +149,15 @@ def m_line_member(sol, chk):
             line = next(b for b in sol['buses'] if b['id'] == f['line'])
             line['units'] = [u for u in line['units'] if u != f['path'][0]]
             return 'route', f"{f['path'][0]} taken off bus line {f['line']} that carries its traffic"
+
+
+def m_lane(sol, chk):
+    # a device of critical software loses its second lane (it must sit on two lines with failures on)
+    for d, lines in chk.bus_of.items():
+        if len(lines) == 2:
+            line = next(b for b in sol['buses'] if b['id'] == lines[1])
+            line['devices'] = [x for x in line['devices'] if x != d]
+            return 'bus', f"{d} taken off its second lane {lines[1]}"
 
 
 def m_extra_cable(sol, chk):
@@ -298,7 +307,7 @@ def c_failure_cap(sol, chk):
 
 SOLUTION_MUTATIONS = [m_unplaced, m_partition_site, m_hardware, m_redundancy, m_attachment, m_ports, m_cable,
                       m_line_member, m_extra_cable, m_standby, m_standby_survival, m_standby_same_cell, m_bus_drop, m_bus_length, m_cost,
-                      m_report, m_lost]
+                      m_report, m_lost, m_lane]
 CONFIG_MUTATIONS = [c_partition_cap, c_site_cap, c_ai, c_bus_cap, c_link_cap, c_chain, c_degraded, c_cold, c_failure_cap]
 
 
