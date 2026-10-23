@@ -1,0 +1,1120 @@
+{
+ "_comment": "Non-AD function catalogue for tools/build_architecture.py (schema v3). One entry per function cluster of the AUTOSAR Application Interfaces explanatory documents (names as in the documents), with the sensors and actuators it reads / drives, its bus, the ASIL used for its safety-critical components, the base period class (ms) and the number of software components the document decomposes it into (counted from the decomposition figures / SW-C lists; 'est' = our estimate where the document gives no decomposition). Sources per entry. The generator expands every function by the scale factor into components with CARIAD distributions. Functions with 'mem_mb' are POSIX / Android / Adaptive applications on an application processor: the MB ranges are the memory of the whole function (application or service group), drawn log-uniformly once per function and shared equally by its generated components, instead of the CARIAD classic-AUTOSAR kB ranges per SW-C; they are excluded from the TC39x memory calibration (2026-10-23). System totals as anchors: Android Automotive device >= 816-1,824 MB RAM per display and >= 4 GB /data (Android 15 CDD 2.5.1); AGL demo 2 GB RAM; TCU 512 MB / 8 GB.",
+ "sources": {
+  "AI_BODY": "AUTOSAR CP R21-11, AUTOSAR_EXP_AIBodyAndComfort (ID 268), chapter 4 decompositions",
+  "AI_OPS": "AUTOSAR CP R21-11, AUTOSAR_EXP_AIOccupantAndPedestrianSafety (ID 271), software compositions SWCo 001-401",
+  "AI_CHASSIS": "AUTOSAR CP R21-11, AUTOSAR_EXP_AIChassis (ID 270), chapter 4 software components",
+  "AI_PT": "AUTOSAR CP R22-11, AUTOSAR_EXP_AIPowertrain (ID 269), chapter 5 (PtCoorr, Trsm, CmbEng, VehMtnForPt, PtMisc)",
+  "AI_HMI": "AUTOSAR CP R25-11, AUTOSAR_CP_EXP_AIHMIMultimediaAndTelematics (ID 272): application service / controller / UI device SW-Cs, InterDomainController",
+  "INFINEON_INV": "Infineon AN1101 / AP32540: traction inverter FOC on AURIX TC3xx, current loop 50 us (20 kHz), speed loop 5 ms, FTTI <= 60 ms; unintended torque ASIL D",
+  "INFINEON_EPS": "Infineon AN1100: EPS on AURIX TC3xx, torque / angle sensors, FTTI of the order of milliseconds; unwanted steering ASIL D",
+  "NXP_BMS": "NXP HVBMS reference design: MC33771C cell controllers, S32K344 BMU; architecture ASIL D",
+  "CARIAD": "Denzinger, Becker, Ulbrich, arXiv 2605.04837 (ECRTS 2026): ASIL share, ROM/RAM, periods, WCET, chains of a motion-and-drive ECU",
+  "AUDIO": "IEC 60908 CD audio 1.4112 Mbit/s; IEEE 802.1Q AVB class A 125 us observation interval",
+  "V2X": "ETSI EN 302 637-2 CAM 1-10 Hz; C2C-CC TR 2052 CAM 200 to >700 B",
+  "TELLTALE": "TI SPRADC8 / embedded cluster safety notes: cluster telltales ASIL B",
+  "GATEWAY": "NXP S32G2/S32G3 product pages: central gateway, PFE / LLCE accelerators, ASIL D SoC",
+  "ISO26262_EX": "ISO 26262-3 / SAE J2980 example classifications: airbag, braking, steering ASIL D; lighting A-B; comfort QM-A (secondary sources, to be confirmed)"
+ },
+ "domains": {
+  "BodyComfort": [
+   {
+    "id": "WiperWasher",
+    "swc_count": 4,
+    "sensors": [
+     "rain_sensor",
+     "wiper_stalk"
+    ],
+    "actuators": [
+     "wiper_motor_front",
+     "wiper_motor_rear",
+     "washer_pump"
+    ],
+    "bus": "LIN",
+    "asil": 1,
+    "period_ms": 20,
+    "source": "AI_BODY 4.1"
+   },
+   {
+    "id": "MirrorAdjustment",
+    "swc_count": 3,
+    "sensors": [
+     "mirror_switch"
+    ],
+    "actuators": [
+     "mirror_motor_left",
+     "mirror_motor_right"
+    ],
+    "bus": "LIN",
+    "asil": 0,
+    "period_ms": 50,
+    "source": "AI_BODY 4.2"
+   },
+   {
+    "id": "InteriorLight",
+    "swc_count": 5,
+    "sensors": [
+     "door_contacts",
+     "ambient_light_sensor"
+    ],
+    "actuators": [
+     "interior_lamps"
+    ],
+    "bus": "LIN",
+    "asil": 0,
+    "period_ms": 100,
+    "source": "AI_BODY 4.3"
+   },
+   {
+    "id": "SeatAdjustment",
+    "swc_count": 6,
+    "sensors": [
+     "seat_buttons",
+     "seat_position_sensors"
+    ],
+    "actuators": [
+     "seat_axis_motors"
+    ],
+    "bus": "LIN",
+    "asil": 0,
+    "period_ms": 20,
+    "source": "AI_BODY 4.4"
+   },
+   {
+    "id": "CentralLocking",
+    "swc_count": 6,
+    "sensors": [
+     "door_lock_switches",
+     "key_remote"
+    ],
+    "actuators": [
+     "door_lock_actuators",
+     "trunk_lock"
+    ],
+    "bus": "CAN",
+    "asil": 1,
+    "period_ms": 20,
+    "source": "AI_BODY 4.5"
+   },
+   {
+    "id": "ExteriorLight",
+    "swc_count": 10,
+    "sensors": [
+     "light_switch",
+     "light_sensor",
+     "steering_angle"
+    ],
+    "actuators": [
+     "headlamps",
+     "rear_lamps",
+     "indicators",
+     "brake_lamps"
+    ],
+    "bus": "CAN",
+    "asil": 2,
+    "period_ms": 20,
+    "source": "AI_BODY 4.6; ISO26262_EX lighting"
+   },
+   {
+    "id": "AntiTheftWarning",
+    "swc_count": 4,
+    "sensors": [
+     "intrusion_sensor",
+     "tilt_sensor"
+    ],
+    "actuators": [
+     "siren",
+     "hazard_lamps"
+    ],
+    "bus": "CAN",
+    "asil": 0,
+    "period_ms": 100,
+    "source": "AI_BODY 4.7"
+   },
+   {
+    "id": "Horn",
+    "swc_count": 2,
+    "sensors": [
+     "horn_button"
+    ],
+    "actuators": [
+     "horn"
+    ],
+    "bus": "LIN",
+    "asil": 0,
+    "period_ms": 20,
+    "source": "AI_BODY 4.8"
+   },
+   {
+    "id": "DefrostControl",
+    "swc_count": 3,
+    "sensors": [
+     "defrost_switch",
+     "temperature_sensor"
+    ],
+    "actuators": [
+     "rear_window_heater",
+     "mirror_heater"
+    ],
+    "bus": "LIN",
+    "asil": 0,
+    "period_ms": 100,
+    "source": "AI_BODY 4.9"
+   },
+   {
+    "id": "TerminalClampControl",
+    "swc_count": 3,
+    "sensors": [
+     "start_button",
+     "key_status"
+    ],
+    "actuators": [
+     "clamp_relays"
+    ],
+    "bus": "CAN",
+    "asil": 1,
+    "period_ms": 10,
+    "source": "AI_BODY 4.10"
+   },
+   {
+    "id": "Immobilizer",
+    "swc_count": 2,
+    "sensors": [
+     "key_transponder"
+    ],
+    "actuators": [],
+    "bus": "CAN",
+    "asil": 0,
+    "period_ms": 100,
+    "source": "AI_BODY 4.11"
+   },
+   {
+    "id": "SeatClimatization",
+    "swc_count": 3,
+    "sensors": [
+     "seat_temperature_sensors"
+    ],
+    "actuators": [
+     "seat_heaters",
+     "seat_fans"
+    ],
+    "bus": "LIN",
+    "asil": 0,
+    "period_ms": 100,
+    "source": "AI_BODY 4.12"
+   },
+   {
+    "id": "PassiveEntry",
+    "swc_count": 4,
+    "sensors": [
+     "door_handle_sensors",
+     "lf_antennas"
+    ],
+    "actuators": [],
+    "bus": "CAN",
+    "asil": 0,
+    "period_ms": 50,
+    "source": "AI_BODY 4.13"
+   },
+   {
+    "id": "RemoteKeylessEntry",
+    "swc_count": 3,
+    "sensors": [
+     "rf_receiver"
+    ],
+    "actuators": [],
+    "bus": "CAN",
+    "asil": 0,
+    "period_ms": 50,
+    "source": "AI_BODY 4.14"
+   },
+   {
+    "id": "BodySensors",
+    "swc_count": 4,
+    "sensors": [
+     "body_sensor_pool"
+    ],
+    "actuators": [],
+    "bus": "LIN",
+    "asil": 0,
+    "period_ms": 50,
+    "source": "AI_BODY 4.16"
+   },
+   {
+    "id": "KeyPad",
+    "swc_count": 2,
+    "sensors": [
+     "keypad"
+    ],
+    "actuators": [],
+    "bus": "LIN",
+    "asil": 0,
+    "period_ms": 50,
+    "source": "AI_BODY 4.17"
+   },
+   {
+    "id": "ClimateControlHVAC",
+    "swc_count": 8,
+    "sensors": [
+     "cabin_temperature_sensors",
+     "humidity_sensor",
+     "sun_sensor"
+    ],
+    "actuators": [
+     "hvac_blower",
+     "flap_actuators",
+     "compressor"
+    ],
+    "bus": "LIN",
+    "asil": 0,
+    "period_ms": 100,
+    "source": "est (HVAC is referenced by AI_BODY defrost / seat climatization; decomposition estimated)"
+   },
+   {
+    "id": "WindowControl",
+    "swc_count": 4,
+    "sensors": [
+     "window_switches",
+     "pinch_sensors"
+    ],
+    "actuators": [
+     "window_motors"
+    ],
+    "bus": "LIN",
+    "asil": 1,
+    "period_ms": 20,
+    "source": "est (anti-pinch protection; AI_BODY convertible control analogue)"
+   }
+  ],
+  "OccupantSafety": [
+   {
+    "id": "SensorPool",
+    "swc_count": 1,
+    "sensors": [
+     "crash_sensors_front",
+     "crash_sensors_side",
+     "pressure_sensors"
+    ],
+    "actuators": [],
+    "bus": "direct",
+    "asil": 4,
+    "period_ms": 1,
+    "source": "AI_OPS SWCo 001"
+   },
+   {
+    "id": "ActuatorPool",
+    "swc_count": 1,
+    "sensors": [],
+    "actuators": [
+     "airbag_squibs",
+     "belt_pretensioners"
+    ],
+    "bus": "direct",
+    "asil": 4,
+    "period_ms": 1,
+    "source": "AI_OPS SWCo 002"
+   },
+   {
+    "id": "CrashStatus",
+    "swc_count": 1,
+    "sensors": [],
+    "actuators": [],
+    "bus": "CAN",
+    "asil": 4,
+    "period_ms": 10,
+    "source": "AI_OPS SWCo 003"
+   },
+   {
+    "id": "OccupantDetection",
+    "swc_count": 1,
+    "sensors": [
+     "seat_occupancy_sensors"
+    ],
+    "actuators": [],
+    "bus": "LIN",
+    "asil": 3,
+    "period_ms": 100,
+    "source": "AI_OPS SWCo 101"
+   },
+   {
+    "id": "SeatBeltReminder",
+    "swc_count": 3,
+    "sensors": [
+     "belt_buckle_switches"
+    ],
+    "actuators": [
+     "warning_lamp",
+     "chime"
+    ],
+    "bus": "LIN",
+    "asil": 1,
+    "period_ms": 100,
+    "source": "AI_OPS SWCo 102 (3 SW-Cs: calculation, belt state, warn control)"
+   },
+   {
+    "id": "RestraintSystemMonitoring",
+    "swc_count": 1,
+    "sensors": [],
+    "actuators": [],
+    "bus": "CAN",
+    "asil": 3,
+    "period_ms": 100,
+    "source": "AI_OPS SWCo 103"
+   },
+   {
+    "id": "VehicleCrashDetection",
+    "swc_count": 1,
+    "sensors": [],
+    "actuators": [],
+    "bus": "direct",
+    "asil": 4,
+    "period_ms": 1,
+    "source": "AI_OPS SWCo 301; airbag ASIL D (ISO26262_EX)"
+   },
+   {
+    "id": "RollPitchOverDetection",
+    "swc_count": 2,
+    "sensors": [],
+    "actuators": [],
+    "bus": "direct",
+    "asil": 4,
+    "period_ms": 1,
+    "source": "AI_OPS SWCo 302 / 303"
+   },
+   {
+    "id": "OccupantRestraintActivation",
+    "swc_count": 1,
+    "sensors": [],
+    "actuators": [],
+    "bus": "direct",
+    "asil": 4,
+    "period_ms": 1,
+    "source": "AI_OPS SWCo 304"
+   },
+   {
+    "id": "PedestrianProtection",
+    "swc_count": 2,
+    "sensors": [
+     "pedestrian_contact_sensors"
+    ],
+    "actuators": [
+     "hood_lifters"
+    ],
+    "bus": "direct",
+    "asil": 4,
+    "period_ms": 1,
+    "source": "AI_OPS SWCo 305 / 306"
+   },
+   {
+    "id": "CrashPreparation",
+    "swc_count": 3,
+    "sensors": [],
+    "actuators": [],
+    "bus": "CAN",
+    "asil": 2,
+    "period_ms": 10,
+    "source": "AI_OPS SWCo 201 / 202 / 203 (pre-crash)"
+   },
+   {
+    "id": "PostCrashInformation",
+    "swc_count": 1,
+    "sensors": [],
+    "actuators": [],
+    "bus": "CAN",
+    "asil": 1,
+    "period_ms": 100,
+    "source": "AI_OPS SWCo 401 (eCall trigger)"
+   }
+  ],
+  "Chassis": [
+   {
+    "id": "Esc",
+    "swc_count": 6,
+    "sensors": [
+     "wheel_speed_sensors",
+     "yaw_rate_sensor",
+     "lateral_acceleration",
+     "steering_angle"
+    ],
+    "actuators": [
+     "brake_modulator"
+    ],
+    "bus": "FLEXRAY",
+    "asil": 4,
+    "period_ms": 5,
+    "source": "AI_CHASSIS 4.2; braking ASIL D (ISO26262_EX); CARIAD 5 ms class"
+   },
+   {
+    "id": "StandStillManager",
+    "swc_count": 1,
+    "sensors": [],
+    "actuators": [],
+    "bus": "CAN",
+    "asil": 3,
+    "period_ms": 20,
+    "source": "AI_CHASSIS 4.3"
+   },
+   {
+    "id": "Epb",
+    "swc_count": 2,
+    "sensors": [
+     "epb_switch"
+    ],
+    "actuators": [
+     "parking_brake_actuators"
+    ],
+    "bus": "CAN",
+    "asil": 3,
+    "period_ms": 20,
+    "source": "AI_CHASSIS 4.4"
+   },
+   {
+    "id": "VehicleLongitudinalControl",
+    "swc_count": 3,
+    "sensors": [],
+    "actuators": [],
+    "bus": "FLEXRAY",
+    "asil": 3,
+    "period_ms": 10,
+    "source": "AI_CHASSIS 4.5"
+   },
+   {
+    "id": "RollStabilityControl",
+    "swc_count": 1,
+    "sensors": [],
+    "actuators": [],
+    "bus": "FLEXRAY",
+    "asil": 3,
+    "period_ms": 10,
+    "source": "AI_CHASSIS 4.6"
+   },
+   {
+    "id": "SteeringSystemEps",
+    "swc_count": 5,
+    "sensors": [
+     "steering_torque_sensor",
+     "steering_angle_sensor",
+     "motor_position_sensor"
+    ],
+    "actuators": [
+     "eps_motor"
+    ],
+    "bus": "FLEXRAY",
+    "asil": 4,
+    "period_ms": 1,
+    "source": "AI_CHASSIS 4.7; INFINEON_EPS; steering ASIL D"
+   },
+   {
+    "id": "SteeringDriverAssistance",
+    "swc_count": 2,
+    "sensors": [],
+    "actuators": [],
+    "bus": "FLEXRAY",
+    "asil": 3,
+    "period_ms": 10,
+    "source": "AI_CHASSIS 4.8"
+   },
+   {
+    "id": "SteeringVehicleStabilizing",
+    "swc_count": 2,
+    "sensors": [],
+    "actuators": [],
+    "bus": "FLEXRAY",
+    "asil": 4,
+    "period_ms": 5,
+    "source": "AI_CHASSIS 4.9"
+   },
+   {
+    "id": "Suspension",
+    "swc_count": 3,
+    "sensors": [
+     "body_height_sensors",
+     "accelerometers"
+    ],
+    "actuators": [
+     "damper_valves"
+    ],
+    "bus": "CAN",
+    "asil": 2,
+    "period_ms": 10,
+    "source": "AI_CHASSIS 4.10"
+   },
+   {
+    "id": "TirePressureMonitoring",
+    "swc_count": 2,
+    "sensors": [
+     "tpms_receiver"
+    ],
+    "actuators": [],
+    "bus": "CAN",
+    "asil": 1,
+    "period_ms": 100,
+    "source": "AI_CHASSIS 4.11"
+   },
+   {
+    "id": "DrivetrainTorqueDistribution",
+    "swc_count": 3,
+    "sensors": [],
+    "actuators": [
+     "coupling_actuator"
+    ],
+    "bus": "FLEXRAY",
+    "asil": 3,
+    "period_ms": 10,
+    "source": "AI_CHASSIS 4.12"
+   },
+   {
+    "id": "ChassisSensor",
+    "swc_count": 3,
+    "sensors": [
+     "chassis_sensor_pool"
+    ],
+    "actuators": [],
+    "bus": "FLEXRAY",
+    "asil": 3,
+    "period_ms": 5,
+    "source": "AI_CHASSIS 4.14"
+   },
+   {
+    "id": "ParkingAid",
+    "swc_count": 3,
+    "sensors": [
+     "ultrasonic_sensors"
+    ],
+    "actuators": [
+     "pdc_buzzer"
+    ],
+    "bus": "LIN",
+    "asil": 1,
+    "period_ms": 50,
+    "source": "AI_CHASSIS 4.15; AI_HMI PDC example"
+   },
+   {
+    "id": "BrakeByWireActuation",
+    "swc_count": 4,
+    "sensors": [
+     "brake_pedal_sensor",
+     "brake_pressure_sensors"
+    ],
+    "actuators": [
+     "brake_actuators_front",
+     "brake_actuators_rear"
+    ],
+    "bus": "FLEXRAY",
+    "asil": 4,
+    "period_ms": 5,
+    "source": "est: brake-by-wire actuation layer (braking ASIL D; AI_CHASSIS has no by-wire actuation component)"
+   }
+  ],
+  "Powertrain": [
+   {
+    "id": "PowertrainCoordinator",
+    "swc_count": 5,
+    "sensors": [
+     "accelerator_pedal"
+    ],
+    "actuators": [],
+    "bus": "FLEXRAY",
+    "asil": 4,
+    "period_ms": 10,
+    "source": "AI_PT 5.1 (PtCoorr: torque arbitration between driver and chassis requests); unintended torque ASIL D (INFINEON_INV)"
+   },
+   {
+    "id": "DriverRequest",
+    "swc_count": 2,
+    "sensors": [
+     "accelerator_pedal",
+     "drive_mode_switch"
+    ],
+    "actuators": [],
+    "bus": "CAN",
+    "asil": 3,
+    "period_ms": 10,
+    "source": "AI_PT 5.4.1 / 5.4.2"
+   },
+   {
+    "id": "SafetyVehicleSpeedLimitation",
+    "swc_count": 1,
+    "sensors": [],
+    "actuators": [],
+    "bus": "FLEXRAY",
+    "asil": 3,
+    "period_ms": 10,
+    "source": "AI_PT 5.4.3"
+   },
+   {
+    "id": "TractionInverterControl",
+    "swc_count": 6,
+    "sensors": [
+     "phase_current_sensors",
+     "dc_link_voltage",
+     "resolver",
+     "inverter_temperature"
+    ],
+    "actuators": [
+     "gate_drivers"
+    ],
+    "bus": "FLEXRAY",
+    "asil": 4,
+    "period_ms": 1,
+    "source": "INFINEON_INV (current loop 50 us inside the component, torque command 1-5 ms)"
+   },
+   {
+    "id": "BatteryManagement",
+    "swc_count": 8,
+    "sensors": [
+     "cell_voltage_monitors",
+     "pack_current_sensor",
+     "pack_temperature_sensors"
+    ],
+    "actuators": [
+     "main_contactors",
+     "pre_charge_relay"
+    ],
+    "bus": "CAN",
+    "asil": 4,
+    "period_ms": 10,
+    "source": "NXP_BMS (cell monitoring; architecture ASIL D)"
+   },
+   {
+    "id": "ChargingControl",
+    "swc_count": 4,
+    "sensors": [
+     "charge_port_sensors",
+     "pilot_signal"
+    ],
+    "actuators": [
+     "charger_contactors",
+     "obc_control"
+    ],
+    "bus": "CAN",
+    "asil": 2,
+    "period_ms": 100,
+    "source": "est (on-board charger / charge communication; AI_PT has no charging cluster)"
+   },
+   {
+    "id": "ThermalManagement",
+    "swc_count": 5,
+    "sensors": [
+     "coolant_temperature_sensors"
+    ],
+    "actuators": [
+     "coolant_pumps",
+     "valves",
+     "radiator_fan"
+    ],
+    "bus": "LIN",
+    "asil": 1,
+    "period_ms": 100,
+    "source": "est"
+   },
+   {
+    "id": "DcDcConverter",
+    "swc_count": 2,
+    "sensors": [
+     "lv_voltage_sensor"
+    ],
+    "actuators": [
+     "dcdc_control"
+    ],
+    "bus": "CAN",
+    "asil": 2,
+    "period_ms": 10,
+    "source": "est"
+   },
+   {
+    "id": "GearParkLock",
+    "swc_count": 2,
+    "sensors": [
+     "gear_selector"
+    ],
+    "actuators": [
+     "park_lock_actuator"
+    ],
+    "bus": "CAN",
+    "asil": 3,
+    "period_ms": 20,
+    "source": "AI_PT 5.2 (Trsm, reduced to gear / park lock for a BEV)"
+   },
+   {
+    "id": "PowertrainMisc",
+    "swc_count": 2,
+    "sensors": [],
+    "actuators": [],
+    "bus": "CAN",
+    "asil": 0,
+    "period_ms": 100,
+    "source": "AI_PT 5.5"
+   }
+  ],
+  "Infotainment": [
+   {
+    "id": "InstrumentCluster",
+    "swc_count": 6,
+    "sensors": [],
+    "actuators": [
+     "cluster_display"
+    ],
+    "bus": "ETH",
+    "asil": 2,
+    "period_ms": 20,
+    "source": "TELLTALE (telltales ASIL B); AI_HMI application controller",
+    "mem_mb": {
+     "rom": [
+      50,
+      300
+     ],
+     "ram": [
+      80,
+      192
+     ],
+     "platform": "posix",
+     "scope": "function total, shared by its components",
+     "source": "one cluster application; RAM: Android 15 CDD 3.7 minimum application memory for large/xlarge screens (80-144 MB at 160-280 dpi, 128-192 MB at 320 dpi, up to 384 MB at 480 dpi); ROM: est. (HMI assets, AGL demo scale)"
+    }
+   },
+   {
+    "id": "HeadUnitApplications",
+    "swc_count": 10,
+    "sensors": [
+     "touch_panel",
+     "buttons"
+    ],
+    "actuators": [
+     "center_display"
+    ],
+    "bus": "ETH",
+    "asil": 0,
+    "period_ms": 50,
+    "source": "AI_HMI 4.1-4.3 (application service / controller / UI device SW-Cs)",
+    "mem_mb": {
+     "rom": [
+      500,
+      2000
+     ],
+     "ram": [
+      800,
+      1440
+     ],
+     "platform": "posix",
+     "scope": "function total, shared by its components",
+     "source": "10 applications x (50-200 MB install est., RAM Android 15 CDD 3.7 minimum application memory for large/xlarge screens (80-144 MB at 160-280 dpi, 128-192 MB at 320 dpi, up to 384 MB at 480 dpi))"
+    }
+   },
+   {
+    "id": "MediaAudio",
+    "swc_count": 4,
+    "sensors": [
+     "microphones"
+    ],
+    "actuators": [
+     "amplifier",
+     "speakers"
+    ],
+    "bus": "ETH",
+    "asil": 0,
+    "period_ms": 10,
+    "source": "AUDIO (1.4112 Mbit/s, AVB class A)",
+    "mem_mb": {
+     "rom": [
+      20,
+      100
+     ],
+     "ram": [
+      48,
+      128
+     ],
+     "platform": "posix",
+     "scope": "function total, shared by its components",
+     "source": "one media application + audio service; RAM: Android 15 CDD 3.7 minimum application memory for large/xlarge screens (80-144 MB at 160-280 dpi, 128-192 MB at 320 dpi, up to 384 MB at 480 dpi) lower rows; ROM: est."
+    }
+   },
+   {
+    "id": "NavigationUI",
+    "swc_count": 4,
+    "sensors": [],
+    "actuators": [],
+    "bus": "ETH",
+    "asil": 0,
+    "period_ms": 100,
+    "source": "est",
+    "mem_mb": {
+     "rom": [
+      500,
+      2500
+     ],
+     "ram": [
+      144,
+      384
+     ],
+     "platform": "posix",
+     "scope": "function total, shared by its components",
+     "source": "ROM: offline map area 500 MB-2 GB, max 2.5 GB per map (Google Maps; 9to5Google 2022, Google spokesperson via Daily Dot); RAM: CDD 3.7 xlarge 200-480 dpi"
+    }
+   },
+   {
+    "id": "VoiceAssistant",
+    "swc_count": 3,
+    "sensors": [
+     "microphones"
+    ],
+    "actuators": [],
+    "bus": "ETH",
+    "asil": 0,
+    "period_ms": 100,
+    "source": "est",
+    "mem_mb": {
+     "rom": [
+      150,
+      900
+     ],
+     "ram": [
+      150,
+      300
+     ],
+     "platform": "posix",
+     "scope": "function total, shared by its components",
+     "source": "ROM: on-device ASR models 153-891 MB (Parakeet Android SDK), \"a couple hundred MB\" per model (Google Speech On-Device, built for cars); RAM: 232 MB peak (same SDK), est. range"
+    }
+   },
+   {
+    "id": "HeadUpDisplay",
+    "swc_count": 2,
+    "sensors": [],
+    "actuators": [
+     "hud_projector"
+    ],
+    "bus": "ETH",
+    "asil": 2,
+    "period_ms": 20,
+    "source": "Renesas RAA278831 class (HUD ASIL B bridge)",
+    "mem_mb": {
+     "rom": [
+      20,
+      100
+     ],
+     "ram": [
+      32,
+      96
+     ],
+     "platform": "posix",
+     "scope": "function total, shared by its components",
+     "source": "RAM: Android 15 CDD 3.7 small/normal 120-400 dpi (32-96 MB); ROM: est."
+    }
+   },
+   {
+    "id": "DriverMonitoringHmi",
+    "swc_count": 2,
+    "sensors": [
+     "driver_camera"
+    ],
+    "actuators": [],
+    "bus": "ETH",
+    "asil": 2,
+    "period_ms": 33,
+    "source": "est (DMS alert HMI)",
+    "mem_mb": {
+     "rom": [
+      20,
+      50
+     ],
+     "ram": [
+      32,
+      96
+     ],
+     "platform": "posix",
+     "scope": "function total, shared by its components",
+     "source": "RAM: Android 15 CDD 3.7 small/normal (32-96 MB); ROM: est."
+    }
+   },
+   {
+    "id": "InterDomainController",
+    "swc_count": 2,
+    "sensors": [],
+    "actuators": [],
+    "bus": "ETH",
+    "asil": 1,
+    "period_ms": 50,
+    "source": "AI_HMI 5.2",
+    "mem_mb": {
+     "rom": [
+      5,
+      50
+     ],
+     "ram": [
+      16,
+      64
+     ],
+     "platform": "posix",
+     "scope": "function total, shared by its components",
+     "source": "est. Linux service process"
+    }
+   }
+  ],
+  "Connectivity": [
+   {
+    "id": "TelematicsControlUnit",
+    "swc_count": 5,
+    "sensors": [
+     "cellular_modem",
+     "gnss_receiver"
+    ],
+    "actuators": [],
+    "bus": "ETH",
+    "asil": 0,
+    "period_ms": 100,
+    "source": "Harman TCU platform; Quectel AG55xQ (5G, GNSS)",
+    "mem_mb": {
+     "rom": [
+      200,
+      2000
+     ],
+     "ram": [
+      64,
+      256
+     ],
+     "platform": "posix",
+     "scope": "function total, shared by its components",
+     "source": "all TCU services: the whole TCU software incl. OS fits 512 MB RAM / 8 GB eMMC (iWave iW-RainboW-G26 TCU, Linux 5.15); OS share excluded, est. split"
+    }
+   },
+   {
+    "id": "ECall",
+    "swc_count": 2,
+    "sensors": [],
+    "actuators": [],
+    "bus": "CAN",
+    "asil": 1,
+    "period_ms": 100,
+    "source": "est (triggered by AI_OPS post-crash information)",
+    "mem_mb": {
+     "rom": [
+      5,
+      20
+     ],
+     "ram": [
+      8,
+      32
+     ],
+     "platform": "posix",
+     "scope": "function total, shared by its components",
+     "source": "est. small Linux service on the TCU"
+    }
+   },
+   {
+    "id": "V2xGateway",
+    "swc_count": 3,
+    "sensors": [
+     "v2x_radio"
+    ],
+    "actuators": [],
+    "bus": "ETH",
+    "asil": 2,
+    "period_ms": 100,
+    "source": "V2X",
+    "mem_mb": {
+     "rom": [
+      50,
+      200
+     ],
+     "ram": [
+      32,
+      128
+     ],
+     "platform": "posix",
+     "scope": "function total, shared by its components",
+     "source": "full ETSI ITS-G5 / C-V2X stack: OBU with 256 MB DDR3 / 512 MB NAND (Unex OBU-352); stack share est."
+    }
+   },
+   {
+    "id": "OtaUpdateManager",
+    "swc_count": 4,
+    "sensors": [],
+    "actuators": [],
+    "bus": "ETH",
+    "asil": 0,
+    "period_ms": 1000,
+    "source": "AUTOSAR AP UCM (RS_VehicleUpdateAndConfigurationManagement)",
+    "mem_mb": {
+     "rom": [
+      50,
+      500
+     ],
+     "ram": [
+      20,
+      64
+     ],
+     "platform": "posix",
+     "scope": "function total, shared by its components",
+     "source": "aktualizr OTA client: binary 2-5 MB, ~20 MB RAM; primary ECU min 64 MB RAM / 128 MB storage, recommended 256 MB / 512 MB for large updates (HERE OTA Connect developer guide 2020.7)"
+    }
+   },
+   {
+    "id": "CentralGateway",
+    "swc_count": 4,
+    "sensors": [],
+    "actuators": [],
+    "bus": "ETH",
+    "asil": 3,
+    "period_ms": 1,
+    "source": "GATEWAY"
+   },
+   {
+    "id": "IntrusionDetection",
+    "swc_count": 2,
+    "sensors": [],
+    "actuators": [],
+    "bus": "ETH",
+    "asil": 1,
+    "period_ms": 10,
+    "source": "AUTOSAR AP SWS IdsM"
+   },
+   {
+    "id": "DiagnosticsDoIP",
+    "swc_count": 3,
+    "sensors": [],
+    "actuators": [],
+    "bus": "ETH",
+    "asil": 0,
+    "period_ms": 100,
+    "source": "ISO 13400 DoIP / ISO 14229 UDS",
+    "mem_mb": {
+     "rom": [
+      10,
+      50
+     ],
+     "ram": [
+      16,
+      64
+     ],
+     "platform": "posix",
+     "scope": "function total, shared by its components",
+     "source": "est. Linux / Adaptive service process"
+    }
+   },
+   {
+    "id": "WifiBluetooth",
+    "swc_count": 2,
+    "sensors": [],
+    "actuators": [],
+    "bus": "ETH",
+    "asil": 0,
+    "period_ms": 100,
+    "source": "est (SA8155P kit: 802.11ax, BT 5.2)",
+    "mem_mb": {
+     "rom": [
+      20,
+      100
+     ],
+     "ram": [
+      32,
+      128
+     ],
+     "platform": "posix",
+     "scope": "function total, shared by its components",
+     "source": "est. (stacks + radio firmware)"
+    }
+   }
+  ]
+ }
+}
