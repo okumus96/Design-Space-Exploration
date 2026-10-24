@@ -27,7 +27,7 @@ from collections import defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
-CUR = json.load(open(os.path.join(REPO, 'configs', 'partitions.json')))['cpu_currency']   # one DMIPS currency (sources there)
+CUR = json.load(open(os.path.join(REPO, 'configs', 'unit_classes.json')))['cpu_currency']   # one DMIPS currency (sources there)
 
 
 # ----------------------------------------------------------------------------------------------- CARIAD distributions
@@ -128,6 +128,32 @@ def log_uniform(rng, lo, hi):
 
 
 # --------------------------------------------------------------------------------------------- non-AD generation
+# Accelerator demand (TOPS, rated-equivalent = GOPs per inference x rate / 0.19; 0.19 = effective / rated TOPS of Jetson
+# AGX Orin in MLPerf Inference v3.1 Edge: ResNet-50 v1.5 offline 6,424 samples/s x 8.2 GOPs = 52.7 of 275 TOPS)
+TOPS_ETA = 0.19
+AW_TOPS = {   # node -> (TOPS, source); only nodes that run a DNN on the accelerator
+    '/perception/object_recognition/detection/centerpoint/lidar_centerpoint': (round(16 * 10 / TOPS_ETA / 1000, 2),
+        'CenterPoint-Pillar at 0.32 m pillars ~16 GOPs per sweep (PillarNeXt, Li et al. CVPR 2023, Table 1: Pillar-B 281 GFLOPs at '
+        '0.075 m, scaled by the pillar count), 10 Hz, one inference on the concatenated cloud'),
+}
+TL_TOPS = (round((26.8 + 7.2) * 10 / TOPS_ETA / 1000, 2),
+           'per traffic-light camera: fine detector YOLOX-S 640x640 26.8 GOPs (Ge et al. arXiv 2107.08430) + classifiers '
+           'MobileNetV2 0.6 GOPs (Sandler et al. CVPR 2018) for up to 6 lights x car / pedestrian, 10 Hz')
+# Fail-operational (standby after a single failure): functions without a safe state reachable by switching off, for an
+# SAE level 3+ vehicle the driving-task chain, steering, braking, standstill holding, LV power supply and the gateway
+# carrying them (ISO 26262:2018 emergency operation; Safety First for Automated Driving 2019); monitors, evaluators,
+# map / route / traffic-light functions, propulsion, restraint systems (fail-safe: no deployment), comfort: not
+FAIL_OPERATIONAL_FUNCTIONS = {'SteeringSystemEps', 'SteeringVehicleStabilizing', 'BrakeByWireActuation', 'Esc',
+                              'VehicleLongitudinalControl', 'StandStillManager', 'Epb', 'DcDcConverter', 'CentralGateway'}
+AW_FAIL_OP_PREFIX = ('/sensing/', '/localization/', '/perception/object_recognition/', '/perception/obstacle_segmentation/',
+                     '/perception/occupancy_grid_map/', '/planning/scenario_planning/', '/control/', '/system/mrm', '/system/emergency')
+AW_NOT_FAIL_OP = ('validator', 'evaluator', 'error_monitor', 'collision_detector', 'external_cmd', '/parking/', 'lane_departure_checker')
+
+
+def aw_fail_operational(n):
+    return n.startswith(AW_FAIL_OP_PREFIX) and not any(k in n for k in AW_NOT_FAIL_OP)
+
+
 def generate_non_ad(catalogue, scale, rng, devices):
     """components, flows and chains of the non-AD domains from the function catalogue and the CARIAD distributions"""
     comps, flows, chains = [], [], []
@@ -190,6 +216,7 @@ def generate_non_ad(catalogue, scale, rng, devices):
                     ram = round(log_uniform(rng, *RAM_KB[asil]), 2)
                 role = 'sensor' if (k == 0 and fn['sensors']) else ('actuator' if (k == n_swc - 1 and fn['actuators']) else 'processing')
                 comps.append({'id': cid, 'domain': domain, 'function': fn['id'], 'role': role, 'asil': asil,
+                              'fail_operational': fn['id'] in FAIL_OPERATIONAL_FUNCTIONS, 'tops_req': 0.0, 'hw_required': [],
                               'period_ms': period, 'runnables': runnables,
                               'cpu_dmips': round(load_share * CORE_DMIPS['AURIX_TC39x'], 3), 'cpu_dmips_worst': round(wc_share * CORE_DMIPS['AURIX_TC39x'], 3), 'ram_kb': ram, 'rom_kb': rom,
                               'sensors': fn['sensors'] if role == 'sensor' else [], 'actuators': fn['actuators'] if role == 'actuator' else [],
@@ -455,9 +482,11 @@ def build_autoware(bench, sensors, rng):
         c = cpu.get(n) or next((v for k, v in cpu.items() if k.split('/')[-1] == n.split('/')[-1] and not k.startswith('/')), None)
         dmips = round(c['cpu_mean_pct'] / 100.0 * CUR['host_to_target_factor'] * CUR['reference_core_dmips'], 1) if c and c.get('cpu_mean_pct') is not None else None
         comps.append({'id': 'AW:' + n, 'domain': dom, 'function': 'autoware', 'role': 'processing', 'asil': None,
+                      'fail_operational': aw_fail_operational(n), 'tops_req': AW_TOPS[n][0] if n in AW_TOPS else 0.0,
+                      'hw_required': ['HW_ACC'] if n in AW_TOPS else [], 'tops_source': AW_TOPS[n][1] if n in AW_TOPS else None,
                       'processing_time_ms': ptn, 'processing_time_source': pt_src if ptn else None,
                       'cpu_mean_pct': c['cpu_mean_pct'] if c else None, 'rss_max_mb': c['rss_max_mb'] if c else None, 'cpu_run': c.get('run') if c else None,
-                      'cpu_dmips': dmips, 'cpu_dmips_source': ('measured host core share x %.2f (host -> target, Betz et al. arXiv 2404.12683) x %d DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/partitions.json cpu_currency' % (CUR['host_to_target_factor'], CUR['reference_core_dmips'])) if dmips is not None else None,
+                      'cpu_dmips': dmips, 'cpu_dmips_source': ('measured host core share x %.2f (host -> target, Betz et al. arXiv 2404.12683) x %d DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency' % (CUR['host_to_target_factor'], CUR['reference_core_dmips'])) if dmips is not None else None,
                       'shared_container': c.get('shared_container') if c else None,
                       'source': 'measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)'})
     skip = re.compile(r'^/(parameter_events|rosout|clock|tf|tf_static|diagnostics)')
@@ -471,6 +500,22 @@ def build_autoware(bench, sensors, rng):
                     flows.append({'src': 'AW:' + p, 'dst': 'AW:' + s, 'topic': t, 'type': g['type'],
                                   'rate_hz': r['hz'] if r else None, 'bytes': int(r['size_kb'] * 1024) if (r and r['size_kb']) else None,
                                   'kind': 'ros2_topic', 'source': 'measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured'})
+    # traffic-light DNN containers (fine detector + classifiers) of the two kit cameras: measured in the camera run
+    # (Leo Drive bag), absent from the lidar-only topic graph; inserted between the map-based detector (rough ROIs) and
+    # the occlusion predictor of their camera, replicated with the camera chain
+    for cam in ('camera6', 'camera7'):
+        base = f'/perception/traffic_light_recognition/{cam}'
+        c = cpu.get(f'{base}/traffic_light_node_container')
+        cid = f'AW:{base}/traffic_light_node_container'
+        comps.append({'id': cid, 'domain': 'ADAS', 'function': 'autoware', 'role': 'processing', 'asil': None,
+                      'fail_operational': False, 'tops_req': TL_TOPS[0], 'hw_required': ['HW_ACC'], 'tops_source': TL_TOPS[1],
+                      'processing_time_ms': None, 'processing_time_source': None,
+                      'cpu_mean_pct': c['cpu_mean_pct'] if c else None, 'rss_max_mb': c['rss_max_mb'] if c else None,
+                      'cpu_run': c.get('run') if c else None, 'shared_container': None,
+                      'source': 'measured: camera run (Leo Drive bag, 2 traffic-light cameras), container of the YOLOX fine detector and the classifiers'})
+        for a, b in ((f'AW:{base}/detection/traffic_light_map_based_detector', cid), (cid, f'AW:{base}/classification/traffic_light_occlusion_predictor')):
+            flows.append({'src': a, 'dst': b, 'topic': None, 'type': None, 'rate_hz': 10.0, 'bytes': None, 'kind': 'ros2_topic',
+                          'source': 'Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured'})
     # the measured Autoware end-to-end chain (lidar -> localization / perception -> planning -> control -> command),
     # as the node sequence of Betz et al. (arXiv 2404.12683) restricted to the nodes present; the network budget is
     # the total bound (100 ms, Lin et al. ASPLOS 2018) minus the measured computation of the chain nodes

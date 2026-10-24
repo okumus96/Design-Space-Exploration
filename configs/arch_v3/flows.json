@@ -4,9 +4,9 @@
   "seed": 1,
   "scale": 25.0,
   "counts": {
-   "autoware_components": 151,
+   "autoware_components": 159,
    "non_ad_components": 5725,
-   "flows": 14526,
+   "flows": 14542,
    "chains": 386
   },
   "sources": {
@@ -3748,6 +3748,46 @@
    "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
   },
   {
+   "src": "AW:/perception/traffic_light_recognition/camera6/detection/traffic_light_map_based_detector",
+   "dst": "AW:/perception/traffic_light_recognition/camera6/traffic_light_node_container",
+   "topic": null,
+   "type": null,
+   "rate_hz": 10.0,
+   "bytes": null,
+   "kind": "ros2_topic",
+   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
+  },
+  {
+   "src": "AW:/perception/traffic_light_recognition/camera6/traffic_light_node_container",
+   "dst": "AW:/perception/traffic_light_recognition/camera6/classification/traffic_light_occlusion_predictor",
+   "topic": null,
+   "type": null,
+   "rate_hz": 10.0,
+   "bytes": null,
+   "kind": "ros2_topic",
+   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
+  },
+  {
+   "src": "AW:/perception/traffic_light_recognition/camera7/detection/traffic_light_map_based_detector",
+   "dst": "AW:/perception/traffic_light_recognition/camera7/traffic_light_node_container",
+   "topic": null,
+   "type": null,
+   "rate_hz": 10.0,
+   "bytes": null,
+   "kind": "ros2_topic",
+   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
+  },
+  {
+   "src": "AW:/perception/traffic_light_recognition/camera7/traffic_light_node_container",
+   "dst": "AW:/perception/traffic_light_recognition/camera7/classification/traffic_light_occlusion_predictor",
+   "topic": null,
+   "type": null,
+   "rate_hz": 10.0,
+   "bytes": null,
+   "kind": "ros2_topic",
+   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
+  },
+  {
    "src": "AW:/sensing/imu/imu_corrector",
    "dst": "AW:/sensing/lidar/lidar_top/distortion_corrector_node",
    "topic": "/sensing/imu/imu_data",
@@ -3918,6 +3958,26 @@
    "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
   },
   {
+   "src": "AW:/perception/traffic_light_recognition/camera8/detection/traffic_light_map_based_detector",
+   "dst": "AW:/perception/traffic_light_recognition/camera8/traffic_light_node_container",
+   "topic": null,
+   "type": null,
+   "rate_hz": 10.0,
+   "bytes": null,
+   "kind": "ros2_topic",
+   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
+  },
+  {
+   "src": "AW:/perception/traffic_light_recognition/camera8/traffic_light_node_container",
+   "dst": "AW:/perception/traffic_light_recognition/camera8/classification/traffic_light_occlusion_predictor",
+   "topic": null,
+   "type": null,
+   "rate_hz": 10.0,
+   "bytes": null,
+   "kind": "ros2_topic",
+   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
+  },
+  {
    "src": "AW:/map/lanelet2_map_loader",
    "dst": "AW:/perception/traffic_light_recognition/camera9/classification/traffic_light_occlusion_predictor",
    "topic": "/map/vector_map",
@@ -3976,6 +4036,26 @@
    "bytes": null,
    "kind": "ros2_topic",
    "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
+  },
+  {
+   "src": "AW:/perception/traffic_light_recognition/camera9/detection/traffic_light_map_based_detector",
+   "dst": "AW:/perception/traffic_light_recognition/camera9/traffic_light_node_container",
+   "topic": null,
+   "type": null,
+   "rate_hz": 10.0,
+   "bytes": null,
+   "kind": "ros2_topic",
+   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
+  },
+  {
+   "src": "AW:/perception/traffic_light_recognition/camera9/traffic_light_node_container",
+   "dst": "AW:/perception/traffic_light_recognition/camera9/classification/traffic_light_occlusion_predictor",
+   "topic": null,
+   "type": null,
+   "rate_hz": 10.0,
+   "bytes": null,
+   "kind": "ros2_topic",
+   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
   },
   {
    "src": "AW:/map/lanelet2_map_loader",
@@ -4038,6 +4118,26 @@
    "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
   },
   {
+   "src": "AW:/perception/traffic_light_recognition/camera10/detection/traffic_light_map_based_detector",
+   "dst": "AW:/perception/traffic_light_recognition/camera10/traffic_light_node_container",
+   "topic": null,
+   "type": null,
+   "rate_hz": 10.0,
+   "bytes": null,
+   "kind": "ros2_topic",
+   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
+  },
+  {
+   "src": "AW:/perception/traffic_light_recognition/camera10/traffic_light_node_container",
+   "dst": "AW:/perception/traffic_light_recognition/camera10/classification/traffic_light_occlusion_predictor",
+   "topic": null,
+   "type": null,
+   "rate_hz": 10.0,
+   "bytes": null,
+   "kind": "ros2_topic",
+   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
+  },
+  {
    "src": "AW:/map/lanelet2_map_loader",
    "dst": "AW:/perception/traffic_light_recognition/camera11/classification/traffic_light_occlusion_predictor",
    "topic": "/map/vector_map",
@@ -4096,6 +4196,26 @@
    "bytes": null,
    "kind": "ros2_topic",
    "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
+  },
+  {
+   "src": "AW:/perception/traffic_light_recognition/camera11/detection/traffic_light_map_based_detector",
+   "dst": "AW:/perception/traffic_light_recognition/camera11/traffic_light_node_container",
+   "topic": null,
+   "type": null,
+   "rate_hz": 10.0,
+   "bytes": null,
+   "kind": "ros2_topic",
+   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
+  },
+  {
+   "src": "AW:/perception/traffic_light_recognition/camera11/traffic_light_node_container",
+   "dst": "AW:/perception/traffic_light_recognition/camera11/classification/traffic_light_occlusion_predictor",
+   "topic": null,
+   "type": null,
+   "rate_hz": 10.0,
+   "bytes": null,
+   "kind": "ros2_topic",
+   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
   },
   {
    "src": "AW:/map/lanelet2_map_loader",
@@ -4158,6 +4278,26 @@
    "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
   },
   {
+   "src": "AW:/perception/traffic_light_recognition/camera12/detection/traffic_light_map_based_detector",
+   "dst": "AW:/perception/traffic_light_recognition/camera12/traffic_light_node_container",
+   "topic": null,
+   "type": null,
+   "rate_hz": 10.0,
+   "bytes": null,
+   "kind": "ros2_topic",
+   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
+  },
+  {
+   "src": "AW:/perception/traffic_light_recognition/camera12/traffic_light_node_container",
+   "dst": "AW:/perception/traffic_light_recognition/camera12/classification/traffic_light_occlusion_predictor",
+   "topic": null,
+   "type": null,
+   "rate_hz": 10.0,
+   "bytes": null,
+   "kind": "ros2_topic",
+   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
+  },
+  {
    "src": "AW:/map/lanelet2_map_loader",
    "dst": "AW:/perception/traffic_light_recognition/camera13/classification/traffic_light_occlusion_predictor",
    "topic": "/map/vector_map",
@@ -4216,6 +4356,26 @@
    "bytes": null,
    "kind": "ros2_topic",
    "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
+  },
+  {
+   "src": "AW:/perception/traffic_light_recognition/camera13/detection/traffic_light_map_based_detector",
+   "dst": "AW:/perception/traffic_light_recognition/camera13/traffic_light_node_container",
+   "topic": null,
+   "type": null,
+   "rate_hz": 10.0,
+   "bytes": null,
+   "kind": "ros2_topic",
+   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
+  },
+  {
+   "src": "AW:/perception/traffic_light_recognition/camera13/traffic_light_node_container",
+   "dst": "AW:/perception/traffic_light_recognition/camera13/classification/traffic_light_occlusion_predictor",
+   "topic": null,
+   "type": null,
+   "rate_hz": 10.0,
+   "bytes": null,
+   "kind": "ros2_topic",
+   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
   },
   {
    "src": "BodyComfort_WiperWasher_000",

@@ -108,6 +108,7 @@ def main(args):
     os.makedirs(args.output_dir, exist_ok=True)
     config_reader = ConfigReader(args.config_dir)
     partitions = config_reader.get_partitions()
+    partitions['hw_capacity'] = config_reader.get_hardware_capacities()   # accelerator TOPS per unit (hardwares.json)
 
     # Uncertainty blocks: --uncertainty switches on all of them, otherwise each one by its own flag
     uncertainty = {k: bool(args.uncertainty or getattr(args, k)) for k in UNCERTAINTY_BLOCKS}
@@ -138,7 +139,7 @@ def main(args):
     
     # Step 3: Run Pareto optimization
     start_time = time.time()
-    sweep = opt.optimize_growth_sweep if uncertainty.get('growth') else opt.optimize_pareto_epsilon_constraint
+    sweep = opt.optimize_growth_sweep if any(uncertainty.get(k) for k in UNCERTAINTY_BLOCKS) else opt.optimize_pareto_epsilon_constraint
     pareto_solutions = sweep(
         scs, locations, sensors, actuators, cable_types, comm_matrix,
         partitions=partitions,

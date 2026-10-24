@@ -1,12 +1,31 @@
 {
   "_comment": "Compute-unit classes with sourced capacities (data package B, item 6, 2026-10-23). Separate from partitions.json, which the model reads unchanged; these classes are for the schema-v3 model (hierarchy + block classes), not read by the current optimizer. Compute-unit classes with sourced capacities (2026-10-23, data package B, item 6). Not read by the model yet (config_reader reads only 'partition' and 'site'); they replace the provisional partition caps once the model reads schema v3. DMIPS: vendor figure where published, else cores x MHz x DMIPS/MHz of the core (Arm figures as listed in Wikipedia 'List of ARM processors': Cortex-M7 2.14, R52 2.09, A53 2.3, A76 10.7-12.4, A77 13-16; Cortex-A78 = A77 x 1.07 IPC, WikiChip / AnandTech 2020) and marked 'derived'. Prices: distributor single-unit prices (upper bound for OEM volume prices), USD; EUR/GBP converted at 1.10 / 1.30.",
+  "cpu_currency": {
+    "_comment": "One CPU currency for all demands and capacities: DMIPS. Generated non-AD components: load share of a TC39x-class core x 700 DMIPS (tools/build_architecture.py). Measured Autoware nodes: core share on the measurement host x host_to_target_factor x reference_core_dmips. Capacities below: Arm-published DMIPS/MHz x clock x cores unless the vendor states a total.",
+    "reference_core": "Arm Cortex-A76 at 1.8 GHz, 12,250 DMIPS per core",
+    "reference_core_dmips": 12250,
+    "reference_core_source": "Renesas R-Car V4H flyer (2022): 4x Cortex-A76 at 1.8 GHz = 49 kDMIPS; the current product page states 81 kDMIPS (different compiler / Dhrystone settings); the flyer value is used because it is consistent with Arm's published DMIPS/MHz used for the other cores (Cortex-R52 2.09 DMIPS/MHz: 3 x 1.4 GHz x 2.09 = 8.8 kDMIPS vs. 9 kDMIPS in the same flyer)",
+    "measurement_host": "AMD EPYC 7702 (Zen 2, 2.0 GHz base / 3.35 GHz boost), A100 node, Autoware measured per node (cpu_mean_pct = share of one host core)",
+    "host_to_target_factor": 2.56,
+    "host_to_target_source": "Betz et al., arXiv 2404.12683 (2024): the same Autoware sensor-to-command chain computes in 52.8 ms mean on an AMD EPYC 7313P (x86, Zen 3) and 135 ms on an Ampere Altra (Arm Neoverse N1, 1.5 GHz) = 2.56x. Conservative for the target cores (Cortex-A78AE at 2.2 GHz / Cortex-A76 at 1.8 GHz are faster per clock and clock than the N1 at 1.5 GHz) and for the host (EPYC 7702 Zen 2 is slower per core than the 7313P, so its measured shares are already higher). Sensitivity analysis planned.",
+    "autoware_rule": "cpu_dmips = cpu_mean_pct / 100 x host_to_target_factor x reference_core_dmips",
+    "dmips_per_mhz": {
+      "Cortex-M7": 2.14,
+      "Cortex-R52": 2.09,
+      "Cortex-A53": 2.3,
+      "Cortex-A76": 6.8,
+      "Cortex-A78AE": 8.7,
+      "TriCore-1.6.2P": 2.3,
+      "_source": "M7, R52, A53: Arm figures as listed in Wikipedia 'List of ARM processors' (2026-10-23; A53 2.3, R52 2.09, M7 2.14; NXP S32G3 brief quotes 2.8-3.2 for the A53 depending on compiler options). A76 6.8 = 49 kDMIPS / 4 / 1,800 MHz (Renesas V4H flyer). A78AE 8.7 = A76 x 1.20 (Arm: Cortex-A77 ~20 % IPC over A76, WikiChip) x 1.07 (Arm: Cortex-A78 ~7 % IPC over A77 at iso-process, WikiChip / AnandTech), derived. TriCore 1.6.2P: 700 DMIPS / 300 MHz (Infineon: ~4,000 DMIPS for the 6-core TC39x; Wikipedia TriCore 1.7-2.4 DMIPS/MHz)."
+    }
+  },
   "central_ad_gpu": {
     "example": "NVIDIA Jetson AGX Orin 64 GB module (proxy for DRIVE Orin)",
     "cpu_cores": 12,
     "cpu_core": "Cortex-A78AE",
     "cpu_mhz": 2200,
-    "cpu_dmips": 409000,
-    "cpu_dmips_source": "derived: 12 x 2200 MHz x 15.5 DMIPS/MHz (A77 13-16 x 1.07)",
+    "cpu_dmips": 229680,
+    "cpu_dmips_source": "12 x 2,200 MHz x 8.7 DMIPS/MHz (Cortex-A78AE, derived; DMIPS on the cpu_currency basis (dmips_per_mhz above; Cortex-A76 = Renesas V4H flyer 49 kDMIPS / 4 cores))",
     "rt_cores": 0,
     "gpu_tops": 275,
     "gpu": "2048 CUDA + 64 Tensor cores (Ampere), 2x NVDLA v2, 1x PVA v2; 275 TOPS incl. DLA (GPU alone 170 sparse TOPS)",
@@ -26,20 +45,21 @@
     "power_w": "15-60 W configurable",
     "cost_usd": 1599,
     "cost_source": "NVIDIA launch price USD 1,599 per module at 1k units (GTC 2022, cnx-software.com 2022-03-22); 2026 retail GBP 2,111 (Scan UK)",
-    "source": "Connect Tech / NVIDIA module datasheet 900-13701-0050-000 (CPU, GPU, DLA, memory, eMMC, 1x GbE + 1x 10 GbE, 2x CAN, PCIe); clock 2.2 GHz: scan.co.uk listing"
+    "source": "Connect Tech / NVIDIA module datasheet 900-13701-0050-000 (CPU, GPU, DLA, memory, eMMC, 1x GbE + 1x 10 GbE, 2x CAN, PCIe); clock 2.2 GHz: scan.co.uk listing",
+    "tops": 275
   },
   "central_ad_soc": {
     "example": "Renesas R-Car V4H (ADAS L2+/L3 central SoC; Toyota RAV4 2026 TSS unit by Denso)",
     "cpu_cores": 4,
     "cpu_core": "Cortex-A76",
     "cpu_mhz": 1800,
-    "cpu_dmips": 81000,
-    "cpu_dmips_source": "Renesas product page 2026: 81 kDMIPS (2022 flyer: 49 kDMIPS; 4 x 1800 x 10.7-12.4 = 77-89k, so the page value is used)",
+    "cpu_dmips": 49000,
+    "cpu_dmips_source": "Renesas R-Car V4H flyer 2022: 4x Cortex-A76 1.8 GHz = 49 kDMIPS (product page 2026: 81 k; the flyer value is the currency basis)",
     "rt_cores": 3,
     "rt_core": "Cortex-R52 lockstep",
     "rt_mhz": 1400,
     "rt_dmips": 9000,
-    "rt_dmips_source": "Renesas flyer 2022: 9 kDMIPS (page 2026 says 25k; 3 x 1400 x 2.09 = 8.8k, so the flyer value is used)",
+    "rt_dmips_source": "Renesas V4H flyer 2022: 3x lockstep Cortex-R52 1.4 GHz = 9 kDMIPS (3 x 1,400 x 2.09 = 8.8 k)",
     "gpu_tops": 34,
     "gpu": "DL accelerator 34 TOPS (16 TOPS/W) + GPU AXM-8-256 at 600 MHz > 150 GFLOPS",
     "ram_mb": 16384,
@@ -58,15 +78,16 @@
     "power_w": "passive air cooling; no figure published",
     "cost_usd": null,
     "cost_source": "not public (Renesas: \"cost-competitive single-chip ADAS ECU\"); use the Orin module price as the upper bound",
-    "source": "Renesas R-Car V4H product page and flyer (renesas.com/products/r-car-v4h, 2022 flyer); ports: R-Car V4H Whitebox board (4 RGMII Ethernet, 8 CAN, 2 PCIe Gen4, 2 CSI2, 2 DSI)"
+    "source": "Renesas R-Car V4H product page and flyer (renesas.com/products/r-car-v4h, 2022 flyer); ports: R-Car V4H Whitebox board (4 RGMII Ethernet, 8 CAN, 2 PCIe Gen4, 2 CSI2, 2 DSI)",
+    "tops": 34
   },
   "zone_gateway": {
     "example": "NXP S32G399A vehicle network processor (zonal gateway / zone controller)",
     "cpu_cores": 8,
     "cpu_core": "Cortex-A53 (2 clusters x 4; configurable as 4 lockstep pairs)",
     "cpu_mhz": 1300,
-    "cpu_dmips": 31200,
-    "cpu_dmips_source": "derived: 8 x 1300 MHz x 3.0 DMIPS/MHz (NXP product brief: 2.8-3.2 DMIPS/MHz)",
+    "cpu_dmips": 23920,
+    "cpu_dmips_source": "8 x 1,300 MHz x 2.3 DMIPS/MHz (Cortex-A53, Arm; NXP quotes 2.8-3.2); DMIPS on the cpu_currency basis (dmips_per_mhz above; Cortex-A76 = Renesas V4H flyer 49 kDMIPS / 4 cores)",
     "rt_cores": 4,
     "rt_core": "Cortex-M7 lockstep",
     "rt_mhz": 400,
@@ -90,7 +111,8 @@
     "power_w": null,
     "cost_usd": 119,
     "cost_source": "S32G399AACK1VUCT USD 118.72 at 1 unit (FindChips aggregator, 2026-10-23)",
-    "source": "NXP S32G3 product brief PBS32G3V2 (cores, 1.3 GHz, 400 MHz M7, 20 MB SRAM, LPDDR4 up to 4 GB, LLCE 16 CAN / 4 LIN / 1 FlexRay, PFE, PCIe)"
+    "source": "NXP S32G3 product brief PBS32G3V2 (cores, 1.3 GHz, 400 MHz M7, 20 MB SRAM, LPDDR4 up to 4 GB, LLCE 16 CAN / 4 LIN / 1 FlexRay, PFE, PCIe)",
+    "tops": 0
   },
   "zone_realtime": {
     "example": "NXP S32Z2 real-time processor (zonal / domain control, ASIL D)",
@@ -118,7 +140,8 @@
     "temperature": "AEC-Q100 Grade 1, Tj -40..150 C",
     "cost_usd": 119,
     "cost_source": "not public; S32G399A price used as the proxy of the same NXP S32 class",
-    "source": "NXP S32Z2 product page (nxp.com/products/S32Z2) and S32E27 datasheet rev. 6, 2025"
+    "source": "NXP S32Z2 product page (nxp.com/products/S32Z2) and S32E27 datasheet rev. 6, 2025",
+    "tops": 0
   },
   "zone_mcu_classic": {
     "example": "Infineon AURIX TC397 (classic zone / domain MCU; CARIAD measurement platform class TC39x)",
@@ -145,7 +168,8 @@
     "temperature": "AEC-Q100 Grade 1 (Tj 150 C)",
     "cost_usd": 83,
     "cost_source": "TC397XP256F300SBDKXUMA2 GBP 64.10 at 1 unit (Farnell UK, 2026-10-23; GBP 50.24 at 25+); budgetary EUR 50.29 per 1k (Mouser datasheet copy 2020)",
-    "source": "Infineon TC39x datasheet summary (6 cores 300 MHz, 16 MB flash, 6.9 MB SRAM, 12 CAN FD, < 2 W)"
+    "source": "Infineon TC39x datasheet summary (6 cores 300 MHz, 16 MB flash, 6.9 MB SRAM, 12 CAN FD, < 2 W)",
+    "tops": 0
   },
   "ecu_small": {
     "example": "NXP S32K344 (small body / sensor / actuator ECU)",
@@ -173,10 +197,12 @@
     "temperature": "AEC-Q100 Grade 1, -40..125 C",
     "cost_usd": 28,
     "cost_source": "S32K344EHT1MPBST EUR 25.47 at 1 unit, EUR 18.68 at 100+ (Farnell IE, 2026-10-23)",
-    "source": "Farnell / element14 listing (2x Cortex-M7 160 MHz, 4 MB flash, 512 KB RAM, 6 CAN FD, 16 LIN, HDQFP-172); NXP S32K3xx datasheet"
+    "source": "Farnell / element14 listing (2x Cortex-M7 160 MHz, 4 MB flash, 512 KB RAM, 6 CAN FD, 16 LIN, HDQFP-172); NXP S32K3xx datasheet",
+    "tops": 0
   },
   "reference_only": {
     "rh850_u2a16": "Renesas RH850/U2A16 zone/domain MCU: 4 (+4 lockstep) G4MH cores at 400 MHz, 16 MB flash, 3.6 MB RAM, up to 16 CAN FD, 2x Ethernet AVB (Gbit/100 Mbit), ASIL D, 28 nm; DMIPS not published (renesas.com/products/rh850-u2a)",
     "measurement_host": "Autoware was measured on AMD EPYC 7702 cores (Zen 2, 2.0 GHz base / 3.35 GHz boost, lightly loaded node) with an A100 GPU. Conversion to the central_ad_gpu class (A78AE 2.2 GHz): Betz et al. arXiv 2404.12683 measured the same Autoware chain 2.56x slower on Ampere Altra (Neoverse N1, 1.5 GHz; N1 = A76 class) than on EPYC 7313P (Zen 3, 3.0-3.7 GHz); A78 = 1.28x A76 per clock (Arm: A77 +20 %, A78 +7 %), 2.2/1.5 GHz clock ratio => an Orin core is 1.88x an Altra core => 1.36x slower than a 7313P core; a 7702 core (Zen 2, ~3.3 GHz boost) is ~0.75x a 7313P core (Zen 3 +19 % IPC, 3.7 GHz) => measured times on the host x 1.36 x 0.75 = x1.0 on an Orin core (derived, +-30 %; sensitivity case). V4H A76 core at 1.8 GHz: x1.6."
-  }
+  },
+  "tops_basis": "tops = vendor-rated INT8 TOPS of the class; component demands (tops_req) are rated-equivalent: GOPs per inference x rate / 0.19 (Jetson AGX Orin, MLPerf Inference v3.1 Edge ResNet-50: 52.7 effective of 275 rated TOPS)"
 }

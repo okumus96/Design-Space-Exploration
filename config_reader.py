@@ -121,6 +121,11 @@ class ConfigReader:
         """Get parameters of the uncertainty-aware constraints"""
         return self.uncertainty_config
 
+    def get_hardware_capacities(self):
+        """Hardware features with a capacity (hardwares.json: tops, max_units_per_site), e.g. the AI accelerator"""
+        return {h: {'tops': float(spec['tops']), 'max_units': int(spec.get('max_units_per_site', 1))}
+                for h, spec in self.hardware_config.get('hardware_costs', {}).items() if spec.get('tops')}
+
     def get_hardwares(self):
         """Get hardware feature costs (DSP, HSM, HW_ACC)"""
         costs = {}

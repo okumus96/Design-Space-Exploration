@@ -476,8 +476,8 @@ def chain_latencies(net, routes, getv):
 # ============================================================================
 
 def sw_multiplier(sc, uncertainty):
-    """Resource demand multiplier of an SC: the --sw_margin margins (listed domains only) times the --growth factor
-    1 + alpha * profile[domain] at the growth level uncertainty['growth_alpha'] (configs/uncertainty.json: growth)."""
+    """Resource demand multiplier of an SC at the robustness level rho: (1 + rho x sw_margin) (listed domains only) times
+    the growth factor (1 + rate x profile[domain]) ^ (years x rho) (configs/uncertainty.json: rho, growth, sw_margin)."""
     unc = uncertainty or {}
     m = 1.0
     domain = str(getattr(sc, 'domain', '') or '').strip()
@@ -487,19 +487,36 @@ def sw_multiplier(sc, uncertainty):
             margins = {int(k): float(v) for k, v in cfg.get('asil_margins', {}).items()}
             m_asil = margins.get(int(getattr(sc, 'asil_req', 0)), float(cfg['default_asil_margin']))
             m_ai = float(cfg['ai_margin']) if (cfg['ai_hw_feature'] in (getattr(sc, 'hw_required', None) or [])) else 0.0
-            m *= 1.0 + m_asil + m_ai
+            m *= 1.0 + rho_level(unc) * (m_asil + m_ai)
     if unc.get('growth'):
         cfg = unc.get('params', {}).get('growth', {})
-        alpha = float(unc.get('growth_alpha', 0.0))
-        m *= 1.0 + alpha * float(cfg.get('profiles', {}).get(domain, cfg.get('default_profile', 0.0)))
+        rcfg = unc.get('params', {}).get('rho', {})
+        rate = float(rcfg.get('growth_rate_ref', 0.20)) * float(cfg.get('profiles', {}).get(domain, cfg.get('default_profile', 0.0)))
+        m *= (1.0 + rate) ** (float(rcfg.get('growth_years', 5)) * rho_level(unc))
     return m
+
+
+def rho_level(uncertainty):
+    """robustness level rho in [0, 1] of the current solve (uncertainty.json: rho); 1.0 = the reference when no sweep sets it"""
+    return float((uncertainty or {}).get('rho', 1.0))
+
+
+def is_fail_operational(sc, fail_cfg):
+    """Critical (gets a standby) = must keep working after a single failure: the component's fail_operational flag from
+    the architecture data (functions without a safe state reachable by switching off); without a flag the ASIL rule
+    critical_asil_min of uncertainty.json (failures) is used."""
+    flag = getattr(sc, 'fail_operational', None)
+    if flag is not None:
+        return bool(flag)
+    return int(sc.asil_req) >= int((fail_cfg or {}).get('critical_asil_min', 3))
 
 
 def site_derating(location, uncertainty):
     """Capacity derating of a site under --derating (its thermal-class factor), else 1.0."""
     if not (uncertainty or {}).get('derating'):
         return 1.0
-    return max(0.0, float(getattr(location, 'health_factor', 1.0)))
+    h = float(getattr(location, 'health_factor', 1.0))
+    return max(0.0, 1.0 - rho_level(uncertainty) * (1.0 - h))   # rho = 0: no derating, rho = 1: the class value
 
 
 def _first_fit_decreasing(members, demand, bin_cap, n_bins):
@@ -566,7 +583,7 @@ def pack_partitions(x, P, scs, locations, partitions, uncertainty=None, standby=
     for (j, a), members in sorted(groups.items()):
         n_bins = int(round(P[j, a].X))
         h = site_derating(locations[j], uncertainty)
-        bin_cap = {res: caps[res] * h for res in caps}
+        bin_cap = {res: caps[res] * (h if res == 'cpu' else 1.0) for res in caps}   # derating: processing only
         keys = [k for k, _v in members]
         demand = {k: {res: float(getattr(scs[k[0]], f'{res}_req', 0) or 0) * sw_multiplier(scs[k[0]], uncertainty) for res in caps}
                   for k in keys}
@@ -675,8 +692,7 @@ def calculate_hardware_cost(hw_use, hardwares, locations):
     """
     hw_opened = []
     for (j, h), var in hw_use.items():
-        if var.X > 0.5:
-            hw_opened.append(f"{h}@{locations[j].id}")
+        hw_opened += [f"{h}@{locations[j].id}"] * int(round(var.X))   # accelerator: one entry per unit
     
     hw_cost = sum(hardwares.get(hw_name.split('@')[0], 0) for hw_name in hw_opened)
     return hw_cost, hw_opened

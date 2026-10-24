@@ -9,7 +9,10 @@
     "HW_ACC": {
       "description": "Hardware accelerator for ML/vision algorithms",
       "cost": 169,
-      "cost_source": "AI accelerator Hailo-8 M.2 module USD 169 (Mouser, 1 pc)"
+      "cost_source": "AI accelerator Hailo-8 M.2 module USD 169 (Mouser, 1 pc)",
+      "tops": 26,
+      "max_units_per_site": 4,
+      "tops_source": "Hailo-8 AI accelerator: 26 TOPS (Hailo-8 product brief; the same module as the cost source). max_units_per_site 4: assumption (accelerator modules per control unit)."
     },
     "HSM": {
       "description": "Hardware Security Module for encryption/key management",

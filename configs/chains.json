@@ -25,7 +25,7 @@
       "hops": 12,
       "net_budget_ms": 20.0,
       "ftti_ms": 50.0,
-      "degraded_bound_ms": 40.0,
+      "degraded_bound_ms": 20.0,
       "rule": "longest sensor-to-actuator path"
     },
     {
@@ -43,7 +43,7 @@
       "hops": 5,
       "net_budget_ms": 10.0,
       "ftti_ms": 50.0,
-      "degraded_bound_ms": 20.0,
+      "degraded_bound_ms": 10.0,
       "rule": "shortest path from a positioning sensor"
     },
     {
@@ -69,7 +69,7 @@
       "hops": 13,
       "net_budget_ms": 30.0,
       "ftti_ms": 100.0,
-      "degraded_bound_ms": 60.0,
+      "degraded_bound_ms": 30.0,
       "rule": "longest sensor-to-actuator path"
     },
     {
@@ -88,7 +88,7 @@
       "hops": 6,
       "net_budget_ms": 15.0,
       "ftti_ms": 100.0,
-      "degraded_bound_ms": 30.0,
+      "degraded_bound_ms": 15.0,
       "rule": "shortest path from a positioning sensor"
     },
     {
@@ -113,7 +113,7 @@
       "hops": 12,
       "net_budget_ms": 20.0,
       "ftti_ms": 50.0,
-      "degraded_bound_ms": 40.0,
+      "degraded_bound_ms": 20.0,
       "rule": "longest sensor-to-actuator path"
     },
     {
@@ -131,7 +131,7 @@
       "hops": 5,
       "net_budget_ms": 10.0,
       "ftti_ms": 50.0,
-      "degraded_bound_ms": 20.0,
+      "degraded_bound_ms": 10.0,
       "rule": "shortest path from a positioning sensor"
     },
     {
@@ -156,7 +156,7 @@
       "hops": 12,
       "net_budget_ms": 20.0,
       "ftti_ms": 50.0,
-      "degraded_bound_ms": 40.0,
+      "degraded_bound_ms": 20.0,
       "rule": "longest sensor-to-actuator path"
     },
     {
@@ -174,7 +174,7 @@
       "hops": 5,
       "net_budget_ms": 10.0,
       "ftti_ms": 50.0,
-      "degraded_bound_ms": 20.0,
+      "degraded_bound_ms": 10.0,
       "rule": "shortest path from a positioning sensor"
     },
     {
@@ -200,7 +200,7 @@
       "hops": 13,
       "net_budget_ms": 200.0,
       "ftti_ms": 1000.0,
-      "degraded_bound_ms": 400.0,
+      "degraded_bound_ms": 200.0,
       "rule": "longest sensor-to-actuator path"
     },
     {
@@ -226,8 +226,9 @@
       "hops": 13,
       "net_budget_ms": 200.0,
       "ftti_ms": 1000.0,
-      "degraded_bound_ms": 400.0,
+      "degraded_bound_ms": 200.0,
       "rule": "longest sensor-to-actuator path"
     }
-  ]
+  ],
+  "_degraded_bound": "degraded_bound_ms = net_budget_ms (2026-10-24): after a failure the chain must meet its normal bound; the former 2x had no source (the vehicle is still at speed when the failure occurs and the minimal-risk manoeuvre starts from that speed; ISO 26262 emergency operation must itself be safe)"
 }

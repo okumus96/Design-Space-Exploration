@@ -93,6 +93,8 @@ def load_architecture_from_json(json_filepath, config_reader, num_locs=None):
             redundant_with=comp.get('redundant_with', None),
             rate_hz=float(comp.get('rate_hz', 10.0)),
             msg_kbit=(float(comp['msg_kbit']) if comp.get('msg_kbit') is not None else None),
+            tops_req=float(comp.get('tops_req', 0.0) or 0.0),
+            fail_operational=comp.get('fail_operational'),
         )
 
         sc_type = comp.get('type', '')

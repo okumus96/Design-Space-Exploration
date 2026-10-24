@@ -32,16 +32,18 @@ ARCH = 'configs/full_architecture_v2_lite.json'
 COMMON = ['--architecture_json', ARCH, '--num_locs', '4', '--time_limit', '900', '--phase2_time', '120']
 TOL = 1e-4
 
-# name, extra flags, growth levels written into the case's uncertainty.json, proven (cost, cable length) per solution
+# name, extra flags, robustness levels rho written into the case's uncertainty.json, proven (cost, cable length) per solution
 CASES = [
     ('nominal', ['--num_points', '1'], None,
-     [(4456.1854, 49.4093)]),
+     [(4625.1854, 49.4093)]),
     ('growth', ['--growth', '--sw_margin', '--derating', '--redundancy', '--ai_contention', '--robust_latency'], [0.0, 1.0],
-     [(5256.1303, 49.2989), (5256.1303, 49.2989)]),
-    ('failures', ['--uncertainty'], [0.0],
-     [(6292.7022, 68.7940)]),
+     [(4625.1854, 49.4093), (5766.2873, 47.6130)]),
+    ('failures', ['--uncertainty'], [0.2],
+     [(7414.5255, 60.9150)]),
+    # rho 1 with failures: best known 9,011.9421, not proven within 7,200 s (gap 0.47 %, job 1108, 2026-10-24); the speed
+    # work (tools/speed_bench.py) targets this case, the value is replaced by the proven one once it is reached
     ('failures_a1', ['--uncertainty', '--time_limit', '7200', '--phase2_time', '600'], [1.0],
-     [(7184.7393, 67.7202)]),
+     [(9011.9421, 82.8944)]),
 ]
 
 
@@ -70,7 +72,7 @@ def run_case(name, flags, levels):
     out = os.path.join(OUT, name)
     shutil.rmtree(cfg, ignore_errors=True)
     shutil.rmtree(out, ignore_errors=True)
-    over = [('uncertainty.json', lambda d: d['growth'].__setitem__('alpha_levels', levels))] if levels is not None else []
+    over = [('uncertainty.json', lambda d: d['rho'].__setitem__('levels', levels))] if levels is not None else []
     copy_configs(cfg, over)
     os.makedirs(out)
     cmd = [sys.executable, os.path.join(REPO, 'main.py')] + COMMON + flags + \
@@ -105,7 +107,7 @@ def m_hardware(sol, chk):
         for h in chk.scs[sc]['hw']:
             item = f"{h}@{site}"
             if item in sol['hw_features']:
-                sol['hw_features'].remove(item)
+                sol['hw_features'] = [f for f in sol['hw_features'] if f != item]   # every unit (the accelerator may have several)
                 return 'hardware', f"{item} removed"
 
 
@@ -237,11 +239,11 @@ def c_site_cap(sol, chk):
     return 'site_capacity', [('partitions.json', lambda d: d['site'].__setitem__('cpu_cap', 1))], 'site cpu_cap = 1'
 
 
-def c_ai(sol, chk):
-    feat = chk.unc.get('ai_contention', {}).get('ai_hw_feature')
-    if not chk.flags.get('ai_contention') or not any(feat in chk.scs[sc]['hw'] for sc in chk.pos_x):
+def c_tops(sol, chk):
+    # accelerator capacity (replaces the former contention limit): almost no TOPS per unit must be reported
+    if not chk.hw_cap or not any(chk.scs[sc]['tops'] > 0 for sc in chk.pos_x):
         return None
-    return 'ai_contention', [('uncertainty.json', lambda d: d['ai_contention'].__setitem__('max_per_location', 0))], 'max_per_location = 0'
+    return 'tops_capacity', [('hardwares.json', lambda d: d['hardware_costs']['HW_ACC'].__setitem__('tops', 0.001))], 'HW_ACC tops = 0.001'
 
 
 def c_bus_cap(sol, chk):
@@ -308,7 +310,7 @@ def c_failure_cap(sol, chk):
 SOLUTION_MUTATIONS = [m_unplaced, m_partition_site, m_hardware, m_redundancy, m_attachment, m_ports, m_cable,
                       m_line_member, m_extra_cable, m_standby, m_standby_survival, m_standby_same_cell, m_bus_drop, m_bus_length, m_cost,
                       m_report, m_lost, m_lane]
-CONFIG_MUTATIONS = [c_partition_cap, c_site_cap, c_ai, c_bus_cap, c_link_cap, c_chain, c_degraded, c_cold, c_failure_cap]
+CONFIG_MUTATIONS = [c_partition_cap, c_site_cap, c_tops, c_bus_cap, c_link_cap, c_chain, c_degraded, c_cold, c_failure_cap]
 
 
 def run_mutations(sol_path):

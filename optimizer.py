@@ -7,7 +7,7 @@ import gurobipy as gp
 from gurobipy import GRB
 from optimizer_utils import (get_distance, build_sensor_lookup, build_actuator_lookup,
                              build_cost_map, build_latency_map, extract_solution,
-                             sw_multiplier, site_derating, pack_partitions, flow_routes, chain_latencies, steiner_tree,
+                             sw_multiplier, site_derating, is_fail_operational, pack_partitions, flow_routes, chain_latencies, steiner_tree,
                              resource_messages, message_kbit, resource_rate, crossing_ms, robust_ms, device_line, device_ms,
                              message_prio, frame_kbit, queue_ms, device_lines)
 
@@ -142,7 +142,7 @@ class AssignmentOptimizer:
         if fail_on:
             asil_min = int(fail_cfg.get('critical_asil_min', 3))
             recovery = float(fail_cfg.get('recovery_ms', 50.0))
-            critical = [i for i in range(n_sc) if int(scs[i].asil_req) >= asil_min]
+            critical = [i for i in range(n_sc) if is_fail_operational(scs[i], fail_cfg)]
             ftti = {}
             for ch in (chains or []):
                 for sid in ch.get('swcs', []):
@@ -154,14 +154,19 @@ class AssignmentOptimizer:
                     r[i, j] = model.addVar(vtype=GRB.BINARY, name=f"r_{scs[i].id}_{locations[j].id}")
                     hr[i, j] = (model.addVar(vtype=GRB.CONTINUOUS, lb=0.0, ub=1.0, name=f"hr_{scs[i].id}_{locations[j].id}")
                                 if cold_ok else r[i, j])
-            print(f"  Failures: {len(critical)} critical SCs (ASIL >= {asil_min}), cold standby admissible for "
+            print(f"  Failures: {len(critical)} critical SCs (fail_operational flag, else ASIL >= {asil_min}), cold standby admissible for "
                   f"{sum(1 for i in critical if hot[i] is not None)} of them (recovery {recovery:.0f} ms)")
 
         # hw_use[j,h] = HW feature h is used at location j (binary)
+        # features with a TOPS capacity (hardwares.json, the AI accelerator): integer number of units at the location
+        hw_cap = (partitions or {}).get('hw_capacity', {}) or {}
         hw_use = {}
         for j in range(n_locs):
             for h in all_hw:
-                hw_use[j, h] = model.addVar(vtype=GRB.BINARY, name=f"hw_{locations[j].id}_{h}")
+                if h in hw_cap:
+                    hw_use[j, h] = model.addVar(vtype=GRB.INTEGER, lb=0, ub=int(hw_cap[h].get('max_units', 1)), name=f"hw_{locations[j].id}_{h}")
+                else:
+                    hw_use[j, h] = model.addVar(vtype=GRB.BINARY, name=f"hw_{locations[j].id}_{h}")
         
         # if_use[j,i_name] = Number of Interface i_name ports at location j (integer)
         if_use = {}
@@ -474,7 +479,7 @@ class AssignmentOptimizer:
         unc_params = unc.get('params', {})
         print(f"  Uncertainty blocks: " + ", ".join(f"{k}={bool(unc.get(k))}" for k in UNCERTAINTY_BLOCKS))
         if unc.get('growth'):
-            print(f"  Growth level alpha = {float(unc.get('growth_alpha', 0.0)):.2f} (profiles {unc.get('params', {}).get('growth', {}).get('profiles')})")
+            print(f"  Robustness level rho = {float(unc.get('rho', 1.0)):.2f} (growth profiles {unc.get('params', {}).get('growth', {}).get('profiles')})")
 
         # SW-based uncertainty (selective static margin, configs/uncertainty.json: sw_margin)
         def get_sw_multiplier(sc):
@@ -548,7 +553,7 @@ class AssignmentOptimizer:
                     net['hr'][i, j] * getattr(scs[i], f'{res}_req') * get_sw_multiplier(scs[i])
                     for i in feasible_scs_per_loc[j] if (i, j) in net['hr']
                 )
-                model.addConstr(demand <= float(site_cap) * H_j * y[j], name=f"site_{res}_cap_{locations[j].id}")
+                model.addConstr(demand <= float(site_cap) * (H_j if res == 'cpu' else 1.0) * y[j], name=f"site_{res}_cap_{locations[j].id}")
                 cstats['c1d_site_caps'] += 1
 
         # Constraint 2: resource capacity per (site, ASIL): hosted demand <= partitions * partition capacity * derating.
@@ -566,7 +571,7 @@ class AssignmentOptimizer:
                         for i in scs_ja if (i, j) in net['hr']   # hot standbys consume their resources permanently
                     )
                     model.addConstr(
-                        demand <= P[j, a] * partitions.get(f'{res}_cap', float('inf')) * H_j,
+                        demand <= P[j, a] * partitions.get(f'{res}_cap', float('inf')) * (H_j if res == 'cpu' else 1.0),
                         name=f"{res}_capacity_{locations[j].id}_asil{a}"
                     )
                     cstats['c2_capacity'] += 1
@@ -625,13 +630,36 @@ class AssignmentOptimizer:
                         for a in unique_asils:
                             terms = [dem[i] * v for i, v in woken if scs[i].asil_req == a]
                             if terms and part_cap < float('inf'):
-                                model.addConstr(hosted[a] + gp.quicksum(terms) <= P[j, a] * part_cap * H_j,
+                                model.addConstr(hosted[a] + gp.quicksum(terms) <= P[j, a] * part_cap * (H_j if res == 'cpu' else 1.0),
                                                 name=f"cold_{res}_capacity_{locations[c].id}_{locations[j].id}_asil{a}")
                                 cstats['c1h_cold_capacity'] += 1
                         if site_cap is not None:
                             model.addConstr(gp.quicksum(hosted.values()) + gp.quicksum(dem[i] * v for i, v in woken)
-                                            <= float(site_cap) * H_j * y[j],
+                                            <= float(site_cap) * (H_j if res == 'cpu' else 1.0) * y[j],
                                             name=f"cold_site_{res}_cap_{locations[c].id}_{locations[j].id}")
+                            cstats['c1h_cold_capacity'] += 1
+
+        # Constraint 1h for the accelerator: cold standbys woken by the failure of cell c need TOPS at their cell
+        hw_cap_all = (partitions or {}).get('hw_capacity', {}) or {}
+        if act and hw_cap_all:
+            for h, capd in hw_cap_all.items():
+                tops_unit = float(capd.get('tops', 0) or 0)
+                if tops_unit <= 0:
+                    continue
+                for j in range(n_locs):
+                    if (j, h) not in hw_use:
+                        continue
+                    here = [i for i in feasible_scs_per_loc[j] if h in (scs[i].hw_required or []) and float(getattr(scs[i], 'tops_req', 0) or 0) > 0]
+                    if not here:
+                        continue
+                    H_j = site_derating(locations[j], unc)
+                    base = gp.quicksum(x[i, j] * scs[i].tops_req * get_sw_multiplier(scs[i]) for i in here) + gp.quicksum(
+                        net['hr'][i, j] * scs[i].tops_req * get_sw_multiplier(scs[i]) for i in here if (i, j) in net['hr'])
+                    for c in range(n_locs):
+                        woken = [(i, act[i, c, j]) for i in here if (i, c, j) in act]
+                        if woken:
+                            model.addConstr(base + gp.quicksum(scs[i].tops_req * get_sw_multiplier(scs[i]) * v for i, v in woken)
+                                            <= tops_unit * H_j * hw_use[j, h], name=f"cold_tops_{locations[c].id}_{locations[j].id}_{h}")
                             cstats['c1h_cold_capacity'] += 1
 
         # Constraint 3: HW feature required
@@ -741,27 +769,25 @@ class AssignmentOptimizer:
                                 )
                                 cstats['c5_redundancy'] += 1
 
-        if unc.get('ai_contention'):
-            # Constraint 6: AI accelerator contention limit per location
-            ai_cfg = unc_params.get('ai_contention', {})
-            K_THRESHOLD = int(ai_cfg['max_per_location'])
-            ai_sc_indices = [
-                i for i, sc in enumerate(scs)
-                if ai_cfg['ai_hw_feature'] in (getattr(sc, 'hw_required', None) or [])
-            ]
-            ai_sc_set = set(ai_sc_indices)
-            if ai_sc_indices:
-                for j in range(n_locs):
-                    ai_sum_at_loc = gp.quicksum(
-                        x_expr(i, j)
-                        for i in feasible_scs_per_loc[j]
-                        if i in ai_sc_set
-                    )
-                    model.addConstr(
-                        ai_sum_at_loc <= K_THRESHOLD,
-                        name=f"ai_contention_limit_loc_{locations[j].id}"
-                    )
-                    cstats['c6_ai_contention'] += 1
+        # Constraint 6: accelerator capacity (TOPS). Components that need a feature with a TOPS capacity (hardwares.json,
+        # HW_ACC) consume tops_req x demand multiplier; primaries and hot standbys at a location must fit into
+        # units x TOPS per unit x derating. Replaces the former contention limit (at most 2 AI components per location,
+        # no source), 2026-10-24; always on, like the CPU capacity.
+        hw_cap6 = (partitions or {}).get('hw_capacity', {}) or {}
+        for h, capd in hw_cap6.items():
+            tops_unit = float(capd.get('tops', 0) or 0)
+            users = {i for i in range(n_sc) if h in (scs[i].hw_required or []) and float(getattr(scs[i], 'tops_req', 0) or 0) > 0}
+            if tops_unit <= 0 or not users:
+                continue
+            for j in range(n_locs):
+                here = [i for i in feasible_scs_per_loc[j] if i in users]
+                if not here or (j, h) not in hw_use:
+                    continue
+                H_j = site_derating(locations[j], unc)
+                dem = gp.quicksum(x[i, j] * scs[i].tops_req * get_sw_multiplier(scs[i]) for i in here) + gp.quicksum(
+                    net['hr'][i, j] * scs[i].tops_req * get_sw_multiplier(scs[i]) for i in here if (i, j) in net['hr'])
+                model.addConstr(dem <= tops_unit * H_j * hw_use[j, h], name=f"tops_capacity_{locations[j].id}_{h}")
+                cstats['c6_ai_contention'] += 1
         
         # Constraint 9a: ECU-to-ECU Communication - Endpoint Activation (Big-M)
         # A backbone link can only touch an "active" node. This prevents the optimizer from
@@ -1239,8 +1265,11 @@ class AssignmentOptimizer:
         # sensor-to-driver and driver-to-actuator links of Ethernet peripherals; budget = network time allowed.
         unc_lat = (uncertainty or {}).get('params', {}).get('robust_latency', {})
         net['lat'] = {'robust': bool((uncertainty or {}).get('robust_latency')),
-                      'factor': float(unc_lat.get('network_safety_factor', 1.0)),
-                      'sync': float(unc_lat.get('sync_ms', 0.0)), 'platform': float(unc_lat.get('platform_ms', 0.0))}
+                      'factor': 1.0,   # sigma removed (2026-10-24): the transmission and queueing time is already a worst case
+                      'sync': float(unc_lat.get('sync_ms', 0.0)),
+                      'platform': float(unc_lat.get('platform_mean_ms', unc_lat.get('platform_ms', 0.0)))
+                      + float((uncertainty or {}).get('rho', 1.0)) * (float(unc_lat.get('platform_p99_ms', unc_lat.get('platform_mean_ms', unc_lat.get('platform_ms', 0.0))))
+                                                          - float(unc_lat.get('platform_mean_ms', unc_lat.get('platform_ms', 0.0))))}
         sc_index = {sc.id: i for i, sc in enumerate(scs)}
         base_flows = [tr for tr in traffic_flows if 'base' not in tr]
         flow_of_pair = {(tr['src_idx'], tr['dst_idx']): tr['id'] for tr in base_flows if tr['type'] == 'SC_SC'}
@@ -1264,7 +1293,7 @@ class AssignmentOptimizer:
             ends = [dev_end[k] for k in ((idx[0], 'sensor'), (idx[-1], 'actuator')) if idx and k in dev_end]
             const = sum(ms for _d, ms in ends)   # own crossings of the end devices (their queues come in the cuts)
             net['chains'].append({'id': ch['id'], 'budget': float(ch['net_budget_ms']), 'const': const, 'dev_ends': [d for d, _ms in ends],
-                                  'degraded': float(ch.get('degraded_bound_ms', 2.0 * float(ch['net_budget_ms']))), 'flows': flows})
+                                  'degraded': float(ch.get('degraded_bound_ms', float(ch['net_budget_ms']))), 'flows': flows})
             if const > float(ch['net_budget_ms']):
                 print(f"  WARNING: chain {ch['id']} cannot meet its budget: its bus crossings alone take {const:.2f} ms")
         if net['chains']:
@@ -1870,7 +1899,7 @@ class AssignmentOptimizer:
                             dem = lambda i, res=res: getattr(scs[i], f'{res}_req') * sw_multiplier(scs[i], uncertainty)
                             nominal = sum(dem(i) for i in feasible_scs_per_loc[j] if scs[i].asil_req == a and getv(x[i, j]) > 0.5)
                             hot_here = sum(dem(i) for i in net['critical'] if (i, j) in net['hr'] and scs[i].asil_req == a and getv(net['hr'][i, j]) > 0.5)
-                            if nominal + hot_here + sum(dem(i) for i in act) <= getv(P[j, a]) * cap * H + 1e-6:
+                            if nominal + hot_here + sum(dem(i) for i in act) <= getv(P[j, a]) * cap * (H if res == 'cpu' else 1.0) + 1e-6:
                                 continue
                             placement_ok = False
                             expr = gp.quicksum(dem(i) * x[i, j] for i in feasible_scs_per_loc[j] if scs[i].asil_req == a)
@@ -1880,7 +1909,7 @@ class AssignmentOptimizer:
                                 if net['hot'][i] is not None:
                                     term = term - net['hot'][i]
                                 expr += dem(i) * term
-                            m.cbLazy(expr <= P[j, a] * cap * H)
+                            m.cbLazy(expr <= P[j, a] * cap * (H if res == 'cpu' else 1.0))
                             m._lazy_cuts += 1
                             m._fail_cuts += 1
                     # the same for the whole unit (constraint 1d: site caps over all ASILs)
@@ -1896,7 +1925,7 @@ class AssignmentOptimizer:
                             dem = lambda i, res=res: getattr(scs[i], f'{res}_req') * sw_multiplier(scs[i], uncertainty)
                             nominal = sum(dem(i) for i in feasible_scs_per_loc[j] if getv(x[i, j]) > 0.5)
                             hot_here = sum(dem(i) for i in net['critical'] if (i, j) in net['hr'] and getv(net['hr'][i, j]) > 0.5)
-                            if nominal + hot_here + sum(dem(i) for i in act) <= float(site_cap) * H + 1e-6:
+                            if nominal + hot_here + sum(dem(i) for i in act) <= float(site_cap) * (H if res == 'cpu' else 1.0) + 1e-6:
                                 continue
                             placement_ok = False
                             expr = gp.quicksum(dem(i) * x[i, j] for i in feasible_scs_per_loc[j])
@@ -1906,7 +1935,7 @@ class AssignmentOptimizer:
                                 if net['hot'][i] is not None:
                                     term = term - net['hot'][i]
                                 expr += dem(i) * term
-                            m.cbLazy(expr <= float(site_cap) * H)
+                            m.cbLazy(expr <= float(site_cap) * (H if res == 'cpu' else 1.0))
                             m._lazy_cuts += 1
                             m._fail_cuts += 1
 
@@ -2167,6 +2196,7 @@ class AssignmentOptimizer:
                 'lp_file': lp_path,
                 'uncertainty': {k: bool((uncertainty or {}).get(k)) for k in UNCERTAINTY_BLOCKS},
                 'growth_alpha': float((uncertainty or {}).get('growth_alpha', 0.0)) if (uncertainty or {}).get('growth') else None,
+                'rho': float((uncertainty or {}).get('rho', 1.0)) if any((uncertainty or {}).get(k) for k in UNCERTAINTY_BLOCKS) else None,
             }
             formatted_solution['status'] = 'TIME_LIMIT' if time_limited else 'OPTIMAL'
             # values of this solution, the start of the next solve of a sweep (names are unique: checked once here)
@@ -2207,17 +2237,21 @@ class AssignmentOptimizer:
         min-cost design (second phase: cable length). Returns the solutions in the order of the levels; each carries
         solve_info.growth_alpha.
         """
-        levels = [float(a) for a in (uncertainty or {}).get('params', {}).get('growth', {}).get('alpha_levels', [0.0])]
+        params = (uncertainty or {}).get('params', {})
+        levels = [float(a) for a in params.get('rho', {}).get('levels', params.get('growth', {}).get('alpha_levels', [0.0]))]
         print("=" * 80)
-        print(f"GROWTH SWEEP (min cost per growth level): alpha in {levels}")
+        print(f"ROBUSTNESS SWEEP (min cost per robustness level): rho in {levels}")
         print("=" * 80)
         solutions = []
         self.last_values = None
         for alpha in levels:
             unc = dict(uncertainty or {})
-            unc['growth'] = True
-            unc['growth_alpha'] = alpha
-            print(f"\n[Growth] alpha = {alpha:.2f}")
+            unc['rho'] = alpha
+            unc['growth_alpha'] = alpha   # kept for the plots / reports (= rho)
+            if alpha <= 0.0:   # rho = 0: the deterministic nominal design (no failure tolerance, no separation)
+                unc['failures'] = False
+                unc['redundancy'] = False
+            print(f"\n[Robustness] rho = {alpha:.2f}")
             sol = self.optimize(
                 scs, locations, sensors, actuators, cable_types, comm_matrix,
                 partitions=partitions, hardwares=hardwares, interfaces=interfaces,
@@ -2228,9 +2262,9 @@ class AssignmentOptimizer:
             if sol:
                 solutions.append(sol)
             else:
-                print(f"[Growth] alpha = {alpha:.2f}: no design found (infeasible, or no feasible design within the time limit); sweep stopped")
+                print(f"[Robustness] rho = {alpha:.2f}: no design found (infeasible, or no feasible design within the time limit); sweep stopped")
                 break
-        print(f"Growth sweep: {len(solutions)} of {len(levels)} levels solved")
+        print(f"Robustness sweep: {len(solutions)} of {len(levels)} levels solved")
         return solutions
 
     def optimize_pareto_epsilon_constraint(self, scs, locations, sensors, actuators, cable_types, comm_matrix,

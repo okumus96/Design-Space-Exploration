@@ -8,7 +8,7 @@
       "id": "S01",
       "zone": "engine_bay",
       "thermal_class": "engine_bay",
-      "derating": 0.85,
+      "derating": 0.9,
       "clearance": 0.117,
       "position": {
         "x": -0.69,
@@ -23,7 +23,7 @@
       "id": "S02",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.136,
       "position": {
         "x": -0.57,
@@ -53,7 +53,7 @@
       "id": "S04",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.109,
       "position": {
         "x": -0.45,
@@ -68,7 +68,7 @@
       "id": "S05",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.119,
       "position": {
         "x": -0.45,
@@ -83,7 +83,7 @@
       "id": "S06",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.119,
       "position": {
         "x": -0.45,
@@ -98,7 +98,7 @@
       "id": "S07",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.112,
       "position": {
         "x": -0.45,
@@ -113,7 +113,7 @@
       "id": "S08",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.127,
       "position": {
         "x": -0.45,
@@ -128,7 +128,7 @@
       "id": "S09",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.114,
       "position": {
         "x": -0.33,
@@ -143,7 +143,7 @@
       "id": "S10",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.103,
       "position": {
         "x": -0.33,
@@ -158,7 +158,7 @@
       "id": "S11",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.11,
       "position": {
         "x": -0.21,
@@ -173,7 +173,7 @@
       "id": "S12",
       "zone": "engine_bay",
       "thermal_class": "engine_bay",
-      "derating": 0.85,
+      "derating": 0.9,
       "clearance": 0.107,
       "position": {
         "x": -0.21,
@@ -188,7 +188,7 @@
       "id": "S13",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.1,
       "position": {
         "x": -0.09,
@@ -203,7 +203,7 @@
       "id": "S14",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.103,
       "position": {
         "x": -0.09,
@@ -218,7 +218,7 @@
       "id": "S15",
       "zone": "engine_bay",
       "thermal_class": "engine_bay",
-      "derating": 0.85,
+      "derating": 0.9,
       "clearance": 0.11,
       "position": {
         "x": -0.09,
@@ -233,7 +233,7 @@
       "id": "S16",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.103,
       "position": {
         "x": 0.03,
@@ -248,7 +248,7 @@
       "id": "S17",
       "zone": "engine_bay",
       "thermal_class": "engine_bay",
-      "derating": 0.85,
+      "derating": 0.9,
       "clearance": 0.11,
       "position": {
         "x": 0.03,
@@ -263,7 +263,7 @@
       "id": "S18",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.11,
       "position": {
         "x": 0.15,
@@ -278,7 +278,7 @@
       "id": "S19",
       "zone": "engine_bay",
       "thermal_class": "engine_bay",
-      "derating": 0.85,
+      "derating": 0.9,
       "clearance": 0.109,
       "position": {
         "x": 0.15,
@@ -293,7 +293,7 @@
       "id": "S20",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.11,
       "position": {
         "x": 0.27,
@@ -308,7 +308,7 @@
       "id": "S21",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.103,
       "position": {
         "x": 0.27,
@@ -323,7 +323,7 @@
       "id": "S22",
       "zone": "engine_bay",
       "thermal_class": "engine_bay",
-      "derating": 0.85,
+      "derating": 0.9,
       "clearance": 0.106,
       "position": {
         "x": 0.27,
@@ -338,7 +338,7 @@
       "id": "S23",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.115,
       "position": {
         "x": 0.39,
@@ -353,7 +353,7 @@
       "id": "S24",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.103,
       "position": {
         "x": 0.39,
@@ -368,7 +368,7 @@
       "id": "S25",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.149,
       "position": {
         "x": 0.51,
@@ -383,7 +383,7 @@
       "id": "S26",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.102,
       "position": {
         "x": 0.51,
@@ -398,7 +398,7 @@
       "id": "S27",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.114,
       "position": {
         "x": 0.51,
@@ -413,7 +413,7 @@
       "id": "S28",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.114,
       "position": {
         "x": 0.51,
@@ -458,7 +458,7 @@
       "id": "S31",
       "zone": "engine_bay",
       "thermal_class": "engine_bay",
-      "derating": 0.85,
+      "derating": 0.9,
       "clearance": 0.118,
       "position": {
         "x": 0.51,
@@ -473,7 +473,7 @@
       "id": "S32",
       "zone": "trunk",
       "thermal_class": "trunk",
-      "derating": 0.95,
+      "derating": 0.9,
       "clearance": 0.121,
       "position": {
         "x": 0.63,
@@ -488,7 +488,7 @@
       "id": "S33",
       "zone": "engine_bay",
       "thermal_class": "engine_bay",
-      "derating": 0.85,
+      "derating": 0.9,
       "clearance": 0.116,
       "position": {
         "x": 0.63,

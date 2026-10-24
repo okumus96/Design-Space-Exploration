@@ -145,10 +145,12 @@ class SolutionCheck:
                 margins = {int(k): float(v) for k, v in cfg.get('asil_margins', {}).items()}
                 m_asil = margins.get(sc['asil'], float(cfg.get('default_asil_margin', 0.0)))
                 m_ai = float(cfg.get('ai_margin', 0.0)) if cfg.get('ai_hw_feature') in sc['hw'] else 0.0
-                m *= 1.0 + m_asil + m_ai
+                m *= 1.0 + self.rho * (m_asil + m_ai)
         if self.flags.get('growth'):
             g = self.unc.get('growth', {})
-            m *= 1.0 + self.alpha * float(g.get('profiles', {}).get(dom, g.get('default_profile', 0.0)))
+            rc = self.unc.get('rho', {})
+            rate = float(rc.get('growth_rate_ref', 0.20)) * float(g.get('profiles', {}).get(dom, g.get('default_profile', 0.0)))
+            m *= (1.0 + rate) ** (float(rc.get('growth_years', 5)) * self.rho)
         return m
 
     def demand(self, sc_id, res):
@@ -156,7 +158,7 @@ class SolutionCheck:
         return sc[res] * self.mult(sc)
 
     def derate(self, site):
-        return max(0.0, self.site_derating.get(site, 1.0)) if self.flags.get('derating') else 1.0
+        return max(0.0, 1.0 - self.rho * (1.0 - self.site_derating.get(site, 1.0))) if self.flags.get('derating') else 1.0
 
     # --------------------------------------------------------------------------------------------------- loading
     def load(self):
@@ -172,6 +174,7 @@ class SolutionCheck:
         parts = cfg('partitions.json')
         self.part, self.site_cfg = parts.get('partition', {}), parts.get('site', {})
         self.hw_price = {h: float(s.get('cost', 0)) for h, s in cfg('hardwares.json').get('hardware_costs', {}).items()}
+        self.hw_cap = {h: s for h, s in cfg('hardwares.json').get('hardware_costs', {}).items() if s.get('tops')}
         self.unc = cfg('uncertainty.json')
         chains_path = os.path.join(self.config_dir, 'chains.json')
         self.chains = _load(chains_path).get('chains', []) if os.path.exists(chains_path) else []
@@ -208,6 +211,7 @@ class SolutionCheck:
         for c in arch.get('software_components', []):
             sc = {'id': c['id'], 'domain': c.get('domain', 'Unknown'), 'asil': int(c.get('asil_req', 0)),
                   'hw': list(c.get('hw_required', [])), 'redundant_with': c.get('redundant_with'),
+                  'tops': float(c.get('tops_req', 0) or 0), 'fail_op': c.get('fail_operational'),
                   'rate': float(c.get('rate_hz', 10.0) or 10.0), 'type': c.get('type', ''),
                   'msg_kbit': (float(c['msg_kbit']) if c.get('msg_kbit') is not None else None),
                   'receives_from': list(c.get('receives_from', [])), 'devices': []}
@@ -223,14 +227,17 @@ class SolutionCheck:
         si = self.sol.get('solve_info', {})
         self.flags = dict(si.get('uncertainty') or {})
         self.alpha = float(si.get('growth_alpha') or 0.0)
+        self.rho = float(si['rho']) if si.get('rho') is not None else 1.0   # robustness level of the solve
         fcfg = self.unc.get('failures', {})
         self.asil_min = int(fcfg.get('critical_asil_min', 3))
         self.recovery = float(fcfg.get('recovery_ms', 50.0))
         self.classes = set(fcfg.get('classes', ['cell', 'switch', 'cable']))
-        self.crit = {s for s, sc in self.scs.items() if sc['asil'] >= self.asil_min} if self.flags.get('failures') else set()
+        self.crit = {s for s, sc in self.scs.items() if (bool(sc['fail_op']) if sc.get('fail_op') is not None else sc['asil'] >= self.asil_min)} if self.flags.get('failures') else set()
         rl = self.unc.get('robust_latency', {})
-        self.lat = {'robust': bool(self.flags.get('robust_latency')), 'factor': float(rl.get('network_safety_factor', 1.0)),
-                    'sync': float(rl.get('sync_ms', 0.0)), 'platform': float(rl.get('platform_ms', 0.0))}
+        self.lat = {'robust': bool(self.flags.get('robust_latency')), 'factor': 1.0,
+                    'sync': float(rl.get('sync_ms', 0.0)),
+                    'platform': float(rl.get('platform_mean_ms', rl.get('platform_ms', 0.0))) + self.rho * (
+                        float(rl.get('platform_p99_ms', rl.get('platform_mean_ms', rl.get('platform_ms', 0.0)))) - float(rl.get('platform_mean_ms', rl.get('platform_ms', 0.0))))}
         self.has_switch_hw = 'SWITCH' in self.hw_price
         lines_cfg = buses.get('backbone', {}).get('bus_lines', {})
         self.bus_umax = float(buses.get('backbone', {}).get('bus_max_utilization', 1.0))
@@ -244,10 +251,11 @@ class SolutionCheck:
         self.standby = dict(s.get('standby') or {})
         self.pos_r = {sc: sb['cell'] for sc, sb in self.standby.items()}
         self.cold = {sc for sc, sb in self.standby.items() if sb.get('type') == 'cold'}
-        self.hw = set()
+        self.hw, self.hw_units = set(), defaultdict(int)
         for item in s.get('hw_features', []):
             h, site = item.rsplit('@', 1)
             self.hw.add((site, h))
+            self.hw_units[(site, h)] += 1   # the accelerator may have several units
         self.ports = defaultdict(int)
         for item in s.get('interfaces', []):
             cnt, rest = item.split('x', 1)
@@ -343,8 +351,9 @@ class SolutionCheck:
                 if cap <= 0:
                     continue
                 load = sum(self.demand(sc, r) for sc, inst in mem if inst == 'x' or sc not in self.cold)
-                if not _le(load, cap * h):
-                    self.err('partition_capacity', f"{p} {r} {load:.1f} > {cap * h:.1f}")
+                hr = h if r == 'cpu' else 1.0   # derating: processing capacity only
+                if not _le(load, cap * hr):
+                    self.err('partition_capacity', f"{p} {r} {load:.1f} > {cap * hr:.1f}")
         for s in self.active:
             h = self.derate(s)
             for r in RES:
@@ -354,8 +363,9 @@ class SolutionCheck:
                 self.checked['site_capacity'] += 1
                 load = sum(self.demand(sc, r) for sc, site in self.pos_x.items() if site == s)
                 load += sum(self.demand(sc, r) for sc, site in self.pos_r.items() if site == s and sc not in self.cold)
-                if not _le(load, float(cap) * h):
-                    self.err('site_capacity', f"{s} {r} {load:.1f} > {float(cap) * h:.1f} (cell cap x derating)")
+                hr = h if r == 'cpu' else 1.0
+                if not _le(load, float(cap) * hr):
+                    self.err('site_capacity', f"{s} {r} {load:.1f} > {float(cap) * hr:.1f} (cell cap x derating)")
 
     def _member(self, sc, inst, site, p):
         if sc not in self.scs:
@@ -387,16 +397,18 @@ class SolutionCheck:
                     self.checked['redundancy'] += 1
                     if self.pos_x.get(sc) is not None and self.pos_x.get(sc) == self.pos_x.get(partner):
                         self.err('redundancy', f"redundant pair {sc} / {partner} both at {self.pos_x[sc]}")
-        if self.flags.get('ai_contention'):
-            cfg = self.unc.get('ai_contention', {})
-            per_site = defaultdict(int)
-            for sc, site in self.pos_x.items():
-                if cfg.get('ai_hw_feature') in self.scs.get(sc, {}).get('hw', []):
-                    per_site[site] += 1
-            for site, n in per_site.items():
-                self.checked['ai_contention'] += 1
-                if n > int(cfg['max_per_location']):
-                    self.err('ai_contention', f"{site}: {n} components need {cfg['ai_hw_feature']} > {cfg['max_per_location']}")
+        # accelerator capacity (TOPS, always on; replaces the former contention limit K): primaries and hot standbys at
+        # a site within units x TOPS per unit x derating
+        for hf, spec in self.hw_cap.items():
+            load = defaultdict(float)
+            for sc, site in list(self.pos_x.items()) + [(sc, st) for sc, st in self.pos_r.items() if sc not in self.cold]:
+                if hf in self.scs.get(sc, {}).get('hw', []):
+                    load[site] += self.demand(sc, 'tops')
+            for site, l in load.items():
+                self.checked['tops_capacity'] += 1
+                cap = self.hw_units.get((site, hf), 0) * float(spec['tops']) * self.derate(site)
+                if not _le(l, cap):
+                    self.err('tops_capacity', f"{site}: {hf} {l:.2f} TOPS > {cap:.2f} ({self.hw_units.get((site, hf), 0)} units)")
 
     # -------------------------------------------------------------------------------------------- peripherals
     def steiner(self, terminals):
@@ -1023,7 +1035,7 @@ class SolutionCheck:
                     continue
                 total += self.device_bus_ms(ch, after, failed_line=(elem if kind == 'line' else None))
                 self.checked['degraded_latency'] += 1
-                bound = float(ch.get('degraded_bound_ms', 2.0 * float(ch['net_budget_ms'])))
+                bound = float(ch.get('degraded_bound_ms', float(ch['net_budget_ms'])))
                 if not _le(total, bound):
                     self.err('degraded_latency', f"{label}: {ch['id']} {total:.3f} ms > degraded bound {bound} ms")
             if kind == 'cell':
@@ -1079,12 +1091,21 @@ class SolutionCheck:
                     continue
                 self.checked['failure_capacity'] += 1
                 load = sum(self.demand(sc, r) for sc in prim + hot_here + lst)
-                if not _le(load, float(cap) * h):
-                    self.err('failure_capacity', f"{label}: {j} {r} {load:.1f} > {float(cap) * h:.1f} with the activated standbys")
+                hr = h if r == 'cpu' else 1.0
+                if not _le(load, float(cap) * hr):
+                    self.err('failure_capacity', f"{label}: {j} {r} {load:.1f} > {float(cap) * hr:.1f} with the activated standbys")
+            for hf, spec in self.hw_cap.items():   # accelerator TOPS with the activated standbys
+                users = [sc for sc in prim + hot_here + lst if hf in self.scs[sc]['hw']]
+                if users:
+                    self.checked['failure_capacity'] += 1
+                    load = sum(self.demand(sc, 'tops') for sc in users)
+                    cap = self.hw_units.get((j, hf), 0) * float(spec['tops']) * h
+                    if not _le(load, cap):
+                        self.err('failure_capacity', f"{label}: {j} {hf} {load:.2f} TOPS > {cap:.2f} with the activated standbys")
             for a in sorted({self.scs[sc]['asil'] for sc in lst}):
                 group = [sc for sc in prim + hot_here + lst if self.scs[sc]['asil'] == a]
                 n = self.P.get((j, a), 0)
-                caps = {r: float(self.part.get(f'{r}_cap', 0) or 0) * h for r in RES}
+                caps = {r: float(self.part.get(f'{r}_cap', 0) or 0) * (h if r == 'cpu' else 1.0) for r in RES}
                 for r in RES:
                     if caps[r] <= 0:
                         continue
@@ -1105,7 +1126,7 @@ class SolutionCheck:
         s = self.sol
         part_cost = sum(self.P.values()) * float(self.part.get('cost', 0))
         site_cost = len(self.active) * float(self.site_cfg.get('fixed_cost', 0) or 0)
-        hw_cost = sum(self.hw_price.get(h, 0.0) for (_site, h) in self.hw)
+        hw_cost = sum(self.hw_price.get(h, 0.0) * n for (_site, h), n in self.hw_units.items())
         for (_site, h) in self.hw:
             if h not in self.hw_price:
                 self.err('cost', f"hardware {h} has no price in hardwares.json")

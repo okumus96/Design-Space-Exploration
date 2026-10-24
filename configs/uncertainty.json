@@ -1,5 +1,19 @@
 {
   "_comment": "Parameters of the uncertainty-aware constraints. Each block is switched on by its own CLI flag (--sw_margin, --derating, --redundancy, --ai_contention, --robust_latency, --growth, --failures); --uncertainty switches on all of them. Latency values in milliseconds.",
+  "rho": {
+    "_comment": "Robustness level rho in [0, 1] (2026-10-24): every continuous uncertainty u = nominal + rho x (reference - nominal); rho = 0 is the deterministic nominal design (no growth, no margin, mean middleware latency, no derating, no failure tolerance, no separation), every rho > 0 adds single-failure tolerance and the separation of redundant pairs / monitors, rho = 1 is the sourced reference scenario. Pareto front: min cost at each level (epsilon-constraint on the robustness radius r(x) = largest rho at which design x stays feasible; price of robustness, Bertsimas & Sim 2004).",
+    "levels": [
+      0.0,
+      0.2,
+      0.4,
+      0.6,
+      0.8,
+      1.0
+    ],
+    "growth_years": 5,
+    "growth_rate_ref": 0.2,
+    "_mapping": "growth: demand x (1 + growth_rate_ref x profile[domain]) ^ (growth_years x rho) (ADAS 20 %/year, others 10 %/year; rho 0.2 = 1 year); sw_margin: demand x (1 + rho x margin); robust_latency: per crossing + platform_mean_ms + rho x (platform_p99_ms - platform_mean_ms); derating: capacity x (1 - rho x (1 - class derating)); failures and redundancy: on for rho > 0"
+  },
   "sw_margin": {
     "_comment": "SW resource demand multiplier = 1 + asil_margin + ai_margin, applied only to SCs of the listed domains. Meaning (2026-10-23): measurement uncertainty of today's demand (worst case over average); OTA growth is the separate growth block (alpha), not part of these margins.",
     "domains": [
@@ -19,45 +33,39 @@
     "_source": "Provisional (2026-10-23): ASIL margins kept as a verification-rigour scale (assumption; the end-to-end worst/mean ratio of AD stacks is 2.1x Autoware, 2.8x Apollo in simulation, Liu, Wang, Zhao, \"COLA\", arXiv 2305.07147, 2023, preprint, not usable as a source for a conference paper); ai_margin 0.33 = inference-time range over mean of YOLOv3 (33 %, Jetson Xavier; Liu, Wang, Shi, \"Understanding Time Variations of DNN Inference in Autonomous Driving\", arXiv 2209.05487, 2022, Table I, preprint; SSD-MobileNetv2 49 %, LaneNet 344 %). To be replaced by our own Autoware measurement (CARET); sensitivity analysis planned."
   },
   "derating": {
-    "_comment": "Partition capacity at a site is multiplied by the derating of its thermal class (configs/vehicle.json: thermal_classes)."
+    "_comment": "Processing capacity (CPU and accelerator TOPS) at a site is multiplied by the derating of its thermal class (configs/vehicle.json); memory is not derated. Dowdy & Sharma, NASA NEPP report TR04-0600 (2000), derating of plastic digital microcircuits: operating frequency 100 % in a protected, 90 % in a severe environment -> cabin 1.0, all other installation areas 0.90; applied to processing capacity only (CPU, accelerator), not to memory (2026-10-24)"
   },
   "redundancy": {
     "_comment": "SCs with 'redundant_with' must not be placed at the same location. No parameters."
   },
   "ai_contention": {
-    "_comment": "At most max_per_location SCs requiring ai_hw_feature may be placed at the same location.",
-    "ai_hw_feature": "HW_ACC",
-    "max_per_location": 2,
-    "_source": "max_per_location 2 (assumption). Evidence that contention matters: contention-unaware concurrent DNN mapping on a Jetson GPU+DLA loses up to 70 % performance and contention-blind latency estimates are off by up to 75 % (Dagli, Belviranli, \"HaX-CoNN\", PPoPP 2024); no measured 2-vs-3-model slowdown found."
+    "_comment": "Retired 2026-10-24: the contention limit (max 2 AI components per location, no source) is replaced by the accelerator capacity in TOPS (hardwares.json HW_ACC: tops, max_units_per_site; component tops_req), which is always enforced like the CPU capacity. The --ai_contention flag has no effect any more."
   },
   "robust_latency": {
-    "_comment": "Robust chain latency: every network crossing costs nominal * network_safety_factor + sync_ms + platform_ms (ms). network_safety_factor 1.0 since 2026-10-23: the crossing is already a worst case (own transmission, per-hop bound, fixed-priority queue with every equal/higher-priority message once and one lower-priority frame), so no extra jitter factor (no measured jitter factor found; sensitivity analysis planned).",
-    "network_safety_factor": 1.0,
+    "_comment": "Robust chain latency (2026-10-24): every network crossing costs the computed worst-case transmission and queueing time + sync_ms + platform overhead, platform = platform_mean_ms + rho x (platform_p99_ms - platform_mean_ms); rho = the common robustness level (uncertainty.json: rho). The former safety factor sigma is removed (the transmission term is already a worst case).",
     "sync_ms": 0.001,
-    "platform_ms": 2.0,
     "_sync_source": "clock synchronisation error per crossing: IEEE 802.1AS (gPTP) in-vehicle profile, +/- 1 us over 7 hops (IEEE 802.1DG time-sync profile, 2019); platform_ms and the safety factor remain estimates",
-    "_platform_source": "2 ms per crossing (estimate): ROS 2 adds up to +50 % over raw DDS for small messages and RELIABLE QoS +15 % at the 95th percentile (Kronauer, Pohlmann, Matthe, Smejkal, Fettweis, \"Latency Analysis of ROS2 Multi-Node Systems\", IEEE MFI 2021; relative figures, absolute per-hop latency not published). To be measured on our Autoware setup."
+    "platform_mean_ms": 0.51,
+    "platform_p99_ms": 3.5,
+    "_platform_source": "Betz, Wen, Pan, Kaljavesi, Zuepke, Bastoni, Caccamo, Knoll, Betz, 'A Containerized Microservice Architecture for a ROS 2 Autonomous Driving Software: An End-to-End Latency Evaluation', arXiv 2404.12683 (2024, preprint), Table VI: DDS communication over the 17-callback Autoware chain (16 hops) on x86 bare metal, Cyclone DDS: 8.10 ms mean / 56.05 ms p99 -> 0.51 / 3.50 ms per hop. Cross-check: Fast DDS 1 kB inter-host over 1 GbE median 0.49 ms (Klüner et al., arXiv 2505.02734, 2025)."
   },
   "growth": {
-    "_comment": "Software growth: demand_i(alpha) = demand_i * (1 + alpha * profiles[domain_i]). alpha = growth level (1 = the reference domain doubled); profiles = relative growth per domain (reference ADAS 1.0). alpha_levels = the levels of the cost-growth sweep run with --growth / --uncertainty (Ebert and Jones, IEEE Computer 2009: embedded software volume +10..20 % per year depending on the domain; alpha 1..3 = 4..15 years at those rates).",
+    "_comment": "Software growth: demand_i(rho) = demand_i x (1 + rho.growth_rate_ref x profiles[domain_i]) ^ (rho.growth_years x rho); profiles = relative yearly growth per domain (1.0 = 20 %/year, 0.5 = 10 %/year); see _profiles_source.",
     "profiles": {
       "ADAS": 1.0,
       "Driver": 1.0,
-      "Connectivity": 0.7,
-      "Infotainment": 0.7,
-      "DriveTrain": 0.4,
-      "BodyComfort": 0.4
+      "Sensing": 1.0,
+      "Connectivity": 0.5,
+      "Infotainment": 0.5,
+      "DriveTrain": 0.5,
+      "BodyComfort": 0.5,
+      "Chassis": 0.5,
+      "Powertrain": 0.5,
+      "OccupantSafety": 0.5,
+      "Platform": 0.5
     },
-    "default_profile": 0.4,
-    "alpha_levels": [
-      0.0,
-      0.5,
-      1.0,
-      1.5,
-      2.0,
-      2.5,
-      3.0
-    ]
+    "default_profile": 0.5,
+    "_profiles_source": "2026-10-24: two growth classes. ADAS/AD software and its sensor drivers grow fastest: profile 1.0 = 20 % per year (upper end of the 10-20 % per year of embedded software by domain, Ebert & Jones, IEEE Computer 2009; ADAS/AD is the main growth driver and almost half of the automotive software market by 2030, McKinsey 2023). All other domains: profile 0.5 = 10 % per year (McKinsey 2023: body and energy software 10 % CAGR, whole automotive software market > 9 % CAGR 2019-2030). alpha = 1: ADAS demand doubled (about 3.8 years at 20 % per year), other domains +50 % (1.1^3.8 = 1.44). Market growth (USD) is used as the proxy of demand growth. Was ADAS 1.0 / Connectivity and Infotainment 0.7 / DriveTrain and BodyComfort 0.4 (assumption)."
   },
   "failures": {
     "_comment": "Single failures (block --failures, in --uncertainty): every SC with asil_req >= critical_asil_min gets a standby instance on another cell; the optimiser chooses hot (runs permanently, resources and traffic always) or cold (capacity reserved per failure scenario, no nominal traffic) per SC; cold only when the smallest FTTI of the SC's chains >= recovery_ms. Scenarios: every active cell, every switch, every backbone cable (classes). Peripheral devices are single; the failure of their own attachment element is out of scope.",
@@ -67,6 +75,7 @@
       "cell",
       "switch",
       "cable"
-    ]
+    ],
+    "_critical_rule": "Critical (standby) = the component's fail_operational flag in the architecture data; critical_asil_min is only the fallback for components without a flag. fail_operational: function needs to keep working after a single failure because no safe state can be reached by switching it off (ISO 26262:2018 emergency operation; for SAE level 3+: driving-task chain, steering, braking, propulsion, compute and communication, Safety First for Automated Driving 2019); monitors, map loaders, route planning, traffic-light recognition, lighting and comfort functions are not needed for the minimal-risk manoeuvre"
   }
 }

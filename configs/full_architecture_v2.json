@@ -10,7 +10,8 @@
       "asil_req": 3,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "fail_operational": true
     },
     {
       "id": "SC_1_Driver_CAM_Front_Center",
@@ -22,7 +23,8 @@
       "asil_req": 4,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "fail_operational": true
     },
     {
       "id": "SC_2_Driver_CAM_Rear_Right_Corner",
@@ -34,7 +36,8 @@
       "asil_req": 4,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "fail_operational": true
     },
     {
       "id": "SC_3_Driver_CAM_Front_Left",
@@ -46,7 +49,8 @@
       "asil_req": 4,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "fail_operational": true
     },
     {
       "id": "SC_4_Driver_CAM_Front_Right",
@@ -58,7 +62,8 @@
       "asil_req": 3,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "fail_operational": true
     },
     {
       "id": "SC_5_Driver_CAM_Left_Side",
@@ -70,7 +75,8 @@
       "asil_req": 3,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "fail_operational": true
     },
     {
       "id": "SC_6_Driver_CAM_Right_Side",
@@ -82,7 +88,8 @@
       "asil_req": 4,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "fail_operational": true
     },
     {
       "id": "SC_7_Driver_CAM_Rear_Center",
@@ -94,7 +101,8 @@
       "asil_req": 3,
       "hw_required": [],
       "receives_from": [],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "fail_operational": true
     },
     {
       "id": "SC_8_Driver_LIDAR_Front",
@@ -108,7 +116,8 @@
       "receives_from": [],
       "rate_hz": 20.0,
       "msg_kbit": 2304.0,
-      "msg_source": "decoded point cloud: 18k points per sweep x 16 B (PointXYZIRC)"
+      "msg_source": "decoded point cloud: 18k points per sweep x 16 B (PointXYZIRC)",
+      "fail_operational": true
     },
     {
       "id": "SC_9_Driver_LIDAR_Left_Pillar",
@@ -122,7 +131,8 @@
       "receives_from": [],
       "rate_hz": 20.0,
       "msg_kbit": 4608.0,
-      "msg_source": "decoded point cloud: 36k points per sweep x 16 B (PointXYZIRC)"
+      "msg_source": "decoded point cloud: 36k points per sweep x 16 B (PointXYZIRC)",
+      "fail_operational": true
     },
     {
       "id": "SC_10_Driver_LIDAR_Right_Pillar",
@@ -136,7 +146,8 @@
       "receives_from": [],
       "rate_hz": 20.0,
       "msg_kbit": 4608.0,
-      "msg_source": "decoded point cloud: 36k points per sweep x 16 B (PointXYZIRC)"
+      "msg_source": "decoded point cloud: 36k points per sweep x 16 B (PointXYZIRC)",
+      "fail_operational": true
     },
     {
       "id": "SC_11_Driver_LIDAR_Rear",
@@ -150,7 +161,8 @@
       "receives_from": [],
       "rate_hz": 20.0,
       "msg_kbit": 2304.0,
-      "msg_source": "decoded point cloud: 18k points per sweep x 16 B (PointXYZIRC)"
+      "msg_source": "decoded point cloud: 18k points per sweep x 16 B (PointXYZIRC)",
+      "fail_operational": true
     },
     {
       "id": "SC_12_Driver_LIDAR_Top",
@@ -164,7 +176,8 @@
       "receives_from": [],
       "rate_hz": 20.0,
       "msg_kbit": 4608.0,
-      "msg_source": "decoded point cloud: 36k points per sweep x 16 B (PointXYZIRC)"
+      "msg_source": "decoded point cloud: 36k points per sweep x 16 B (PointXYZIRC)",
+      "fail_operational": true
     },
     {
       "id": "SC_13_Driver_IMU_Top_Center",
@@ -178,7 +191,8 @@
       "receives_from": [],
       "rate_hz": 100.0,
       "msg_kbit": 2.528,
-      "msg_source": "sensor_msgs/Imu (orientation, rates, accelerations, covariances)"
+      "msg_source": "sensor_msgs/Imu (orientation, rates, accelerations, covariances)",
+      "fail_operational": true
     },
     {
       "id": "SC_14_Driver_GPS_Center",
@@ -192,7 +206,8 @@
       "receives_from": [],
       "rate_hz": 20.0,
       "msg_kbit": 0.968,
-      "msg_source": "sensor_msgs/NavSatFix"
+      "msg_source": "sensor_msgs/NavSatFix",
+      "fail_operational": true
     },
     {
       "id": "AW_Map_PointCloud_Loader",
@@ -206,7 +221,8 @@
       "receives_from": [],
       "rate_hz": 1.0,
       "msg_kbit": 8000.0,
-      "msg_source": "differential point cloud map tiles, about 1 MB per update (estimate)"
+      "msg_source": "differential point cloud map tiles, about 1 MB per update (estimate)",
+      "fail_operational": false
     },
     {
       "id": "AW_Map_Lanelet2_Loader",
@@ -220,7 +236,8 @@
       "receives_from": [],
       "rate_hz": 0.01,
       "msg_kbit": 80000.0,
-      "msg_source": "Lanelet2 map binary, about 10 MB, published once (latched; estimate)"
+      "msg_source": "Lanelet2 map binary, about 10 MB, published once (latched; estimate)",
+      "fail_operational": false
     },
     {
       "id": "AW_Sensing_Lidar_Preprocessor",
@@ -240,7 +257,8 @@
       ],
       "rate_hz": 20.0,
       "msg_kbit": 18432.0,
-      "msg_source": "concatenated point cloud of the five lidars: 144k points x 16 B"
+      "msg_source": "concatenated point cloud of the five lidars: 144k points x 16 B",
+      "fail_operational": true
     },
     {
       "id": "AW_RM_Monitor_Sensing_Lidar_Preprocessor",
@@ -256,7 +274,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 0.8,
-      "msg_source": "runtime monitor status (estimate)"
+      "msg_source": "runtime monitor status (estimate)",
+      "fail_operational": false
     },
     {
       "id": "AW_Sensing_Camera_Preprocessor",
@@ -281,7 +300,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 230400.0,
-      "msg_source": "eight rectified images at sensor size (12 bit per pixel)"
+      "msg_source": "eight rectified images at sensor size (12 bit per pixel)",
+      "fail_operational": true
     },
     {
       "id": "AW_RM_Monitor_Sensing_Camera_Preprocessor",
@@ -297,7 +317,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 0.8,
-      "msg_source": "runtime monitor status (estimate)"
+      "msg_source": "runtime monitor status (estimate)",
+      "fail_operational": false
     },
     {
       "id": "AW_Localization_Twist_Estimator",
@@ -313,7 +334,8 @@
       ],
       "rate_hz": 100.0,
       "msg_kbit": 2.848,
-      "msg_source": "TwistWithCovarianceStamped per IMU sample (gyro odometer)"
+      "msg_source": "TwistWithCovarianceStamped per IMU sample (gyro odometer)",
+      "fail_operational": true
     },
     {
       "id": "AW_Localization_NDT_Matcher",
@@ -330,7 +352,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 2.912,
-      "msg_source": "PoseWithCovarianceStamped per scan match"
+      "msg_source": "PoseWithCovarianceStamped per scan match",
+      "fail_operational": true
     },
     {
       "id": "AW_Localization_EKF_Localizer",
@@ -348,7 +371,8 @@
       ],
       "rate_hz": 50.0,
       "msg_kbit": 5.696,
-      "msg_source": "nav_msgs/Odometry at the EKF predict frequency 50 Hz (Autoware default)"
+      "msg_source": "nav_msgs/Odometry at the EKF predict frequency 50 Hz (Autoware default)",
+      "fail_operational": true
     },
     {
       "id": "AW_Perception_Lidar_Cluster",
@@ -364,7 +388,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 1570.8,
-      "msg_source": "DetectedObjectsWithFeature: 50 clusters with about 200 points each"
+      "msg_source": "DetectedObjectsWithFeature: 50 clusters with about 200 points each",
+      "fail_operational": true
     },
     {
       "id": "AW_Perception_Lidar_CenterPoint",
@@ -383,7 +408,10 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 290.8,
-      "msg_source": "DetectedObjects: 50 objects x 727 B"
+      "msg_source": "DetectedObjects: 50 objects x 727 B",
+      "tops_req": 0.84,
+      "tops_source": "CenterPoint-Pillar at Autoware's 0.32 m pillars: ~16 GOPs per sweep, derived from PillarNeXt (Li et al., CVPR 2023, Table 1: Pillar-B [64,128,256,256] 281 GFLOPs at 0.075 m pillars, scaled by the pillar count (0.075/0.32)^2 and the range), 10 Hz; rated-TOPS equivalent = GOPs per inference x rate / 0.19; 0.19 = effective / rated TOPS of Jetson AGX Orin in MLPerf Inference v3.1 Edge (ResNet-50 v1.5 offline 6,424 samples/s x 8.2 GOPs = 52.7 effective TOPS of 275 rated)",
+      "fail_operational": true
     },
     {
       "id": "AW_RM_Monitor_Lidar_CenterPoint",
@@ -400,7 +428,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 0.8,
-      "msg_source": "runtime monitor status (estimate)"
+      "msg_source": "runtime monitor status (estimate)",
+      "fail_operational": false
     },
     {
       "id": "AW_Perception_Camera_TrafficLight",
@@ -418,7 +447,10 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 3.2,
-      "msg_source": "TrafficLightGroupArray, about 10 groups"
+      "msg_source": "TrafficLightGroupArray, about 10 groups",
+      "tops_req": 3.58,
+      "tops_source": "per traffic-light camera: fine detector YOLOX-S at 640x640 (26.8 GOPs) + classifiers MobileNetV2 (Sandler et al., CVPR 2018: 300 M multiply-adds = 0.6 GOPs) for up to 6 lights x car / pedestrian (7.2 GOPs); 2 traffic-light cameras at 10 Hz; rated-TOPS equivalent = GOPs per inference x rate / 0.19; 0.19 = effective / rated TOPS of Jetson AGX Orin in MLPerf Inference v3.1 Edge (ResNet-50 v1.5 offline 6,424 samples/s x 8.2 GOPs = 52.7 effective TOPS of 275 rated)",
+      "fail_operational": false
     },
     {
       "id": "AW_RM_Monitor_Camera_TrafficLight",
@@ -434,7 +466,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 0.8,
-      "msg_source": "runtime monitor status (estimate)"
+      "msg_source": "runtime monitor status (estimate)",
+      "fail_operational": false
     },
     {
       "id": "AW_Perception_Camera_YOLO",
@@ -445,7 +478,7 @@
       "rom_req": 200,
       "asil_req": 3,
       "hw_required": [
-        "DSP"
+        "HW_ACC"
       ],
       "redundant_with": "AW_RM_Monitor_Camera_YOLO",
       "receives_from": [
@@ -453,7 +486,10 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 297.6,
-      "msg_source": "DetectedObjectsWithFeature with 2D boxes: 50 objects"
+      "msg_source": "DetectedObjectsWithFeature with 2D boxes: 50 objects",
+      "tops_req": 25.39,
+      "tops_source": "YOLOX-S (Ge et al., arXiv 2107.08430, 2021: 26.8 GFLOPs at 640x640) at Autoware's 960x960 input = 60.3 GOPs per image, 8 cameras at 10 Hz; rated-TOPS equivalent = GOPs per inference x rate / 0.19; 0.19 = effective / rated TOPS of Jetson AGX Orin in MLPerf Inference v3.1 Edge (ResNet-50 v1.5 offline 6,424 samples/s x 8.2 GOPs = 52.7 effective TOPS of 275 rated)",
+      "fail_operational": true
     },
     {
       "id": "AW_RM_Monitor_Camera_YOLO",
@@ -470,7 +506,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 0.8,
-      "msg_source": "runtime monitor status (estimate)"
+      "msg_source": "runtime monitor status (estimate)",
+      "fail_operational": false
     },
     {
       "id": "AW_Perception_Occupancy_Grid",
@@ -487,7 +524,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 720.8,
-      "msg_source": "OccupancyGrid 150 m at 0.5 m = 300 x 300 cells (Autoware defaults)"
+      "msg_source": "OccupancyGrid 150 m at 0.5 m = 300 x 300 cells (Autoware defaults)",
+      "fail_operational": true
     },
     {
       "id": "AW_Perception_Sensor_Fusion",
@@ -504,7 +542,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 290.8,
-      "msg_source": "DetectedObjects: 50 objects x 727 B"
+      "msg_source": "DetectedObjects: 50 objects x 727 B",
+      "fail_operational": true
     },
     {
       "id": "AW_Perception_Object_Tracker",
@@ -520,7 +559,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 433.2,
-      "msg_source": "TrackedObjects: 50 objects x 1083 B"
+      "msg_source": "TrackedObjects: 50 objects x 1083 B",
+      "fail_operational": true
     },
     {
       "id": "AW_Perception_Trajectory_Predictor",
@@ -536,7 +576,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 1834.8,
-      "msg_source": "PredictedObjects: 50 objects, 2 paths of 31 poses (15 s at 0.5 s, Autoware defaults)"
+      "msg_source": "PredictedObjects: 50 objects, 2 paths of 31 poses (15 s at 0.5 s, Autoware defaults)",
+      "fail_operational": true
     },
     {
       "id": "AW_Planning_Scenario_Selector",
@@ -552,7 +593,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 0.32,
-      "msg_source": "Scenario"
+      "msg_source": "Scenario",
+      "fail_operational": true
     },
     {
       "id": "AW_Planning_Costmap_Generator",
@@ -569,7 +611,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 438.848,
-      "msg_source": "OccupancyGrid 70 m at 0.3 m = 234 x 234 cells, 10 Hz (Autoware defaults)"
+      "msg_source": "OccupancyGrid 70 m at 0.3 m = 234 x 234 cells, 10 Hz (Autoware defaults)",
+      "fail_operational": false
     },
     {
       "id": "AW_Planning_Mission_Route",
@@ -586,7 +629,8 @@
       ],
       "rate_hz": 1.0,
       "msg_kbit": 9.6,
-      "msg_source": "LaneletRoute, about 30 segments (event driven; estimate 1 Hz)"
+      "msg_source": "LaneletRoute, about 30 segments (event driven; estimate 1 Hz)",
+      "fail_operational": false
     },
     {
       "id": "AW_Planning_Behavior_Path",
@@ -604,7 +648,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 219.2,
-      "msg_source": "PathWithLaneId: 200 points (200 m ahead) with lane ids and bounds"
+      "msg_source": "PathWithLaneId: 200 points (200 m ahead) with lane ids and bounds",
+      "fail_operational": true
     },
     {
       "id": "AW_Planning_Obstacle_Avoidance",
@@ -621,7 +666,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 140.8,
-      "msg_source": "Trajectory: 200 points x 88 B (estimate)"
+      "msg_source": "Trajectory: 200 points x 88 B (estimate)",
+      "fail_operational": true
     },
     {
       "id": "AW_Planning_Velocity_Smoother",
@@ -638,7 +684,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 42.24,
-      "msg_source": "Trajectory resampled to about 60 points x 88 B (Autoware resampling defaults)"
+      "msg_source": "Trajectory resampled to about 60 points x 88 B (Autoware resampling defaults)",
+      "fail_operational": true
     },
     {
       "id": "AW_Control_Lateral_MPC",
@@ -655,7 +702,8 @@
       ],
       "rate_hz": 33.0,
       "msg_kbit": 0.2,
-      "msg_source": "autoware_control_msgs/Lateral; control cycle 33 Hz (Autoware control_cmd interface)"
+      "msg_source": "autoware_control_msgs/Lateral; control cycle 33 Hz (Autoware control_cmd interface)",
+      "fail_operational": true
     },
     {
       "id": "AW_Control_Longitudinal_PID",
@@ -672,7 +720,8 @@
       ],
       "rate_hz": 33.0,
       "msg_kbit": 0.24,
-      "msg_source": "autoware_control_msgs/Longitudinal; control cycle 33 Hz"
+      "msg_source": "autoware_control_msgs/Longitudinal; control cycle 33 Hz",
+      "fail_operational": true
     },
     {
       "id": "AW_System_Emergency_Handler",
@@ -689,7 +738,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 0.4,
-      "msg_source": "emergency state and hazard command (estimate)"
+      "msg_source": "emergency state and hazard command (estimate)",
+      "fail_operational": true
     },
     {
       "id": "AW_Vehicle_Cmd_Gate",
@@ -707,7 +757,8 @@
       ],
       "rate_hz": 33.0,
       "msg_kbit": 0.568,
-      "msg_source": "autoware_control_msgs/Control at 33 Hz (Autoware control_cmd interface)"
+      "msg_source": "autoware_control_msgs/Control at 33 Hz (Autoware control_cmd interface)",
+      "fail_operational": true
     },
     {
       "id": "DT_Powertrain_Supervisor",
@@ -723,7 +774,8 @@
       ],
       "rate_hz": 100.0,
       "msg_kbit": 0.064,
-      "msg_source": "one 8-byte signal frame per 10 ms (estimate)"
+      "msg_source": "one 8-byte signal frame per 10 ms (estimate)",
+      "fail_operational": true
     },
     {
       "id": "DT_Torque_Distributor",
@@ -739,7 +791,8 @@
       ],
       "rate_hz": 100.0,
       "msg_kbit": 0.064,
-      "msg_source": "one 8-byte signal frame per 10 ms (estimate)"
+      "msg_source": "one 8-byte signal frame per 10 ms (estimate)",
+      "fail_operational": true
     },
     {
       "id": "DT_Brake_Blend_Controller",
@@ -755,7 +808,8 @@
       ],
       "rate_hz": 100.0,
       "msg_kbit": 0.064,
-      "msg_source": "one 8-byte signal frame per 10 ms (estimate)"
+      "msg_source": "one 8-byte signal frame per 10 ms (estimate)",
+      "fail_operational": true
     },
     {
       "id": "DT_Steering_Assist_Controller",
@@ -771,7 +825,8 @@
       ],
       "rate_hz": 100.0,
       "msg_kbit": 0.064,
-      "msg_source": "one 8-byte signal frame per 10 ms (estimate)"
+      "msg_source": "one 8-byte signal frame per 10 ms (estimate)",
+      "fail_operational": true
     },
     {
       "id": "BC_Climate_Control",
@@ -785,7 +840,8 @@
       "receives_from": [],
       "rate_hz": 10.0,
       "msg_kbit": 0.064,
-      "msg_source": "one 8-byte signal frame per 100 ms (estimate)"
+      "msg_source": "one 8-byte signal frame per 100 ms (estimate)",
+      "fail_operational": false
     },
     {
       "id": "BC_Lighting_Manager",
@@ -802,7 +858,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 0.064,
-      "msg_source": "one 8-byte signal frame per 100 ms (estimate)"
+      "msg_source": "one 8-byte signal frame per 100 ms (estimate)",
+      "fail_operational": false
     },
     {
       "id": "BC_Door_Window_Control",
@@ -818,7 +875,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 0.064,
-      "msg_source": "one 8-byte signal frame per 100 ms (estimate)"
+      "msg_source": "one 8-byte signal frame per 100 ms (estimate)",
+      "fail_operational": false
     },
     {
       "id": "CONN_Telematics",
@@ -832,7 +890,8 @@
       "receives_from": [],
       "rate_hz": 10.0,
       "msg_kbit": 1000.0,
-      "msg_source": "cellular downlink about 10 Mbit/s (estimate)"
+      "msg_source": "cellular downlink about 10 Mbit/s (estimate)",
+      "fail_operational": false
     },
     {
       "id": "CONN_V2X_Gateway",
@@ -849,7 +908,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 5.6,
-      "msg_source": "ETSI CAM: 200 to over 700 B depending on environment and security (Car 2 Car Communication Consortium TR 2052 survey); 1-10 Hz (ETSI EN 302 637-2); upper values used"
+      "msg_source": "ETSI CAM: 200 to over 700 B depending on environment and security (Car 2 Car Communication Consortium TR 2052 survey); 1-10 Hz (ETSI EN 302 637-2); upper values used",
+      "fail_operational": false
     },
     {
       "id": "CONN_OTA_Manager",
@@ -865,7 +925,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 1000.0,
-      "msg_source": "background download about 10 Mbit/s (estimate)"
+      "msg_source": "background download about 10 Mbit/s (estimate)",
+      "fail_operational": false
     },
     {
       "id": "INFO_Media_Player",
@@ -883,7 +944,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 141.12,
-      "msg_source": "CD-quality audio 1.4112 Mbit/s (IEC 60908)"
+      "msg_source": "CD-quality audio 1.4112 Mbit/s (IEC 60908)",
+      "fail_operational": false
     },
     {
       "id": "INFO_Navigation_UI",
@@ -902,7 +964,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 80.0,
-      "msg_source": "route and map display data, about 10 kB (estimate)"
+      "msg_source": "route and map display data, about 10 kB (estimate)",
+      "fail_operational": false
     },
     {
       "id": "INFO_Dashboard_Display",
@@ -919,7 +982,8 @@
       ],
       "rate_hz": 10.0,
       "msg_kbit": 0.064,
-      "msg_source": "one 8-byte signal frame per 100 ms (estimate)"
+      "msg_source": "one 8-byte signal frame per 100 ms (estimate)",
+      "fail_operational": false
     },
     {
       "id": "SC_15_Driver_ACT_Steering",
@@ -933,7 +997,8 @@
       "receives_from": [
         "DT_Steering_Assist_Controller"
       ],
-      "rate_hz": 100.0
+      "rate_hz": 100.0,
+      "fail_operational": true
     },
     {
       "id": "SC_16_Driver_ACT_Motor_Front",
@@ -947,7 +1012,8 @@
       "receives_from": [
         "DT_Torque_Distributor"
       ],
-      "rate_hz": 100.0
+      "rate_hz": 100.0,
+      "fail_operational": true
     },
     {
       "id": "SC_17_Driver_ACT_Brake_Front",
@@ -961,7 +1027,8 @@
       "receives_from": [
         "DT_Brake_Blend_Controller"
       ],
-      "rate_hz": 100.0
+      "rate_hz": 100.0,
+      "fail_operational": true
     },
     {
       "id": "SC_18_Driver_ACT_Brake_Rear",
@@ -975,7 +1042,8 @@
       "receives_from": [
         "DT_Brake_Blend_Controller"
       ],
-      "rate_hz": 100.0
+      "rate_hz": 100.0,
+      "fail_operational": true
     },
     {
       "id": "SC_19_Driver_ACT_HVAC_Cabin",
@@ -989,7 +1057,8 @@
       "receives_from": [
         "BC_Climate_Control"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "fail_operational": false
     },
     {
       "id": "SC_20_Driver_ACT_Light_Front",
@@ -1003,7 +1072,8 @@
       "receives_from": [
         "BC_Lighting_Manager"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "fail_operational": false
     },
     {
       "id": "SC_21_Driver_ACT_Light_Rear",
@@ -1017,7 +1087,9 @@
       "receives_from": [
         "BC_Lighting_Manager"
       ],
-      "rate_hz": 10.0
+      "rate_hz": 10.0,
+      "fail_operational": false
     }
-  ]
+  ],
+  "_fail_operational_source": "fail_operational: function needs to keep working after a single failure because no safe state can be reached by switching it off (ISO 26262:2018 emergency operation; for SAE level 3+: driving-task chain, steering, braking, propulsion, compute and communication, Safety First for Automated Driving 2019); monitors, map loaders, route planning, traffic-light recognition, lighting and comfort functions are not needed for the minimal-risk manoeuvre"
 }

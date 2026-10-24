@@ -73,6 +73,8 @@ class SoftwareComponent:
     redundant_with: str = None  # ID of redundant SC pair
     rate_hz: float = 10.0       # output message rate; message size (kbit) = link volume (Mbit/s) * 1000 / rate_hz
     msg_kbit: float = None      # size of one output message (kbit); None = default link volume or the device stream
+    tops_req: float = 0.0       # accelerator demand (TOPS, rated-equivalent) of a component that needs a TOPS feature (HW_ACC)
+    fail_operational: bool = None  # must keep working after a single failure (standby); None = ASIL rule of uncertainty.json
 
     def __post_init__(self):
         if self.interface_required is None:
