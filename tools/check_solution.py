@@ -583,7 +583,7 @@ class SolutionCheck:
                 self.err('bus_capacity', f"{bid}: device load {load} > {self.bus_umax} x {self.ct[n]['cap']}")
             st = self.steiner(list(b['units']) + list(b['devices']))
             self.checked['bus_length'] += 1
-            if float(b['length_m']) < st - 1e-6:
+            if not _le(st, float(b['length_m'])):   # within the solver's tolerances (binary members at 1 - IntFeasTol)
                 self.err('bus_length', f"{bid}: cable {float(b['length_m']):.3f} m shorter than the Steiner tree of its members {st:.3f} m")
             elif float(b['length_m']) > st + 1e-4:
                 self.warn('bus_length', f"{bid}: cable {float(b['length_m']):.3f} m longer than needed ({st:.3f} m)")

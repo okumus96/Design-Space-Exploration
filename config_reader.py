@@ -121,6 +121,11 @@ class ConfigReader:
         """Get parameters of the uncertainty-aware constraints"""
         return self.uncertainty_config
 
+    def get_solver_config(self):
+        """Default Gurobi parameters (configs/solver.json; missing file = Gurobi defaults)"""
+        p = os.path.join(self.config_dir, 'solver.json')
+        return self._load_json('solver.json') if os.path.exists(p) else {}
+
     def get_hardware_capacities(self):
         """Hardware features with a capacity (hardwares.json: tops, max_units_per_site), e.g. the AI accelerator"""
         return {h: {'tops': float(spec['tops']), 'max_units': int(spec.get('max_units_per_site', 1))}

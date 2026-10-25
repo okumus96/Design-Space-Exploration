@@ -107,6 +107,8 @@ def main(args):
 
     os.makedirs(args.output_dir, exist_ok=True)
     config_reader = ConfigReader(args.config_dir)
+    # Gurobi parameters: --gurobi_params, else the default of configs/solver.json
+    gurobi_params = args.gurobi_params if args.gurobi_params else config_reader.get_solver_config().get('gurobi_params')
     partitions = config_reader.get_partitions()
     partitions['hw_capacity'] = config_reader.get_hardware_capacities()   # accelerator TOPS per unit (hardwares.json)
 
@@ -147,7 +149,7 @@ def main(args):
         interfaces=interfaces,
         backbone=config_reader.get_backbone_config(),
         phase2_time=args.phase2_time,
-        gurobi_params=args.gurobi_params,
+        gurobi_params=gurobi_params,
         chains=config_reader.get_chains(),
         num_points=args.num_points,
         solve_time_limit=args.time_limit,

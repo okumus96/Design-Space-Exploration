@@ -397,6 +397,10 @@ class AssignmentOptimizer:
                'site_ids': [loc.id for loc in locations],
                'hop_ms': {n: float(getattr((cable_types or {}).get(n), 'hop_latency_ms', 0.0)) for n in bb_ifaces},
                'path_link_cut': bool((backbone or {}).get('path_link_cut', False)),
+               # speed options (configs/buses.json backbone; 2026-10-24): the path requirement of every flow and cell pair
+               # in the model from the start, and per-cell cut-set capacity inequalities (both valid, the model stays exact)
+               'upfront_paths': bool((backbone or {}).get('upfront_paths', False)),
+               'cell_cut_capacity': bool((backbone or {}).get('cell_cut_capacity', False)),
                # a bus line may be loaded up to this share of its bit rate (the queue bound of the latency assumes
                # a bus that is not saturated; configs/buses.json: backbone.bus_max_utilization)
                'bus_umax': float((backbone or {}).get('bus_max_utilization', 1.0))}
@@ -1058,6 +1062,53 @@ class AssignmentOptimizer:
                     else:
                         model.addConstr(sel[u, v, w_if, p] == 0, name=f"relay_impossible_{locations[u].id}_{locations[v].id}_p{p}")
                     cstats['c10_relay_switch'] += 1
+
+        # C-NET-4 (option upfront_paths): a flow whose ends are at two different cells needs a selected path of one of its
+        # eligible cable types (the callback's path cut, aggregated over the types, added for every flow and cell pair)
+        if net.get('upfront_paths'):
+            cstats.setdefault('c10_upfront_paths', 0)
+            for t, (src, dst) in net['flow_ends'].items():
+                for u, su in src.items():
+                    for v, dv in dst.items():
+                        if u == v:
+                            continue
+                        pair = (min(u, v), max(u, v))
+                        terms = [sel[pair + (w_if, q)] for w_if in net['flow_elig'][t] if pair + (w_if,) in paths
+                                 for q in range(len(paths[pair + (w_if,)]))]
+                        if terms:
+                            model.addConstr(gp.quicksum(terms) >= su + dv - 1, name=f"upp_{cstats['c10_upfront_paths']}")
+                            cstats['c10_upfront_paths'] += 1
+        # C-NET-5 (option cell_cut_capacity): the traffic leaving (entering) a cell fits into the capacity of its cables and
+        # of the bus lines it belongs to, per direction; flows of standby instances (possibly cold) and relayed traffic are
+        # left out, so the inequality is a valid relaxation of the callback's link capacity check
+        if net.get('cell_cut_capacity'):
+            cstats.setdefault('c10_cell_cut', 0)
+            for u in range(n_locs):
+                cap = [net['cap_of'][w_if] * var for (a, b2, w_if), var in comm.items() if u in (a, b2) and net['cap_of'][w_if] < float('inf')]
+                cap += [net['cap_of'][b[0]] * net['bus_umax'] * bus['unit'][b, u] for b in bus['inst'] if (b, u) in bus['unit']
+                        and net['cap_of'].get(b[0], float('inf')) < float('inf')]
+                out_t, in_t = [], []
+                for t, (src, dst) in net['flow_ends'].items():
+                    tr = net['flow_meta'][t]
+                    if tr.get('src_inst', 'x') == 'r' or tr.get('dst_inst', 'x') == 'r':
+                        continue
+                    vol = net['volumes'][t]
+                    if vol <= 0:
+                        continue
+                    if u in src:
+                        o = model.addVar(lb=0.0, ub=1.0, name=f"cut_out_{u}_{len(out_t)}")
+                        model.addConstr(o >= src[u] - dst.get(u, 0), name=f"cut_out_def_{u}_{len(out_t)}")
+                        out_t.append(vol * o)
+                    if u in dst:
+                        i_ = model.addVar(lb=0.0, ub=1.0, name=f"cut_in_{u}_{len(in_t)}")
+                        model.addConstr(i_ >= dst[u] - src.get(u, 0), name=f"cut_in_def_{u}_{len(in_t)}")
+                        in_t.append(vol * i_)
+                if out_t:
+                    model.addConstr(gp.quicksum(out_t) <= gp.quicksum(cap), name=f"cell_cut_out_{locations[u].id}")
+                    cstats['c10_cell_cut'] += 1
+                if in_t:
+                    model.addConstr(gp.quicksum(in_t) <= gp.quicksum(cap), name=f"cell_cut_in_{locations[u].id}")
+                    cstats['c10_cell_cut'] += 1
 
         cstats['total'] = sum(v for k, v in cstats.items() if k != 'total')
         return model, cstats
