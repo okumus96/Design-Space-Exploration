@@ -587,6 +587,56 @@ def main():
     sensors = json.load(open(os.path.join(REPO, 'configs', 'sensors.json')))['sensors']
     aw_comps, aw_flows, aw_chains = build_autoware(args.bench, sensors, rng)
     aw_comps, aw_flows = replicate_sensor_chains(aw_comps, aw_flows, sensors)
+    args_bench = args.bench
+    # one unit per quantity for every component (2026-10-25, user): CPU in DMIPS, RAM and ROM in kB, accelerator in TOPS;
+    # measured Autoware RSS (MB) -> ram_kb, measured core share -> DMIPS by the currency rule; Autoware ROM is not measured
+    for c in aw_comps:
+        if c.get('cpu_dmips') is None and c.get('cpu_mean_pct') is not None:
+            c['cpu_dmips'] = round(c['cpu_mean_pct'] / 100.0 * CUR['host_to_target_factor'] * CUR['reference_core_dmips'], 1)
+            c['cpu_dmips_source'] = 'measured host core share x %.2f x %d DMIPS (configs/unit_classes.json cpu_currency)' % (
+                CUR['host_to_target_factor'], CUR['reference_core_dmips'])
+        rss = c.pop('rss_max_mb', None)
+        c['ram_kb'] = round(rss * 1024.0, 1) if rss is not None else None
+        c.setdefault('rom_kb', None)
+        c['memory_source'] = 'ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source'
+    # ROM of the Autoware nodes (2026-10-26, measured in the container): installed size of the node's package (lib + share)
+    # plus the DNN model files it loads (autoware_data/ml_models); a package or model used by several nodes (replicated
+    # sensor chains) is split among them, so the sum equals the installed size; ROS 2 and the shared Autoware libraries
+    # are platform ROM of a unit, not of a node (ros_platform = 0 here)
+    rb = json.load(open(os.path.join(args_bench, 'rom_by_node.json')))
+    users_pkg, users_model = defaultdict(int), defaultdict(int)
+    for c in aw_comps:
+        e = rb['nodes'].get(c['id'][3:])
+        if e:
+            users_pkg[e['package']] += 1
+            for mdl in e.get('models', []):
+                users_model[mdl] += 1
+    vals = []
+    for c in aw_comps:
+        e = rb['nodes'].get(c['id'][3:])
+        if not e:
+            continue
+        rom = e['package_kb'] / users_pkg[e['package']] + sum(rb['models_kb'][m] / users_model[m] for m in e.get('models', []))
+        c['rom_kb'] = round(rom, 1)
+        c['rom_source'] = (f"installed package {e['package']} ({e['package_kb']} kB) / {users_pkg[e['package']]} node(s)"
+                           + (f" + model files {', '.join(e['models'])}" if e.get('models') else '') + f"; node -> package: {e['mapped']}")
+        vals.append(c['rom_kb'])
+    med = statistics.median(vals) if vals else None
+    for c in aw_comps:
+        if c.get('rom_kb') is None and med is not None:
+            c['rom_kb'] = round(med, 1)
+            c['rom_source'] = 'estimate: package not found in the installation; median ROM of the mapped nodes'
+    # nodes the process sampling missed (only /sensing/imu/gyro_bias_scale_validator): the values of a measured node of
+    # the same namespace (sibling of the same chain, e.g. imu_corrector), marked as an estimate
+    by_id = {c['id']: c for c in aw_comps}
+    for c in aw_comps:
+        if c.get('cpu_dmips') is None and c.get('ram_kb') is None:
+            ns = c['id'].rsplit('/', 1)[0]
+            sib = next((o for o in aw_comps if o is not c and o['id'].rsplit('/', 1)[0] == ns and o.get('cpu_dmips') is not None), None)
+            if sib:
+                for k in ('cpu_mean_pct', 'cpu_dmips', 'ram_kb'):
+                    c[k] = sib.get(k)
+                c['estimate'] = f"not measured; CPU / RAM of the sibling node {sib['id'][3:]} (same namespace)"
     comps, flows, chains = generate_non_ad(catalogue, args.scale, rng, sensors)
     chains = aw_chains + chains
     cross_domain_links(comps + aw_comps, flows)

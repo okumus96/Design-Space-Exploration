@@ -1,5 +1,22 @@
 {
   "_comment": "Default Gurobi parameters of every solve (main.py --gurobi_params overrides them). NoRelHeurTime=120: the no-relaxation heuristic searches integer designs for the first 120 s before branch and bound (2026-10-25).",
   "gurobi_params": "NoRelHeurTime=120",
-  "_source": "Speed benchmark 2026-10-24 (tools/speed_bench.py, 3,600 s, 32 cores): 10 cells rho 1 gap 20.3 % -> 1.63 % after 1 h, first design 499 s -> 293 s; 10 cells rho 0.2 proven 349 s -> 657 s (same optimum); lite rho 1 gap 0.48 % -> 0.76 %."
+  "_source": "Speed benchmark 2026-10-24 (tools/speed_bench.py, 3,600 s, 32 cores): 10 cells rho 1 gap 20.3 % -> 1.63 % after 1 h, first design 499 s -> 293 s; 10 cells rho 0.2 proven 349 s -> 657 s (same optimum); lite rho 1 gap 0.48 % -> 0.76 %.",
+  "lns": {
+    "enabled": false,
+    "time_share": 0.5,
+    "iter_s": 120,
+    "free_share": 0.3,
+    "stop_gap": 0.01,
+    "seed": 1,
+    "_comment": "Fix-and-optimize improvement after phase 1 (2026-10-26): phase 1 gets (1 - time_share) of the time limit; then, until the time is used or the gap to the phase-1 bound is <= stop_gap, the placement of a random (1 - free_share) share of the components is fixed to the incumbent and the exact model is re-solved for iter_s seconds; improvements replace the incumbent. Random neighbourhoods only (no structural preference); every design is a feasible design of the full model (lazy constraints active). Not used by the epsilon-constraint Pareto run."
+  },
+  "portfolio": {
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "_comment": "Seed portfolio of the robustness sweep (tools/portfolio.py): one job per rho level and seed, the cheapest checked design per level is kept. Benchmark 2026-10-26 (10 cells, rho 1, 1 h): seeds 3 / 1 / 2 reached gaps 0.6 / 1.5 / 20 %; best of three meets the 1 % target."
+  }
 }

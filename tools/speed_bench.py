@@ -26,6 +26,7 @@ TIME_LIMIT = 3600
 INSTANCES = [
     ('c10_rho1', 'configs/full_architecture_v2.json', 10, 1.0),
     ('c10_rho02', 'configs/full_architecture_v2.json', 10, 0.2),
+    ('c10_rho06', 'configs/full_architecture_v2.json', 10, 0.6),   # hardest point of the sweep (gap 10 % after 1 h)
     ('lite_rho1', 'configs/full_architecture_v2_lite.json', 4, 1.0),
 ]
 MARKS = (900, 1800, 3600)
@@ -35,7 +36,9 @@ def snapshot(tag):
     code = os.path.join(OUT, tag, 'code')
     shutil.rmtree(code, ignore_errors=True)
     os.makedirs(code)
-    files = subprocess.run(['git', 'ls-files'], cwd=REPO, capture_output=True, text=True, check=True).stdout.split('\n')
+    # tracked files plus new, not ignored ones (a new module such as benders.py must travel with the snapshot)
+    files = subprocess.run(['git', 'ls-files', '--cached', '--others', '--exclude-standard'], cwd=REPO,
+                           capture_output=True, text=True, check=True).stdout.split('\n')
     for f in filter(None, files):
         src = os.path.join(REPO, f)
         if os.path.isfile(src):

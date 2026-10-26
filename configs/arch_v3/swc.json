@@ -40,12 +40,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.47,
-   "rss_max_mb": 5.8,
    "cpu_run": null,
    "cpu_dmips": 147.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/adapi/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 5939.2,
+   "rom_kb": 176.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_default_adapi (3008 kB) / 17 node(s); node -> package: by name"
   },
   {
    "id": "AW:/adapi/node/diagnostics",
@@ -60,12 +63,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.47,
-   "rss_max_mb": 5.8,
    "cpu_run": null,
    "cpu_dmips": 147.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/adapi/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 5939.2,
+   "rom_kb": 176.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_default_adapi (3008 kB) / 17 node(s); node -> package: by name"
   },
   {
    "id": "AW:/adapi/node/fail_safe",
@@ -80,12 +86,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.47,
-   "rss_max_mb": 5.8,
    "cpu_run": null,
    "cpu_dmips": 147.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/adapi/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 5939.2,
+   "rom_kb": 176.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_default_adapi (3008 kB) / 17 node(s); node -> package: by name"
   },
   {
    "id": "AW:/adapi/node/heartbeat",
@@ -100,12 +109,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.47,
-   "rss_max_mb": 5.8,
    "cpu_run": null,
    "cpu_dmips": 147.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/adapi/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 5939.2,
+   "rom_kb": 176.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_default_adapi (3008 kB) / 17 node(s); node -> package: by name"
   },
   {
    "id": "AW:/adapi/node/localization",
@@ -120,12 +132,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.47,
-   "rss_max_mb": 5.8,
    "cpu_run": null,
    "cpu_dmips": 147.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/adapi/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 5939.2,
+   "rom_kb": 176.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_default_adapi (3008 kB) / 17 node(s); node -> package: by name"
   },
   {
    "id": "AW:/adapi/node/manual/local",
@@ -140,12 +155,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.47,
-   "rss_max_mb": 5.8,
    "cpu_run": null,
    "cpu_dmips": 147.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/adapi/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 5939.2,
+   "rom_kb": 176.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_default_adapi (3008 kB) / 17 node(s); node -> package: by name"
   },
   {
    "id": "AW:/adapi/node/manual/remote",
@@ -160,12 +178,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.47,
-   "rss_max_mb": 5.8,
    "cpu_run": null,
    "cpu_dmips": 147.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/adapi/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 5939.2,
+   "rom_kb": 176.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_default_adapi (3008 kB) / 17 node(s); node -> package: by name"
   },
   {
    "id": "AW:/adapi/node/motion",
@@ -180,12 +201,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.47,
-   "rss_max_mb": 5.8,
    "cpu_run": null,
    "cpu_dmips": 147.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/adapi/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 5939.2,
+   "rom_kb": 176.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_default_adapi (3008 kB) / 17 node(s); node -> package: by name"
   },
   {
    "id": "AW:/adapi/node/mrm_request",
@@ -200,12 +224,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.47,
-   "rss_max_mb": 5.8,
    "cpu_run": null,
    "cpu_dmips": 147.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/adapi/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 5939.2,
+   "rom_kb": 176.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_default_adapi (3008 kB) / 17 node(s); node -> package: by name"
   },
   {
    "id": "AW:/adapi/node/operation_mode",
@@ -220,12 +247,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.47,
-   "rss_max_mb": 5.8,
    "cpu_run": null,
    "cpu_dmips": 147.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/adapi/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 5939.2,
+   "rom_kb": 176.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_default_adapi (3008 kB) / 17 node(s); node -> package: by name"
   },
   {
    "id": "AW:/adapi/node/perception",
@@ -240,12 +270,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.47,
-   "rss_max_mb": 5.8,
    "cpu_run": null,
    "cpu_dmips": 147.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/adapi/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 5939.2,
+   "rom_kb": 176.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_default_adapi (3008 kB) / 17 node(s); node -> package: by name"
   },
   {
    "id": "AW:/adapi/node/planning",
@@ -260,12 +293,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.47,
-   "rss_max_mb": 5.8,
    "cpu_run": null,
    "cpu_dmips": 147.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/adapi/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 5939.2,
+   "rom_kb": 176.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_default_adapi (3008 kB) / 17 node(s); node -> package: by name"
   },
   {
    "id": "AW:/adapi/node/routing",
@@ -280,12 +316,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.47,
-   "rss_max_mb": 5.8,
    "cpu_run": null,
    "cpu_dmips": 147.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/adapi/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 5939.2,
+   "rom_kb": 176.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_default_adapi (3008 kB) / 17 node(s); node -> package: by name"
   },
   {
    "id": "AW:/adapi/node/vehicle_command",
@@ -300,12 +339,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.47,
-   "rss_max_mb": 5.8,
    "cpu_run": null,
    "cpu_dmips": 147.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/adapi/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 5939.2,
+   "rom_kb": 176.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_default_adapi (3008 kB) / 17 node(s); node -> package: by name"
   },
   {
    "id": "AW:/adapi/node/vehicle_door",
@@ -320,12 +362,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.47,
-   "rss_max_mb": 5.8,
    "cpu_run": null,
    "cpu_dmips": 147.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/adapi/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 5939.2,
+   "rom_kb": 176.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_default_adapi (3008 kB) / 17 node(s); node -> package: by name"
   },
   {
    "id": "AW:/adapi/node/vehicle_metrics",
@@ -340,12 +385,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.47,
-   "rss_max_mb": 5.8,
    "cpu_run": null,
    "cpu_dmips": 147.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/adapi/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 5939.2,
+   "rom_kb": 176.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_default_adapi (3008 kB) / 17 node(s); node -> package: by name"
   },
   {
    "id": "AW:/adapi/node/vehicle_status",
@@ -360,12 +408,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.47,
-   "rss_max_mb": 5.8,
    "cpu_run": null,
    "cpu_dmips": 147.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/adapi/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 5939.2,
+   "rom_kb": 176.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_default_adapi (3008 kB) / 17 node(s); node -> package: by name"
   },
   {
    "id": "AW:/control/autonomous_emergency_braking",
@@ -380,12 +431,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 2.49,
-   "rss_max_mb": 74.5,
    "cpu_run": "out_psim",
    "cpu_dmips": 780.9,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 76288.0,
+   "rom_kb": 3314.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_autonomous_emergency_braking (3314 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/control/autoware_operation_mode_transition_manager",
@@ -400,12 +454,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 6.13,
-   "rss_max_mb": 113.0,
    "cpu_run": null,
    "cpu_dmips": 1922.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/control/control_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 115712.0,
+   "rom_kb": 4260.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_operation_mode_transition_manager (4260 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/control/autoware_shift_decider",
@@ -420,12 +477,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.7,
-   "rss_max_mb": 30.2,
    "cpu_run": "out_psim",
    "cpu_dmips": 533.1,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 30924.8,
+   "rom_kb": 1392.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_shift_decider (1392 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/control/collision_detector",
@@ -440,12 +500,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 2.13,
-   "rss_max_mb": 37.7,
    "cpu_run": "out_psim",
    "cpu_dmips": 668.0,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 38604.8,
+   "rom_kb": 2304.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_collision_detector (2304 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/control/control_evaluator",
@@ -466,12 +529,15 @@
    },
    "processing_time_source": "measured: rosbag replay with perception (run 7 if recorded, else run 6)",
    "cpu_mean_pct": 2.64,
-   "rss_max_mb": 51.4,
    "cpu_run": "out_psim",
    "cpu_dmips": 827.9,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 52633.6,
+   "rom_kb": 3804.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_control_evaluator (3804 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/control/control_validator",
@@ -492,12 +558,15 @@
    },
    "processing_time_source": "measured: planning simulator with a route, driving window (job 1073)",
    "cpu_mean_pct": 2.55,
-   "rss_max_mb": 36.9,
    "cpu_run": "out_psim",
    "cpu_dmips": 799.7,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 37785.6,
+   "rom_kb": 2785.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_control_validator (2785 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/control/external_cmd_converter",
@@ -512,12 +581,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.78,
-   "rss_max_mb": 34.3,
    "cpu_run": "out_psim",
    "cpu_dmips": 558.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 35123.2,
+   "rom_kb": 2305.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_external_cmd_converter (2305 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/control/external_cmd_selector",
@@ -532,12 +604,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.63,
-   "rss_max_mb": 34.6,
    "cpu_run": "out_psim",
    "cpu_dmips": 511.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 35430.4,
+   "rom_kb": 2475.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_external_cmd_selector (2475 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/control/trajectory_follower/controller_node_exe",
@@ -558,12 +633,15 @@
    },
    "processing_time_source": "measured: planning simulator with a route, driving window (job 1073)",
    "cpu_mean_pct": 6.13,
-   "rss_max_mb": 113.0,
    "cpu_run": null,
    "cpu_dmips": 1922.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/control/control_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 115712.0,
+   "rom_kb": 3727.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_trajectory_follower_node (3727 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/control/trajectory_follower/lane_departure_checker_node",
@@ -584,12 +662,15 @@
    },
    "processing_time_source": "measured: planning simulator with a route, driving window (job 1073)",
    "cpu_mean_pct": 2.24,
-   "rss_max_mb": 50.8,
    "cpu_run": "out_psim",
    "cpu_dmips": 702.5,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 52019.2,
+   "rom_kb": 2624.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_lane_departure_checker (2624 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/control/vehicle_cmd_gate",
@@ -610,12 +691,15 @@
    },
    "processing_time_source": "measured: rosbag replay with perception (run 7 if recorded, else run 6)",
    "cpu_mean_pct": 6.13,
-   "rss_max_mb": 113.0,
    "cpu_run": null,
    "cpu_dmips": 1922.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/control/control_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 115712.0,
+   "rom_kb": 5577.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_vehicle_cmd_gate (5577 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/default_adapi/helpers/autoware_initial_pose_adaptor",
@@ -630,12 +714,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.47,
-   "rss_max_mb": 49.5,
    "cpu_run": "out2_prev",
    "cpu_dmips": 461.0,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 50688.0,
+   "rom_kb": 791.5,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_adapi_adaptors (1583 kB) / 2 node(s); node -> package: by name"
   },
   {
    "id": "AW:/default_adapi/helpers/autoware_routing_adaptor",
@@ -650,12 +737,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.99,
-   "rss_max_mb": 39.3,
    "cpu_run": "out2_prev",
    "cpu_dmips": 310.5,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 40243.2,
+   "rom_kb": 791.5,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_adapi_adaptors (1583 kB) / 2 node(s); node -> package: by name"
   },
   {
    "id": "AW:/localization/localization_error_monitor",
@@ -670,12 +760,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 2.0,
-   "rss_max_mb": 37.3,
    "cpu_run": "out2_prev",
    "cpu_dmips": 627.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 38195.2,
+   "rom_kb": 875.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_localization_error_monitor (875 kB) / 1 node(s); node -> package: by name"
   },
   {
    "id": "AW:/localization/pose_estimator/ndt_scan_matcher",
@@ -690,12 +783,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 15.77,
-   "rss_max_mb": 111.3,
    "cpu_run": "out2_prev",
    "cpu_dmips": 4945.5,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 113971.2,
+   "rom_kb": 2675.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_ndt_scan_matcher (2675 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/localization/pose_twist_fusion_filter/ekf_localizer",
@@ -716,12 +812,15 @@
    },
    "processing_time_source": "measured: rosbag replay with perception (run 7 if recorded, else run 6)",
    "cpu_mean_pct": 3.21,
-   "rss_max_mb": 42.1,
    "cpu_run": "out2_prev",
    "cpu_dmips": 1006.7,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 43110.4,
+   "rom_kb": 2130.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_ekf_localizer (2130 kB) / 1 node(s); node -> package: by name"
   },
   {
    "id": "AW:/localization/pose_twist_fusion_filter/pose_instability_detector",
@@ -736,12 +835,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.98,
-   "rss_max_mb": 36.1,
    "cpu_run": "out2_prev",
    "cpu_dmips": 620.9,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 36966.4,
+   "rom_kb": 1148.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pose_instability_detector (1148 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/localization/pose_twist_fusion_filter/stop_filter",
@@ -756,12 +858,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 2.48,
-   "rss_max_mb": 34.5,
    "cpu_run": "out2_prev",
    "cpu_dmips": 777.7,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 35328.0,
+   "rom_kb": 760.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_stop_filter (760 kB) / 1 node(s); node -> package: by name"
   },
   {
    "id": "AW:/localization/pose_twist_fusion_filter/twist2accel",
@@ -776,12 +881,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 2.19,
-   "rss_max_mb": 34.8,
    "cpu_run": "out2_prev",
    "cpu_dmips": 686.8,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 35635.2,
+   "rom_kb": 1022.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_twist2accel (1022 kB) / 1 node(s); node -> package: by name"
   },
   {
    "id": "AW:/localization/twist_estimator/gyro_odometer",
@@ -796,12 +904,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 2.39,
-   "rss_max_mb": 39.4,
    "cpu_run": "out2_prev",
    "cpu_dmips": 749.5,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 40345.6,
+   "rom_kb": 1327.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_gyro_odometer (1327 kB) / 1 node(s); node -> package: by name"
   },
   {
    "id": "AW:/localization/util/crop_box_filter_measurement_range",
@@ -816,12 +927,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.56,
-   "rss_max_mb": 731.6,
    "cpu_run": null,
    "cpu_dmips": 1116.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 749158.4,
+   "rom_kb": 513.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pointcloud_preprocessor (9760 kB) / 19 node(s); node -> package: logs"
   },
   {
    "id": "AW:/localization/util/pose_initialization_requester",
@@ -836,12 +950,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 2.08,
-   "rss_max_mb": 48.5,
    "cpu_run": "out2_prev",
    "cpu_dmips": 652.3,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 49664.0,
+   "rom_kb": 714.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pose_initialization_requester (714 kB) / 1 node(s); node -> package: by name"
   },
   {
    "id": "AW:/localization/util/pose_initializer",
@@ -856,12 +973,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 2.25,
-   "rss_max_mb": 66.4,
    "cpu_run": "out2_prev",
    "cpu_dmips": 705.6,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 67993.6,
+   "rom_kb": 1571.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pose_initializer (1571 kB) / 1 node(s); node -> package: by name"
   },
   {
    "id": "AW:/localization/util/random_downsample_filter",
@@ -876,12 +996,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.56,
-   "rss_max_mb": 731.6,
    "cpu_run": null,
    "cpu_dmips": 1116.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 749158.4,
+   "rom_kb": 361.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_downsample_filters (1085 kB) / 3 node(s); node -> package: rule"
   },
   {
    "id": "AW:/localization/util/voxel_grid_downsample_filter",
@@ -896,12 +1019,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.56,
-   "rss_max_mb": 731.6,
    "cpu_run": null,
    "cpu_dmips": 1116.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 749158.4,
+   "rom_kb": 361.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_downsample_filters (1085 kB) / 3 node(s); node -> package: rule"
   },
   {
    "id": "AW:/map/lanelet2_map_loader",
@@ -916,12 +1042,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.69,
-   "rss_max_mb": 44.3,
    "cpu_run": "out2_prev",
    "cpu_dmips": 530.0,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 45363.2,
+   "rom_kb": 571.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_map_loader (1715 kB) / 3 node(s); node -> package: logs"
   },
   {
    "id": "AW:/map/lanelet2_map_visualization",
@@ -936,12 +1065,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.64,
-   "rss_max_mb": 44.6,
    "cpu_run": "out2_prev",
    "cpu_dmips": 514.3,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 45670.4,
+   "rom_kb": 767.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_lanelet2_map_visualizer (767 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/map/map_hash_generator",
@@ -956,12 +1088,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.5,
-   "rss_max_mb": 77.5,
    "cpu_run": "out2_prev",
    "cpu_dmips": 1097.6,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 79360.0,
+   "rom_kb": 571.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_map_loader (1715 kB) / 3 node(s); node -> package: logs"
   },
   {
    "id": "AW:/map/map_projection_loader",
@@ -976,12 +1111,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.95,
-   "rss_max_mb": 34.2,
    "cpu_run": "out2_prev",
    "cpu_dmips": 297.9,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 35020.8,
+   "rom_kb": 355.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_map_projection_loader (355 kB) / 1 node(s); node -> package: by name"
   },
   {
    "id": "AW:/map/pointcloud_map_loader",
@@ -996,12 +1134,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.71,
-   "rss_max_mb": 84.8,
    "cpu_run": "out2_prev",
    "cpu_dmips": 536.3,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 86835.2,
+   "rom_kb": 571.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_map_loader (1715 kB) / 3 node(s); node -> package: logs"
   },
   {
    "id": "AW:/map/vector_map_tf_generator",
@@ -1016,12 +1157,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.64,
-   "rss_max_mb": 43.1,
    "cpu_run": "out2_prev",
    "cpu_dmips": 514.3,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 44134.4,
+   "rom_kb": 1418.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_map_tf_generator (1418 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/perception/object_recognition/detection/centerpoint/lidar_centerpoint",
@@ -1038,12 +1182,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.56,
-   "rss_max_mb": 731.6,
    "cpu_run": null,
    "cpu_dmips": 1116.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 749158.4,
+   "rom_kb": 88274.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_lidar_centerpoint (4830 kB) / 1 node(s) + model files lidar_centerpoint; node -> package: logs"
   },
   {
    "id": "AW:/perception/object_recognition/detection/clustering/detected_object_feature_remover",
@@ -1058,12 +1205,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 2.88,
-   "rss_max_mb": 44.9,
    "cpu_run": "out2_prev",
    "cpu_dmips": 903.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 45977.6,
+   "rom_kb": 819.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_detected_object_feature_remover (819 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/perception/object_recognition/detection/clustering/euclidean_cluster",
@@ -1078,12 +1228,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.56,
-   "rss_max_mb": 731.6,
    "cpu_run": null,
    "cpu_dmips": 1116.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 749158.4,
+   "rom_kb": 2905.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_euclidean_cluster (2905 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/perception/object_recognition/detection/object_lanelet_filter",
@@ -1098,12 +1251,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 2.07,
-   "rss_max_mb": 49.3,
    "cpu_run": "out2_prev",
    "cpu_dmips": 649.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 50483.2,
+   "rom_kb": 6454.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_detected_object_validation (6454 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/perception/object_recognition/detection/voxel_based_compare_map_filter",
@@ -1118,12 +1274,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.56,
-   "rss_max_mb": 731.6,
    "cpu_run": null,
    "cpu_dmips": 1116.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 749158.4,
+   "rom_kb": 3288.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_compare_map_segmentation (3288 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/perception/object_recognition/detection/voxel_grid_downsample_filter",
@@ -1138,12 +1297,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.56,
-   "rss_max_mb": 731.6,
    "cpu_run": null,
    "cpu_dmips": 1116.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 749158.4,
+   "rom_kb": 361.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_downsample_filters (1085 kB) / 3 node(s); node -> package: rule"
   },
   {
    "id": "AW:/perception/object_recognition/prediction/map_based_prediction",
@@ -1164,12 +1326,15 @@
    },
    "processing_time_source": "measured: rosbag replay with perception (run 7 if recorded, else run 6)",
    "cpu_mean_pct": 2.03,
-   "rss_max_mb": 49.0,
    "cpu_run": "out2_prev",
    "cpu_dmips": 636.6,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 50176.0,
+   "rom_kb": 2963.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_map_based_prediction (2963 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/perception/object_recognition/tracking/multi_object_tracker",
@@ -1190,12 +1355,15 @@
    },
    "processing_time_source": "measured: planning simulator with a route, driving window (job 1073)",
    "cpu_mean_pct": 2.15,
-   "rss_max_mb": 40.9,
    "cpu_run": "out2_prev",
    "cpu_dmips": 674.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 41881.6,
+   "rom_kb": 2932.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_multi_object_tracker (2932 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/perception/obstacle_segmentation/common_ground_filter",
@@ -1210,12 +1378,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.56,
-   "rss_max_mb": 731.6,
    "cpu_run": null,
    "cpu_dmips": 1116.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 749158.4,
+   "rom_kb": 3869.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_ground_segmentation (3869 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/perception/obstacle_segmentation/crop_box_filter",
@@ -1230,12 +1401,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.56,
-   "rss_max_mb": 731.6,
    "cpu_run": null,
    "cpu_dmips": 1116.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 749158.4,
+   "rom_kb": 513.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pointcloud_preprocessor (9760 kB) / 19 node(s); node -> package: logs"
   },
   {
    "id": "AW:/perception/occupancy_grid_map/occupancy_grid_map_node",
@@ -1250,12 +1424,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.56,
-   "rss_max_mb": 731.6,
    "cpu_run": null,
    "cpu_dmips": 1116.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 749158.4,
+   "rom_kb": 5989.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_probabilistic_occupancy_grid_map (5989 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera6/classification/traffic_light_occlusion_predictor",
@@ -1270,12 +1447,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.18,
-   "rss_max_mb": 73.2,
    "cpu_run": "out2_prev",
    "cpu_dmips": 997.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 74956.8,
+   "rom_kb": 257.8,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_occlusion_predictor (2062 kB) / 8 node(s); node -> package: logs"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera6/detection/traffic_light_map_based_detector",
@@ -1290,12 +1470,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.52,
-   "rss_max_mb": 47.1,
    "cpu_run": "out2_prev",
    "cpu_dmips": 476.7,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 48230.4,
+   "rom_kb": 212.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_map_based_detector (1696 kB) / 8 node(s); node -> package: logs"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera7/classification/traffic_light_occlusion_predictor",
@@ -1310,12 +1493,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 2.83,
-   "rss_max_mb": 75.4,
    "cpu_run": "out2_prev",
    "cpu_dmips": 887.5,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 77209.6,
+   "rom_kb": 257.8,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_occlusion_predictor (2062 kB) / 8 node(s); node -> package: logs"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera7/detection/traffic_light_map_based_detector",
@@ -1330,12 +1516,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.52,
-   "rss_max_mb": 47.0,
    "cpu_run": "out2_prev",
    "cpu_dmips": 476.7,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 48128.0,
+   "rom_kb": 212.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_map_based_detector (1696 kB) / 8 node(s); node -> package: logs"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/crosswalk_traffic_light_estimator",
@@ -1350,12 +1539,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.01,
-   "rss_max_mb": 39.0,
    "cpu_run": "out2_prev",
    "cpu_dmips": 316.7,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 39936.0,
+   "rom_kb": 1341.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_crosswalk_traffic_light_estimator (1341 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/traffic_light_arbiter",
@@ -1370,12 +1562,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.98,
-   "rss_max_mb": 37.0,
    "cpu_run": "out2_prev",
    "cpu_dmips": 307.3,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 37888.0,
+   "rom_kb": 1091.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_arbiter (1091 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/traffic_light_map_visualizer",
@@ -1390,12 +1585,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.97,
-   "rss_max_mb": 37.8,
    "cpu_run": "out2_prev",
    "cpu_dmips": 304.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 38707.2,
+   "rom_kb": 2718.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_visualization (2718 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/traffic_light_multi_camera_fusion",
@@ -1410,12 +1608,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.15,
-   "rss_max_mb": 40.0,
    "cpu_run": "out2_prev",
    "cpu_dmips": 360.6,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 40960.0,
+   "rom_kb": 2167.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_multi_camera_fusion (2167 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/perception_analytics_publisher",
@@ -1430,12 +1631,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.38,
-   "rss_max_mb": 33.1,
    "cpu_run": "out2_prev",
    "cpu_dmips": 432.8,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 33894.4,
+   "rom_kb": 513.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "estimate: package not found in the installation; median ROM of the mapped nodes"
   },
   {
    "id": "AW:/planning/mission_planning/goal_pose_visualizer",
@@ -1450,12 +1654,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.45,
-   "rss_max_mb": 32.7,
    "cpu_run": "out_psim",
    "cpu_dmips": 454.7,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 33484.8,
+   "rom_kb": 1589.3,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_mission_planner_universe (4768 kB) / 3 node(s); node -> package: logs"
   },
   {
    "id": "AW:/planning/mission_planning/manual_lane_change_handler",
@@ -1470,12 +1677,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.74,
-   "rss_max_mb": 47.7,
    "cpu_run": "out_psim",
    "cpu_dmips": 545.7,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 48844.8,
+   "rom_kb": 1792.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_manual_lane_change_handler (1792 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/planning/mission_planning/mission_planner",
@@ -1496,12 +1706,15 @@
    },
    "processing_time_source": "measured: rosbag replay with perception (run 7 if recorded, else run 6)",
    "cpu_mean_pct": 2.69,
-   "rss_max_mb": 69.9,
    "cpu_run": "out_psim",
    "cpu_dmips": 843.6,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 71577.6,
+   "rom_kb": 1589.3,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_mission_planner_universe (4768 kB) / 3 node(s); node -> package: logs"
   },
   {
    "id": "AW:/planning/mission_planning/route_selector",
@@ -1522,12 +1735,15 @@
    },
    "processing_time_source": "measured: rosbag replay with perception (run 7 if recorded, else run 6)",
    "cpu_mean_pct": 1.85,
-   "rss_max_mb": 56.1,
    "cpu_run": "out_psim",
    "cpu_dmips": 580.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 57446.4,
+   "rom_kb": 1589.3,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_mission_planner_universe (4768 kB) / 3 node(s); node -> package: logs"
   },
   {
    "id": "AW:/planning/planning_evaluator",
@@ -1548,12 +1764,15 @@
    },
    "processing_time_source": "measured: rosbag replay with perception (run 7 if recorded, else run 6)",
    "cpu_mean_pct": 4.08,
-   "rss_max_mb": 56.2,
    "cpu_run": "out_psim",
    "cpu_dmips": 1279.5,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 57548.8,
+   "rom_kb": 4644.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_planning_evaluator (4644 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/planning/planning_validator",
@@ -1574,12 +1793,15 @@
    },
    "processing_time_source": "measured: planning simulator with a route, driving window (job 1073)",
    "cpu_mean_pct": 4.38,
-   "rss_max_mb": 138.3,
    "cpu_run": "out_psim",
    "cpu_dmips": 1373.6,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 141619.2,
+   "rom_kb": 5140.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_planning_validator (5140 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/planning/remaining_distance_time_calculator",
@@ -1594,12 +1816,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.87,
-   "rss_max_mb": 46.6,
    "cpu_run": "out_psim",
    "cpu_dmips": 586.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 47718.4,
+   "rom_kb": 2069.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_remaining_distance_time_calculator (2069 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/planning/scenario_planning/autoware_hazard_lights_selector",
@@ -1614,12 +1839,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.62,
-   "rss_max_mb": 29.1,
    "cpu_run": "out_psim",
    "cpu_dmips": 508.0,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 29798.4,
+   "rom_kb": 699.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_hazard_lights_selector (699 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/planning/scenario_planning/external_velocity_limit_selector",
@@ -1634,12 +1862,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.48,
-   "rss_max_mb": 34.1,
    "cpu_run": "out_psim",
    "cpu_dmips": 464.1,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 34918.4,
+   "rom_kb": 1138.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_external_velocity_limit_selector (1138 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/planning/scenario_planning/lane_driving/behavior_planning/behavior_path_planner",
@@ -1660,12 +1891,15 @@
    },
    "processing_time_source": "measured: planning simulator with a route, driving window (job 1073)",
    "cpu_mean_pct": 13.9,
-   "rss_max_mb": 269.1,
    "cpu_run": null,
    "cpu_dmips": 4359.0,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/planning/scenario_planning/lane_driving/behavior_planning/behavior_planning_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 275558.4,
+   "rom_kb": 5989.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_behavior_path_planner (5989 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/planning/scenario_planning/lane_driving/behavior_planning/behavior_velocity_planner",
@@ -1686,12 +1920,15 @@
    },
    "processing_time_source": "measured: planning simulator with a route, driving window (job 1073)",
    "cpu_mean_pct": 13.9,
-   "rss_max_mb": 269.1,
    "cpu_run": null,
    "cpu_dmips": 4359.0,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/planning/scenario_planning/lane_driving/behavior_planning/behavior_planning_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 275558.4,
+   "rom_kb": 4969.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_behavior_velocity_planner (4969 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/planning/scenario_planning/lane_driving/motion_planning/elastic_band_smoother",
@@ -1712,12 +1949,15 @@
    },
    "processing_time_source": "measured: planning simulator with a route, driving window (job 1073)",
    "cpu_mean_pct": 5.53,
-   "rss_max_mb": 498.5,
    "cpu_run": null,
    "cpu_dmips": 1734.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/planning/scenario_planning/lane_driving/motion_planning/motion_planning_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 510464.0,
+   "rom_kb": 1512.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_path_smoother (1512 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/planning/scenario_planning/lane_driving/motion_planning/motion_velocity_planner",
@@ -1738,12 +1978,15 @@
    },
    "processing_time_source": "measured: planning simulator with a route, driving window (job 1073)",
    "cpu_mean_pct": 5.53,
-   "rss_max_mb": 498.5,
    "cpu_run": null,
    "cpu_dmips": 1734.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/planning/scenario_planning/lane_driving/motion_planning/motion_planning_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 510464.0,
+   "rom_kb": 4278.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_motion_velocity_planner (4278 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/planning/scenario_planning/lane_driving/motion_planning/path_optimizer",
@@ -1764,12 +2007,15 @@
    },
    "processing_time_source": "measured: planning simulator with a route, driving window (job 1073)",
    "cpu_mean_pct": 5.53,
-   "rss_max_mb": 498.5,
    "cpu_run": null,
    "cpu_dmips": 1734.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/planning/scenario_planning/lane_driving/motion_planning/motion_planning_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 510464.0,
+   "rom_kb": 2292.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_path_optimizer (2292 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/planning/scenario_planning/parking/costmap_generator",
@@ -1790,12 +2036,15 @@
    },
    "processing_time_source": "measured: rosbag replay with perception (run 7 if recorded, else run 6)",
    "cpu_mean_pct": 3.81,
-   "rss_max_mb": 149.1,
    "cpu_run": null,
    "cpu_dmips": 1194.8,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/planning/scenario_planning/parking/parking_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 152678.4,
+   "rom_kb": 2411.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_costmap_generator (2411 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/planning/scenario_planning/parking/freespace_planner",
@@ -1810,12 +2059,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.81,
-   "rss_max_mb": 149.1,
    "cpu_run": null,
    "cpu_dmips": 1194.8,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/planning/scenario_planning/parking/parking_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 152678.4,
+   "rom_kb": 2036.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_freespace_planner (2036 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/planning/scenario_planning/scenario_selector",
@@ -1836,12 +2088,15 @@
    },
    "processing_time_source": "measured: rosbag replay with perception (run 7 if recorded, else run 6)",
    "cpu_mean_pct": 2.11,
-   "rss_max_mb": 51.6,
    "cpu_run": "out_psim",
    "cpu_dmips": 661.7,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 52838.4,
+   "rom_kb": 2495.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_scenario_selector (2495 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/planning/scenario_planning/velocity_smoother",
@@ -1862,12 +2117,15 @@
    },
    "processing_time_source": "measured: planning simulator with a route, driving window (job 1073)",
    "cpu_mean_pct": 4.4,
-   "rss_max_mb": 49.0,
    "cpu_run": "out_psim",
    "cpu_dmips": 1379.8,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 50176.0,
+   "rom_kb": 2991.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_velocity_smoother (2991 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/robot_state_publisher",
@@ -1882,12 +2140,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.71,
-   "rss_max_mb": 38.4,
    "cpu_run": "out2_prev",
    "cpu_dmips": 536.3,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 39321.6,
+   "rom_kb": 0.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package ros_platform (0 kB) / 1 node(s); node -> package: rule"
   },
   {
    "id": "AW:/sensing/gnss/gnss_poser",
@@ -1902,12 +2163,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.85,
-   "rss_max_mb": 43.5,
    "cpu_run": "out2_prev",
    "cpu_dmips": 580.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 44544.0,
+   "rom_kb": 1832.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_gnss_poser (1832 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/sensing/imu/gyro_bias_scale_validator",
@@ -1921,13 +2185,17 @@
    "tops_source": null,
    "processing_time_ms": null,
    "processing_time_source": null,
-   "cpu_mean_pct": null,
-   "rss_max_mb": null,
+   "cpu_mean_pct": 1.37,
    "cpu_run": null,
-   "cpu_dmips": null,
+   "cpu_dmips": 429.6,
    "cpu_dmips_source": null,
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 32972.8,
+   "rom_kb": 1214.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_imu_corrector (2428 kB) / 2 node(s); node -> package: rule",
+   "estimate": "not measured; CPU / RAM of the sibling node /sensing/imu/imu_corrector (same namespace)"
   },
   {
    "id": "AW:/sensing/imu/imu_corrector",
@@ -1942,12 +2210,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.37,
-   "rss_max_mb": 32.2,
    "cpu_run": "out2_prev",
    "cpu_dmips": 429.6,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 32972.8,
+   "rom_kb": 1214.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_imu_corrector (2428 kB) / 2 node(s); node -> package: by name"
   },
   {
    "id": "AW:/sensing/lidar/concatenate_data",
@@ -1962,12 +2233,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.56,
-   "rss_max_mb": 731.6,
    "cpu_run": null,
    "cpu_dmips": 1116.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 749158.4,
+   "rom_kb": 513.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pointcloud_preprocessor (9760 kB) / 19 node(s); node -> package: logs"
   },
   {
    "id": "AW:/sensing/lidar/left/crop_box_filter_mirror",
@@ -1982,12 +2256,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.93,
-   "rss_max_mb": 21.8,
    "cpu_run": null,
    "cpu_dmips": 291.6,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/left/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 22323.2,
+   "rom_kb": 513.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pointcloud_preprocessor (9760 kB) / 19 node(s); node -> package: logs"
   },
   {
    "id": "AW:/sensing/lidar/left/crop_box_filter_self",
@@ -2002,12 +2279,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.93,
-   "rss_max_mb": 21.8,
    "cpu_run": null,
    "cpu_dmips": 291.6,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/left/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 22323.2,
+   "rom_kb": 260.5,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_crop_box_filter (1042 kB) / 4 node(s); node -> package: by name"
   },
   {
    "id": "AW:/sensing/lidar/left/distortion_corrector_node",
@@ -2022,12 +2302,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.93,
-   "rss_max_mb": 21.8,
    "cpu_run": null,
    "cpu_dmips": 291.6,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/left/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 22323.2,
+   "rom_kb": 513.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pointcloud_preprocessor (9760 kB) / 19 node(s); node -> package: rule"
   },
   {
    "id": "AW:/sensing/lidar/left/ring_outlier_filter",
@@ -2042,12 +2325,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.93,
-   "rss_max_mb": 21.8,
    "cpu_run": null,
    "cpu_dmips": 291.6,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/left/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 22323.2,
+   "rom_kb": 513.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pointcloud_preprocessor (9760 kB) / 19 node(s); node -> package: rule"
   },
   {
    "id": "AW:/sensing/lidar/left/velodyne_ros_wrapper_node",
@@ -2062,12 +2348,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.93,
-   "rss_max_mb": 21.8,
    "cpu_run": null,
    "cpu_dmips": 291.6,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/left/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 22323.2,
+   "rom_kb": 216.2,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package nebula_velodyne (1081 kB) / 5 node(s); node -> package: rule"
   },
   {
    "id": "AW:/sensing/lidar/rear/crop_box_filter_mirror",
@@ -2082,12 +2371,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.68,
-   "rss_max_mb": 20.0,
    "cpu_run": null,
    "cpu_dmips": 213.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/rear/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 20480.0,
+   "rom_kb": 513.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pointcloud_preprocessor (9760 kB) / 19 node(s); node -> package: logs"
   },
   {
    "id": "AW:/sensing/lidar/rear/crop_box_filter_self",
@@ -2102,12 +2394,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.68,
-   "rss_max_mb": 20.0,
    "cpu_run": null,
    "cpu_dmips": 213.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/rear/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 20480.0,
+   "rom_kb": 513.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pointcloud_preprocessor (9760 kB) / 19 node(s); node -> package: logs"
   },
   {
    "id": "AW:/sensing/lidar/rear/distortion_corrector_node",
@@ -2122,12 +2417,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.68,
-   "rss_max_mb": 20.0,
    "cpu_run": null,
    "cpu_dmips": 213.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/rear/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 20480.0,
+   "rom_kb": 513.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pointcloud_preprocessor (9760 kB) / 19 node(s); node -> package: rule"
   },
   {
    "id": "AW:/sensing/lidar/rear/ring_outlier_filter",
@@ -2142,12 +2440,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.68,
-   "rss_max_mb": 20.0,
    "cpu_run": null,
    "cpu_dmips": 213.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/rear/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 20480.0,
+   "rom_kb": 513.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pointcloud_preprocessor (9760 kB) / 19 node(s); node -> package: rule"
   },
   {
    "id": "AW:/sensing/lidar/rear/velodyne_ros_wrapper_node",
@@ -2162,12 +2463,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.68,
-   "rss_max_mb": 20.0,
    "cpu_run": null,
    "cpu_dmips": 213.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/rear/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 20480.0,
+   "rom_kb": 216.2,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package nebula_velodyne (1081 kB) / 5 node(s); node -> package: rule"
   },
   {
    "id": "AW:/sensing/lidar/right/crop_box_filter_mirror",
@@ -2182,12 +2486,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.91,
-   "rss_max_mb": 21.8,
    "cpu_run": null,
    "cpu_dmips": 285.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/right/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 22323.2,
+   "rom_kb": 260.5,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_crop_box_filter (1042 kB) / 4 node(s); node -> package: by name"
   },
   {
    "id": "AW:/sensing/lidar/right/crop_box_filter_self",
@@ -2202,12 +2509,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.91,
-   "rss_max_mb": 21.8,
    "cpu_run": null,
    "cpu_dmips": 285.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/right/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 22323.2,
+   "rom_kb": 513.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pointcloud_preprocessor (9760 kB) / 19 node(s); node -> package: logs"
   },
   {
    "id": "AW:/sensing/lidar/right/distortion_corrector_node",
@@ -2222,12 +2532,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.91,
-   "rss_max_mb": 21.8,
    "cpu_run": null,
    "cpu_dmips": 285.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/right/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 22323.2,
+   "rom_kb": 513.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pointcloud_preprocessor (9760 kB) / 19 node(s); node -> package: rule"
   },
   {
    "id": "AW:/sensing/lidar/right/ring_outlier_filter",
@@ -2242,12 +2555,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.91,
-   "rss_max_mb": 21.8,
    "cpu_run": null,
    "cpu_dmips": 285.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/right/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 22323.2,
+   "rom_kb": 513.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pointcloud_preprocessor (9760 kB) / 19 node(s); node -> package: rule"
   },
   {
    "id": "AW:/sensing/lidar/right/velodyne_ros_wrapper_node",
@@ -2262,12 +2578,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.91,
-   "rss_max_mb": 21.8,
    "cpu_run": null,
    "cpu_dmips": 285.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/right/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 22323.2,
+   "rom_kb": 216.2,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package nebula_velodyne (1081 kB) / 5 node(s); node -> package: rule"
   },
   {
    "id": "AW:/sensing/lidar/top/crop_box_filter_mirror",
@@ -2282,12 +2601,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.3,
-   "rss_max_mb": 434.3,
    "cpu_run": null,
    "cpu_dmips": 1034.9,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/top/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 444723.2,
+   "rom_kb": 513.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pointcloud_preprocessor (9760 kB) / 19 node(s); node -> package: logs"
   },
   {
    "id": "AW:/sensing/lidar/top/crop_box_filter_self",
@@ -2302,12 +2624,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.3,
-   "rss_max_mb": 434.3,
    "cpu_run": null,
    "cpu_dmips": 1034.9,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/top/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 444723.2,
+   "rom_kb": 513.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pointcloud_preprocessor (9760 kB) / 19 node(s); node -> package: logs"
   },
   {
    "id": "AW:/sensing/lidar/top/distortion_corrector_node",
@@ -2322,12 +2647,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.3,
-   "rss_max_mb": 434.3,
    "cpu_run": null,
    "cpu_dmips": 1034.9,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/top/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 444723.2,
+   "rom_kb": 513.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pointcloud_preprocessor (9760 kB) / 19 node(s); node -> package: rule"
   },
   {
    "id": "AW:/sensing/lidar/top/ring_outlier_filter",
@@ -2342,12 +2670,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.3,
-   "rss_max_mb": 434.3,
    "cpu_run": null,
    "cpu_dmips": 1034.9,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/top/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 444723.2,
+   "rom_kb": 513.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pointcloud_preprocessor (9760 kB) / 19 node(s); node -> package: rule"
   },
   {
    "id": "AW:/sensing/lidar/top/velodyne_ros_wrapper_node",
@@ -2362,12 +2693,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.3,
-   "rss_max_mb": 434.3,
    "cpu_run": null,
    "cpu_dmips": 1034.9,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/top/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 444723.2,
+   "rom_kb": 216.2,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package nebula_velodyne (1081 kB) / 5 node(s); node -> package: rule"
   },
   {
    "id": "AW:/sensing/vehicle_velocity_converter",
@@ -2382,12 +2716,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.01,
-   "rss_max_mb": 29.1,
    "cpu_run": "out2_prev",
    "cpu_dmips": 316.7,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 29798.4,
+   "rom_kb": 745.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_vehicle_velocity_converter (745 kB) / 1 node(s); node -> package: by name"
   },
   {
    "id": "AW:/system/aggregator",
@@ -2402,12 +2739,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.95,
-   "rss_max_mb": 33.9,
    "cpu_run": "out2_prev",
    "cpu_dmips": 611.5,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 34713.6,
+   "rom_kb": 2558.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_diagnostic_graph_aggregator (2558 kB) / 1 node(s); node -> package: by name"
   },
   {
    "id": "AW:/system/component_state_monitor/component",
@@ -2422,12 +2762,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.33,
-   "rss_max_mb": 35.6,
    "cpu_run": "out2_prev",
    "cpu_dmips": 1044.3,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 36454.4,
+   "rom_kb": 787.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_component_state_monitor (787 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/system/converter",
@@ -2442,12 +2785,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.08,
-   "rss_max_mb": 29.9,
    "cpu_run": "out2_prev",
    "cpu_dmips": 338.7,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 30617.6,
+   "rom_kb": 215.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package llh_converter (215 kB) / 1 node(s); node -> package: by name"
   },
   {
    "id": "AW:/system/hazard_status_converter",
@@ -2462,12 +2808,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.91,
-   "rss_max_mb": 36.1,
    "cpu_run": "out2_prev",
    "cpu_dmips": 599.0,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 36966.4,
+   "rom_kb": 767.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_hazard_status_converter (767 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/system/mrm_comfortable_stop_operator",
@@ -2482,12 +2831,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.81,
-   "rss_max_mb": 36.9,
    "cpu_run": "out2_prev",
    "cpu_dmips": 567.6,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 37785.6,
+   "rom_kb": 1410.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_mrm_comfortable_stop_operator (1410 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/system/mrm_emergency_stop_operator",
@@ -2502,12 +2854,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.98,
-   "rss_max_mb": 36.4,
    "cpu_run": "out2_prev",
    "cpu_dmips": 620.9,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 37273.6,
+   "rom_kb": 1586.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_mrm_emergency_stop_operator (1586 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/system/mrm_handler",
@@ -2522,12 +2877,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 2.52,
-   "rss_max_mb": 52.6,
    "cpu_run": "out2_prev",
    "cpu_dmips": 790.3,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 53862.4,
+   "rom_kb": 2661.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_mrm_handler (2661 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/system/pipeline_latency_monitor",
@@ -2542,12 +2900,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.94,
-   "rss_max_mb": 34.4,
    "cpu_run": "out2_prev",
    "cpu_dmips": 608.4,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 35225.6,
+   "rom_kb": 389.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pipeline_latency_monitor (389 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/system/processing_time_checker",
@@ -2562,12 +2923,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 2.25,
-   "rss_max_mb": 35.4,
    "cpu_run": "out2_prev",
    "cpu_dmips": 705.6,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 36249.6,
+   "rom_kb": 820.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_processing_time_checker (820 kB) / 1 node(s); node -> package: logs"
   },
   {
    "id": "AW:/system/topic_state_monitor_control_command_control_cmd",
@@ -2582,12 +2946,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.45,
-   "rss_max_mb": 4.0,
    "cpu_run": null,
    "cpu_dmips": 141.1,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/system/component_state_monitor/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 4096.0,
+   "rom_kb": 53.2,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_topic_state_monitor (692 kB) / 13 node(s); node -> package: rule"
   },
   {
    "id": "AW:/system/topic_state_monitor_mission_planning_route",
@@ -2602,12 +2969,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.45,
-   "rss_max_mb": 4.0,
    "cpu_run": null,
    "cpu_dmips": 141.1,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/system/component_state_monitor/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 4096.0,
+   "rom_kb": 53.2,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_topic_state_monitor (692 kB) / 13 node(s); node -> package: rule"
   },
   {
    "id": "AW:/system/topic_state_monitor_object_recognition_objects",
@@ -2622,12 +2992,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.45,
-   "rss_max_mb": 4.0,
    "cpu_run": null,
    "cpu_dmips": 141.1,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/system/component_state_monitor/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 4096.0,
+   "rom_kb": 53.2,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_topic_state_monitor (692 kB) / 13 node(s); node -> package: rule"
   },
   {
    "id": "AW:/system/topic_state_monitor_obstacle_segmentation_pointcloud",
@@ -2642,12 +3015,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.45,
-   "rss_max_mb": 4.0,
    "cpu_run": null,
    "cpu_dmips": 141.1,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/system/component_state_monitor/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 4096.0,
+   "rom_kb": 53.2,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_topic_state_monitor (692 kB) / 13 node(s); node -> package: rule"
   },
   {
    "id": "AW:/system/topic_state_monitor_pointcloud_map",
@@ -2662,12 +3038,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.45,
-   "rss_max_mb": 4.0,
    "cpu_run": null,
    "cpu_dmips": 141.1,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/system/component_state_monitor/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 4096.0,
+   "rom_kb": 53.2,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_topic_state_monitor (692 kB) / 13 node(s); node -> package: rule"
   },
   {
    "id": "AW:/system/topic_state_monitor_pose_twist_fusion_filter_pose",
@@ -2682,12 +3061,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.45,
-   "rss_max_mb": 4.0,
    "cpu_run": null,
    "cpu_dmips": 141.1,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/system/component_state_monitor/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 4096.0,
+   "rom_kb": 53.2,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_topic_state_monitor (692 kB) / 13 node(s); node -> package: rule"
   },
   {
    "id": "AW:/system/topic_state_monitor_scenario_planning_trajectory",
@@ -2702,12 +3084,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.45,
-   "rss_max_mb": 4.0,
    "cpu_run": null,
    "cpu_dmips": 141.1,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/system/component_state_monitor/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 4096.0,
+   "rom_kb": 53.2,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_topic_state_monitor (692 kB) / 13 node(s); node -> package: rule"
   },
   {
    "id": "AW:/system/topic_state_monitor_system_emergency_control_cmd",
@@ -2722,12 +3107,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.45,
-   "rss_max_mb": 4.0,
    "cpu_run": null,
    "cpu_dmips": 141.1,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/system/component_state_monitor/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 4096.0,
+   "rom_kb": 53.2,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_topic_state_monitor (692 kB) / 13 node(s); node -> package: rule"
   },
   {
    "id": "AW:/system/topic_state_monitor_traffic_light_recognition_traffic_signals",
@@ -2742,12 +3130,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.45,
-   "rss_max_mb": 4.0,
    "cpu_run": null,
    "cpu_dmips": 141.1,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/system/component_state_monitor/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 4096.0,
+   "rom_kb": 53.2,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_topic_state_monitor (692 kB) / 13 node(s); node -> package: rule"
   },
   {
    "id": "AW:/system/topic_state_monitor_trajectory_follower_control_cmd",
@@ -2762,12 +3153,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.45,
-   "rss_max_mb": 4.0,
    "cpu_run": null,
    "cpu_dmips": 141.1,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/system/component_state_monitor/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 4096.0,
+   "rom_kb": 53.2,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_topic_state_monitor (692 kB) / 13 node(s); node -> package: rule"
   },
   {
    "id": "AW:/system/topic_state_monitor_vector_map",
@@ -2782,12 +3176,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.45,
-   "rss_max_mb": 4.0,
    "cpu_run": null,
    "cpu_dmips": 141.1,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/system/component_state_monitor/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 4096.0,
+   "rom_kb": 53.2,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_topic_state_monitor (692 kB) / 13 node(s); node -> package: rule"
   },
   {
    "id": "AW:/system/topic_state_monitor_vehicle_status_steering_status",
@@ -2802,12 +3199,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.45,
-   "rss_max_mb": 4.0,
    "cpu_run": null,
    "cpu_dmips": 141.1,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/system/component_state_monitor/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 4096.0,
+   "rom_kb": 53.2,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_topic_state_monitor (692 kB) / 13 node(s); node -> package: rule"
   },
   {
    "id": "AW:/system/topic_state_monitor_vehicle_status_velocity_status",
@@ -2822,12 +3222,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 0.45,
-   "rss_max_mb": 4.0,
    "cpu_run": null,
    "cpu_dmips": 141.1,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/system/component_state_monitor/container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073)",
+   "ram_kb": 4096.0,
+   "rom_kb": 53.2,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_topic_state_monitor (692 kB) / 13 node(s); node -> package: rule"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera6/traffic_light_node_container",
@@ -2844,10 +3247,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 263.89,
-   "rss_max_mb": 3188.1,
    "cpu_run": "out2_prev",
    "shared_container": null,
-   "source": "measured: camera run (Leo Drive bag, 2 traffic-light cameras), container of the YOLOX fine detector and the classifiers"
+   "source": "measured: camera run (Leo Drive bag, 2 traffic-light cameras), container of the YOLOX fine detector and the classifiers",
+   "cpu_dmips": 82755.9,
+   "cpu_dmips_source": "measured host core share x 2.56 x 12250 DMIPS (configs/unit_classes.json cpu_currency)",
+   "ram_kb": 3264614.4,
+   "rom_kb": 21963.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_fine_detector+autoware_traffic_light_classifier (11043 kB) / 8 node(s) + model files traffic_light_fine_detector, traffic_light_classifier; node -> package: rule"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera7/traffic_light_node_container",
@@ -2864,10 +3272,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 265.34,
-   "rss_max_mb": 3203.2,
    "cpu_run": "out2_prev",
    "shared_container": null,
-   "source": "measured: camera run (Leo Drive bag, 2 traffic-light cameras), container of the YOLOX fine detector and the classifiers"
+   "source": "measured: camera run (Leo Drive bag, 2 traffic-light cameras), container of the YOLOX fine detector and the classifiers",
+   "cpu_dmips": 83210.6,
+   "cpu_dmips_source": "measured host core share x 2.56 x 12250 DMIPS (configs/unit_classes.json cpu_currency)",
+   "ram_kb": 3280076.8,
+   "rom_kb": 21963.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_fine_detector+autoware_traffic_light_classifier (11043 kB) / 8 node(s) + model files traffic_light_fine_detector, traffic_light_classifier; node -> package: rule"
   },
   {
    "id": "AW:/sensing/lidar/lidar_top/crop_box_filter_mirror",
@@ -2882,12 +3295,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.3,
-   "rss_max_mb": 434.3,
    "cpu_run": null,
    "cpu_dmips": 1034.9,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/top/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for LIDAR_Top (same node chain as the sample kit)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for LIDAR_Top (same node chain as the sample kit)",
+   "ram_kb": 444723.2,
+   "rom_kb": 260.5,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_crop_box_filter (1042 kB) / 4 node(s); node -> package: by name"
   },
   {
    "id": "AW:/sensing/lidar/lidar_top/crop_box_filter_self",
@@ -2902,12 +3318,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.3,
-   "rss_max_mb": 434.3,
    "cpu_run": null,
    "cpu_dmips": 1034.9,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/top/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for LIDAR_Top (same node chain as the sample kit)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for LIDAR_Top (same node chain as the sample kit)",
+   "ram_kb": 444723.2,
+   "rom_kb": 260.5,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_crop_box_filter (1042 kB) / 4 node(s); node -> package: by name"
   },
   {
    "id": "AW:/sensing/lidar/lidar_top/distortion_corrector_node",
@@ -2922,12 +3341,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.3,
-   "rss_max_mb": 434.3,
    "cpu_run": null,
    "cpu_dmips": 1034.9,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/top/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for LIDAR_Top (same node chain as the sample kit)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for LIDAR_Top (same node chain as the sample kit)",
+   "ram_kb": 444723.2,
+   "rom_kb": 513.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pointcloud_preprocessor (9760 kB) / 19 node(s); node -> package: rule"
   },
   {
    "id": "AW:/sensing/lidar/lidar_top/ring_outlier_filter",
@@ -2942,12 +3364,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.3,
-   "rss_max_mb": 434.3,
    "cpu_run": null,
    "cpu_dmips": 1034.9,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/top/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for LIDAR_Top (same node chain as the sample kit)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for LIDAR_Top (same node chain as the sample kit)",
+   "ram_kb": 444723.2,
+   "rom_kb": 513.7,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_pointcloud_preprocessor (9760 kB) / 19 node(s); node -> package: rule"
   },
   {
    "id": "AW:/sensing/lidar/lidar_top/velodyne_ros_wrapper_node",
@@ -2962,12 +3387,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.3,
-   "rss_max_mb": 434.3,
    "cpu_run": null,
    "cpu_dmips": 1034.9,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": "/sensing/lidar/top/pointcloud_preprocessor/pointcloud_container",
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for LIDAR_Top (same node chain as the sample kit)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for LIDAR_Top (same node chain as the sample kit)",
+   "ram_kb": 444723.2,
+   "rom_kb": 216.2,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package nebula_velodyne (1081 kB) / 5 node(s); node -> package: rule"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera8/classification/traffic_light_occlusion_predictor",
@@ -2982,12 +3410,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.18,
-   "rss_max_mb": 73.2,
    "cpu_run": "out2_prev",
    "cpu_dmips": 997.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Rear_Right_Corner (same node chain as the sample kit)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Rear_Right_Corner (same node chain as the sample kit)",
+   "ram_kb": 74956.8,
+   "rom_kb": 257.8,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_occlusion_predictor (2062 kB) / 8 node(s); node -> package: logs (replicated chain)"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera8/detection/traffic_light_map_based_detector",
@@ -3002,12 +3433,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.52,
-   "rss_max_mb": 47.1,
    "cpu_run": "out2_prev",
    "cpu_dmips": 476.7,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Rear_Right_Corner (same node chain as the sample kit)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Rear_Right_Corner (same node chain as the sample kit)",
+   "ram_kb": 48230.4,
+   "rom_kb": 212.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_map_based_detector (1696 kB) / 8 node(s); node -> package: logs (replicated chain)"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera8/traffic_light_node_container",
@@ -3024,10 +3458,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 263.89,
-   "rss_max_mb": 3188.1,
    "cpu_run": "out2_prev",
    "shared_container": null,
-   "source": "measured: camera run (Leo Drive bag, 2 traffic-light cameras), container of the YOLOX fine detector and the classifiers; replicated for CAM_Rear_Right_Corner (same node chain as the sample kit)"
+   "source": "measured: camera run (Leo Drive bag, 2 traffic-light cameras), container of the YOLOX fine detector and the classifiers; replicated for CAM_Rear_Right_Corner (same node chain as the sample kit)",
+   "cpu_dmips": 82755.9,
+   "cpu_dmips_source": "measured host core share x 2.56 x 12250 DMIPS (configs/unit_classes.json cpu_currency)",
+   "ram_kb": 3264614.4,
+   "rom_kb": 21963.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_fine_detector+autoware_traffic_light_classifier (11043 kB) / 8 node(s) + model files traffic_light_fine_detector, traffic_light_classifier; node -> package: rule"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera9/classification/traffic_light_occlusion_predictor",
@@ -3042,12 +3481,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.18,
-   "rss_max_mb": 73.2,
    "cpu_run": "out2_prev",
    "cpu_dmips": 997.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Front_Left (same node chain as the sample kit)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Front_Left (same node chain as the sample kit)",
+   "ram_kb": 74956.8,
+   "rom_kb": 257.8,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_occlusion_predictor (2062 kB) / 8 node(s); node -> package: logs (replicated chain)"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera9/detection/traffic_light_map_based_detector",
@@ -3062,12 +3504,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.52,
-   "rss_max_mb": 47.1,
    "cpu_run": "out2_prev",
    "cpu_dmips": 476.7,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Front_Left (same node chain as the sample kit)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Front_Left (same node chain as the sample kit)",
+   "ram_kb": 48230.4,
+   "rom_kb": 212.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_map_based_detector (1696 kB) / 8 node(s); node -> package: logs (replicated chain)"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera9/traffic_light_node_container",
@@ -3084,10 +3529,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 263.89,
-   "rss_max_mb": 3188.1,
    "cpu_run": "out2_prev",
    "shared_container": null,
-   "source": "measured: camera run (Leo Drive bag, 2 traffic-light cameras), container of the YOLOX fine detector and the classifiers; replicated for CAM_Front_Left (same node chain as the sample kit)"
+   "source": "measured: camera run (Leo Drive bag, 2 traffic-light cameras), container of the YOLOX fine detector and the classifiers; replicated for CAM_Front_Left (same node chain as the sample kit)",
+   "cpu_dmips": 82755.9,
+   "cpu_dmips_source": "measured host core share x 2.56 x 12250 DMIPS (configs/unit_classes.json cpu_currency)",
+   "ram_kb": 3264614.4,
+   "rom_kb": 21963.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_fine_detector+autoware_traffic_light_classifier (11043 kB) / 8 node(s) + model files traffic_light_fine_detector, traffic_light_classifier; node -> package: rule"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera10/classification/traffic_light_occlusion_predictor",
@@ -3102,12 +3552,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.18,
-   "rss_max_mb": 73.2,
    "cpu_run": "out2_prev",
    "cpu_dmips": 997.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Front_Right (same node chain as the sample kit)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Front_Right (same node chain as the sample kit)",
+   "ram_kb": 74956.8,
+   "rom_kb": 257.8,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_occlusion_predictor (2062 kB) / 8 node(s); node -> package: logs (replicated chain)"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera10/detection/traffic_light_map_based_detector",
@@ -3122,12 +3575,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.52,
-   "rss_max_mb": 47.1,
    "cpu_run": "out2_prev",
    "cpu_dmips": 476.7,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Front_Right (same node chain as the sample kit)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Front_Right (same node chain as the sample kit)",
+   "ram_kb": 48230.4,
+   "rom_kb": 212.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_map_based_detector (1696 kB) / 8 node(s); node -> package: logs (replicated chain)"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera10/traffic_light_node_container",
@@ -3144,10 +3600,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 263.89,
-   "rss_max_mb": 3188.1,
    "cpu_run": "out2_prev",
    "shared_container": null,
-   "source": "measured: camera run (Leo Drive bag, 2 traffic-light cameras), container of the YOLOX fine detector and the classifiers; replicated for CAM_Front_Right (same node chain as the sample kit)"
+   "source": "measured: camera run (Leo Drive bag, 2 traffic-light cameras), container of the YOLOX fine detector and the classifiers; replicated for CAM_Front_Right (same node chain as the sample kit)",
+   "cpu_dmips": 82755.9,
+   "cpu_dmips_source": "measured host core share x 2.56 x 12250 DMIPS (configs/unit_classes.json cpu_currency)",
+   "ram_kb": 3264614.4,
+   "rom_kb": 21963.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_fine_detector+autoware_traffic_light_classifier (11043 kB) / 8 node(s) + model files traffic_light_fine_detector, traffic_light_classifier; node -> package: rule"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera11/classification/traffic_light_occlusion_predictor",
@@ -3162,12 +3623,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.18,
-   "rss_max_mb": 73.2,
    "cpu_run": "out2_prev",
    "cpu_dmips": 997.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Left_Side (same node chain as the sample kit)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Left_Side (same node chain as the sample kit)",
+   "ram_kb": 74956.8,
+   "rom_kb": 257.8,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_occlusion_predictor (2062 kB) / 8 node(s); node -> package: logs (replicated chain)"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera11/detection/traffic_light_map_based_detector",
@@ -3182,12 +3646,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.52,
-   "rss_max_mb": 47.1,
    "cpu_run": "out2_prev",
    "cpu_dmips": 476.7,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Left_Side (same node chain as the sample kit)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Left_Side (same node chain as the sample kit)",
+   "ram_kb": 48230.4,
+   "rom_kb": 212.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_map_based_detector (1696 kB) / 8 node(s); node -> package: logs (replicated chain)"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera11/traffic_light_node_container",
@@ -3204,10 +3671,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 263.89,
-   "rss_max_mb": 3188.1,
    "cpu_run": "out2_prev",
    "shared_container": null,
-   "source": "measured: camera run (Leo Drive bag, 2 traffic-light cameras), container of the YOLOX fine detector and the classifiers; replicated for CAM_Left_Side (same node chain as the sample kit)"
+   "source": "measured: camera run (Leo Drive bag, 2 traffic-light cameras), container of the YOLOX fine detector and the classifiers; replicated for CAM_Left_Side (same node chain as the sample kit)",
+   "cpu_dmips": 82755.9,
+   "cpu_dmips_source": "measured host core share x 2.56 x 12250 DMIPS (configs/unit_classes.json cpu_currency)",
+   "ram_kb": 3264614.4,
+   "rom_kb": 21963.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_fine_detector+autoware_traffic_light_classifier (11043 kB) / 8 node(s) + model files traffic_light_fine_detector, traffic_light_classifier; node -> package: rule"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera12/classification/traffic_light_occlusion_predictor",
@@ -3222,12 +3694,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.18,
-   "rss_max_mb": 73.2,
    "cpu_run": "out2_prev",
    "cpu_dmips": 997.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Right_Side (same node chain as the sample kit)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Right_Side (same node chain as the sample kit)",
+   "ram_kb": 74956.8,
+   "rom_kb": 257.8,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_occlusion_predictor (2062 kB) / 8 node(s); node -> package: logs (replicated chain)"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera12/detection/traffic_light_map_based_detector",
@@ -3242,12 +3717,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.52,
-   "rss_max_mb": 47.1,
    "cpu_run": "out2_prev",
    "cpu_dmips": 476.7,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Right_Side (same node chain as the sample kit)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Right_Side (same node chain as the sample kit)",
+   "ram_kb": 48230.4,
+   "rom_kb": 212.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_map_based_detector (1696 kB) / 8 node(s); node -> package: logs (replicated chain)"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera12/traffic_light_node_container",
@@ -3264,10 +3742,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 263.89,
-   "rss_max_mb": 3188.1,
    "cpu_run": "out2_prev",
    "shared_container": null,
-   "source": "measured: camera run (Leo Drive bag, 2 traffic-light cameras), container of the YOLOX fine detector and the classifiers; replicated for CAM_Right_Side (same node chain as the sample kit)"
+   "source": "measured: camera run (Leo Drive bag, 2 traffic-light cameras), container of the YOLOX fine detector and the classifiers; replicated for CAM_Right_Side (same node chain as the sample kit)",
+   "cpu_dmips": 82755.9,
+   "cpu_dmips_source": "measured host core share x 2.56 x 12250 DMIPS (configs/unit_classes.json cpu_currency)",
+   "ram_kb": 3264614.4,
+   "rom_kb": 21963.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_fine_detector+autoware_traffic_light_classifier (11043 kB) / 8 node(s) + model files traffic_light_fine_detector, traffic_light_classifier; node -> package: rule"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera13/classification/traffic_light_occlusion_predictor",
@@ -3282,12 +3765,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.18,
-   "rss_max_mb": 73.2,
    "cpu_run": "out2_prev",
    "cpu_dmips": 997.2,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Rear_Center (same node chain as the sample kit)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Rear_Center (same node chain as the sample kit)",
+   "ram_kb": 74956.8,
+   "rom_kb": 257.8,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_occlusion_predictor (2062 kB) / 8 node(s); node -> package: logs (replicated chain)"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera13/detection/traffic_light_map_based_detector",
@@ -3302,12 +3788,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 1.52,
-   "rss_max_mb": 47.1,
    "cpu_run": "out2_prev",
    "cpu_dmips": 476.7,
    "cpu_dmips_source": "measured host core share x 2.56 (host -> target, Betz et al. arXiv 2404.12683) x 12250 DMIPS (Cortex-A76 1.8 GHz, Renesas V4H flyer); configs/unit_classes.json cpu_currency",
    "shared_container": null,
-   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Rear_Center (same node chain as the sample kit)"
+   "source": "measured: Autoware universe-cuda-jazzy on an A100 node; rosbag replay (jobs 1034/1044/run 6) and planning simulator with a route (job 1073); replicated for CAM_Rear_Center (same node chain as the sample kit)",
+   "ram_kb": 48230.4,
+   "rom_kb": 212.0,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_map_based_detector (1696 kB) / 8 node(s); node -> package: logs (replicated chain)"
   },
   {
    "id": "AW:/perception/traffic_light_recognition/camera13/traffic_light_node_container",
@@ -3324,10 +3813,15 @@
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 263.89,
-   "rss_max_mb": 3188.1,
    "cpu_run": "out2_prev",
    "shared_container": null,
-   "source": "measured: camera run (Leo Drive bag, 2 traffic-light cameras), container of the YOLOX fine detector and the classifiers; replicated for CAM_Rear_Center (same node chain as the sample kit)"
+   "source": "measured: camera run (Leo Drive bag, 2 traffic-light cameras), container of the YOLOX fine detector and the classifiers; replicated for CAM_Rear_Center (same node chain as the sample kit)",
+   "cpu_dmips": 82755.9,
+   "cpu_dmips_source": "measured host core share x 2.56 x 12250 DMIPS (configs/unit_classes.json cpu_currency)",
+   "ram_kb": 3264614.4,
+   "rom_kb": 21963.9,
+   "memory_source": "ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source",
+   "rom_source": "installed package autoware_traffic_light_fine_detector+autoware_traffic_light_classifier (11043 kB) / 8 node(s) + model files traffic_light_fine_detector, traffic_light_classifier; node -> package: rule"
   },
   {
    "id": "BodyComfort_WiperWasher_000",

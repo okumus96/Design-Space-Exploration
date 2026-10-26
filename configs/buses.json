@@ -89,7 +89,8 @@
     "priorities": true,
     "upfront_paths": false,
     "cell_cut_capacity": false,
-    "_speed_options": "upfront_paths / cell_cut_capacity (2026-10-24): valid extra constraints (every flow's path requirement up front; per-cell cut-set link capacity). Default off: on 10 cells they make the model 2.3x larger and no design was found within 1 h; on the lite instance (4 cells) both on proved the rho 1 failure case (8,978.26) within 1 h. Use them for proofs on small instances only."
+    "_speed_options": "upfront_paths / cell_cut_capacity (2026-10-24): valid extra constraints (every flow's path requirement up front; per-cell cut-set link capacity). Default off: on 10 cells they make the model 2.3x larger and no design was found within 1 h; on the lite instance (4 cells) both on proved the rho 1 failure case (8,978.26) within 1 h. Use them for proofs on small instances only. A per-failure-scenario cut-set (tag cf) was removed: invalid (a flow relayed through the failed cell is lost, not rerouted, so it carries no load; the inequality counted it and cut off the proven lite optimum). benders_cuts (2026-10-26): Benders feasibility cuts from a routing LP per candidate (benders.py); default off, measured as tag b.",
+    "benders_cuts": false
   },
   "_comment": "cable_types: cost per metre, weight per metre, capacity = bit rate (Mbit/s, same units as flow volumes), port cost, hop_latency_ms = per-hop processing/queueing bound (switch forwarding, bus arbitration). Every type may connect two control units; the optimiser picks per data flow which type carries it. Latency of a message over a link of a type = message kbit / capacity + hop_latency_ms per hop (HANDOFF 14.3).",
   "_data_comment": "capacity = bit rate (Mbit/s), frame_kbit = longest frame of the type; data pass 2026-10-21, sources in data_source; hop_latency_ms, costs and weights unchanged (provisional, HANDOFF 17)",

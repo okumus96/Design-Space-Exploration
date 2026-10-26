@@ -150,6 +150,7 @@ def main(args):
         backbone=config_reader.get_backbone_config(),
         phase2_time=args.phase2_time,
         gurobi_params=gurobi_params,
+        lns=config_reader.get_solver_config().get('lns'),   # fix-and-optimize improvement loop (configs/solver.json)
         chains=config_reader.get_chains(),
         num_points=args.num_points,
         solve_time_limit=args.time_limit,

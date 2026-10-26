@@ -1,10 +1,12 @@
 import itertools
 import os
+import random
 import time
 import numpy as np
 os.environ.setdefault("GRB_LICENSE_FILE", os.path.expanduser("~/gurobi.lic"))
 import gurobipy as gp
 from gurobipy import GRB
+from benders import routing_lp_cut, failure_lp_cut
 from optimizer_utils import (get_distance, build_sensor_lookup, build_actuator_lookup,
                              build_cost_map, build_latency_map, extract_solution,
                              sw_multiplier, site_derating, is_fail_operational, pack_partitions, flow_routes, chain_latencies, steiner_tree,
@@ -401,6 +403,8 @@ class AssignmentOptimizer:
                # in the model from the start, and per-cell cut-set capacity inequalities (both valid, the model stays exact)
                'upfront_paths': bool((backbone or {}).get('upfront_paths', False)),
                'cell_cut_capacity': bool((backbone or {}).get('cell_cut_capacity', False)),
+               'benders': bool((backbone or {}).get('benders_cuts', False)),   # Benders feasibility cuts (benders.py)
+               'benders_fail': bool((backbone or {}).get('benders_failure_cuts', False)),   # the same per cell-failure scenario
                # a bus line may be loaded up to this share of its bit rate (the queue bound of the latency assumes
                # a bus that is not saturated; configs/buses.json: backbone.bus_max_utilization)
                'bus_umax': float((backbone or {}).get('bus_max_utilization', 1.0))}
@@ -1179,7 +1183,7 @@ class AssignmentOptimizer:
 
         return model, objectives
 
-    def optimize(self, scs, locations, sensors, actuators, cable_types, comm_matrix, partitions=None, hardwares=None, interfaces=None, enable_comm_bw_constraints=True, comm_bw_big_m=10000, minimize_cable_length=False, cable_length_limit=None, cost_limit=None, time_limit=None, mip_gap=None, lp_path=None, uncertainty=None, backbone=None, phase2_time=600, gurobi_params=None, chains=None, start=None):
+    def optimize(self, scs, locations, sensors, actuators, cable_types, comm_matrix, partitions=None, hardwares=None, interfaces=None, enable_comm_bw_constraints=True, comm_bw_big_m=10000, minimize_cable_length=False, cable_length_limit=None, cost_limit=None, time_limit=None, mip_gap=None, lp_path=None, uncertainty=None, backbone=None, phase2_time=600, gurobi_params=None, chains=None, start=None, lns=None):
         """
         Dynamic selection of partitions + HW + interfaces + cables.
         
@@ -1505,6 +1509,11 @@ class AssignmentOptimizer:
             cv = dict(zip(comm_keys, m.cbGetSolution(comm_vars)))
             getv = lambda var: vals[id(var)]
             routes = flow_routes(net, getv)
+
+            def ends_of_t(t):
+                src, dst = net['flow_ends'][t]
+                return (next((k for k, var in src.items() if getv(var) > 0.5), None),
+                        next((k for k, var in dst.items() if getv(var) > 0.5), None))
             hot_val = {i: (1.0 if net['hot'][i] is None else getv(net['hot'][i])) for i in net['critical']}
 
             def silent(t):
@@ -1617,6 +1626,44 @@ class AssignmentOptimizer:
                     capacity_cut(res, contrib[res])
 
             _c = tally('paths and capacity', _c)
+            # --- Benders: can the candidate's point-to-point traffic be routed at all with its cables, switches and
+            # chain budgets? If not, one Farkas cut over all links, flows and chains (benders.py)
+            if net.get('benders'):
+                ends_c = {t: ends_of_t(t) for t in net['flow_meta'] if not silent(t)}
+                act = {}
+                for t, (u, v) in ends_c.items():
+                    if u is not None and v is not None:
+                        src, dst = net['flow_ends'][t]
+                        e = src[u] + dst[v] - 1
+                        tr = net['flow_meta'][t]
+                        for inst, key in ((tr.get('src_inst', 'x'), 'src_idx'), (tr.get('dst_inst', 'x'), 'dst_idx')):
+                            if inst == 'r' and net['hot'].get(tr[key]) is not None:
+                                e = e + net['hot'][tr[key]] - 1   # a standby endpoint that may be cold: active only when hot
+                        act[t] = e
+                cab = {key: cv[key] for key in comm_keys}
+                sw_cells = {j for j in range(n_locs) if has_switch_hw and getv(hw_use[j, 'SWITCH']) > 0.5}
+                res_b = routing_lp_cut(net, ends_c, cab, sw_cells, comm, hw_use, act)
+                if res_b is not None:
+                    m.cbLazy(res_b[0] <= 0)
+                    m._lazy_cuts += 1
+                    m._cb_stats['benders_value'] = m._cb_stats.get('benders_value', 0.0) + res_b[1]
+            _c = tally('benders', _c)
+            # --- Benders per cell-failure scenario: the required traffic of the critical pairs must be routable on the
+            # cables and relays that survive the failure, within the post-failure chain budgets (benders.py)
+            if net.get('benders_fail') and net['critical']:
+                ends_all = {t: ends_of_t(t) for t in net['flow_meta']}
+                cab = {key: cv[key] for key in comm_keys}
+                sw_cells = {j for j in range(n_locs) if has_switch_hw and getv(hw_use[j, 'SWITCH']) > 0.5}
+                px = {i: next((j for j in feasible_locs_per_sc[i] if getv(x[i, j]) > 0.5), None) for i in range(n_sc)}
+                pr = {i: next((j for j in feasible_locs_per_sc[i] if getv(net['r'][i, j]) > 0.5), None) for i in net['critical']}
+                for c_f in range(n_locs):
+                    if not (getv(y[c_f]) > 0.5 or (has_switch_hw and getv(hw_use[c_f, 'SWITCH']) > 0.5)):
+                        continue
+                    res_f = failure_lp_cut(net, c_f, ends_all, cab, sw_cells, comm, hw_use, x, net['r'], px, pr)
+                    if res_f is not None:
+                        m.cbLazy(res_f[0] <= 0)
+                        m._lazy_cuts += 1
+            _c = tally('benders failure', _c)
             # --- chain latency: the network time of a chain must stay within its budget. A crossing waits for every
             # other message on each of its resources, so the cut has, besides the own crossing of a flow, one term per
             # message sharing a resource with it: (its kbit / rate) * [both there], lower-bounded by ind_t + ind_m - 1
@@ -2134,6 +2181,53 @@ class AssignmentOptimizer:
                       f"valid repairs {st['repair_valid']}, used {m._repairs_used}, repair failures {st['repair_fail']}, "
                       f"rejected by {st['rejected_by']}, cuts by {st['cuts_by']}", flush=True)
 
+        def _lns_improve(obj_expr, info, cfg, budget_s):
+            """Fix-and-optimize improvement of the phase-1 incumbent (configs/solver.json: lns). Every iteration fixes the
+            placement of a random (1 - free_share) share of the components to the incumbent and re-solves the exact model
+            with the rest free for iter_s seconds (the lazy constraints and all cuts stay active, so every accepted design
+            is a feasible design of the full model); an improvement replaces the incumbent. Random neighbourhoods only,
+            so no structural preference. The phase-1 bound is kept for the gap: the loop never changes the bound."""
+            rng = random.Random(int(cfg.get('seed', 1)))
+            free_share, iter_s = float(cfg.get('free_share', 0.3)), float(cfg.get('iter_s', 120))
+            all_vars = model.getVars()
+            best_val, best = obj_expr.getValue(), model.getAttr('X', all_vars)
+            bound = info['bound']
+            x_items = list(x.items())
+            t_end, it, improved = time.time() + budget_s, 0, 0
+            print(f"\n[LNS] start {best_val:.4f}, bound {bound:.4f}, budget {budget_s:.0f} s, free share {free_share}, {iter_s:.0f} s per iteration", flush=True)
+            while time.time() < t_end - 10 and (best_val - bound) / max(1e-9, abs(best_val)) > float(cfg.get('stop_gap', 0.01)):
+                it += 1
+                free = {i for i in range(n_sc) if rng.random() < free_share}
+                vals = dict(zip((v.VarName for v in all_vars), best))
+                for (i, j), var in x_items:
+                    if i not in free:
+                        var.LB = var.UB = round(vals[var.VarName])
+                keep_steiner_cuts()
+                model.setAttr('Start', all_vars, best)
+                model.setParam('TimeLimit', min(iter_s, max(10.0, t_end - time.time())))
+                model.optimize(lazy_cb)
+                if model.SolCount > 0 and obj_expr.getValue() < best_val - 1e-6:
+                    best_val, best, improved = obj_expr.getValue(), model.getAttr('X', all_vars), improved + 1
+                    print(f"[LNS] iteration {it}: improved to {best_val:.4f} (gap to the phase-1 bound {100 * (best_val - bound) / best_val:.2f} %)", flush=True)
+                for (i, j), var in x_items:
+                    var.LB, var.UB = 0.0, 1.0
+            # leave the model in the state of the best design: everything fixed to it, one short solve
+            vals = dict(zip((v.VarName for v in all_vars), best))
+            for (i, j), var in x_items:
+                var.LB = var.UB = round(vals[var.VarName])
+            keep_steiner_cuts()
+            model.setAttr('Start', all_vars, best)
+            model.setParam('TimeLimit', 120.0)
+            model.optimize(lazy_cb)
+            for (i, j), var in x_items:
+                var.LB, var.UB = 0.0, 1.0
+            if model.SolCount > 0:
+                best_val = min(best_val, obj_expr.getValue())
+            info['objective'] = float(best_val)
+            info['mip_gap'] = float((best_val - bound) / max(1e-9, abs(best_val)))
+            print(f"[LNS] done: {it} iterations, {improved} improvements, final {best_val:.4f}, gap {100 * info['mip_gap']:.2f} %", flush=True)
+            return {'iterations': it, 'improvements': improved, 'final': float(best_val)}
+
         def _solve_lexicographic():
             """Phase 1: primary objective. Phase 2: secondary objective with the primary fixed at its phase-1 value."""
             if tl is not None:
@@ -2141,9 +2235,16 @@ class AssignmentOptimizer:
             model.setObjective(primary_expr, GRB.MINIMIZE)
             phases = []
             print(f"\n[Lexicographic] Phase 1: minimize {primary_name}")
+            lns_cfg = dict(lns or {})
+            lns_on = bool(lns_cfg.get('enabled')) and tl is not None
+            if lns_on:   # phase 1 gets a share of the time, the improvement loop the rest
+                model.setParam('TimeLimit', max(60.0, tl * (1.0 - float(lns_cfg.get('time_share', 0.5)))))
             model.optimize(lazy_cb)
             phases.append(self._phase_info(model, primary_name))
             print(f"[callback] after phase 1: {model._cb_stats}, repairs used {model._repairs_used}", flush=True)
+            if lns_on and model.SolCount > 0 and model.status == GRB.TIME_LIMIT and phases[-1]['mip_gap'] is not None \
+                    and phases[-1]['mip_gap'] > float(lns_cfg.get('stop_gap', 0.01)):
+                phases[-1]['lns'] = _lns_improve(primary_expr, phases[-1], lns_cfg, tl - model.Runtime)
             lex_constr = None
             if model.SolCount > 0 and model.status in (GRB.OPTIMAL, GRB.TIME_LIMIT):
                 primary_val = primary_expr.getValue()
@@ -2282,7 +2383,7 @@ class AssignmentOptimizer:
     def optimize_growth_sweep(self, scs, locations, sensors, actuators, cable_types, comm_matrix,
                               partitions=None, hardwares=None, interfaces=None, solve_time_limit=None, mip_gap=None,
                               lp_dir=None, uncertainty=None, backbone=None, phase2_time=600, gurobi_params=None,
-                              chains=None, **_ignored):
+                              chains=None, lns=None, **_ignored):
         """
         Cost against software growth: for every growth level of configs/uncertainty.json (growth.alpha_levels) the
         min-cost design (second phase: cable length). Returns the solutions in the order of the levels; each carries
@@ -2309,7 +2410,7 @@ class AssignmentOptimizer:
                 time_limit=solve_time_limit, mip_gap=mip_gap,
                 lp_path=(os.path.join(lp_dir, f"model_alpha_{alpha:g}.lp.gz") if lp_dir else None),
                 uncertainty=unc, backbone=backbone, phase2_time=phase2_time, gurobi_params=gurobi_params,
-                chains=chains, start=self.last_values)
+                chains=chains, start=self.last_values, lns=lns)
             if sol:
                 solutions.append(sol)
             else:

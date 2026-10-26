@@ -25,7 +25,7 @@ print('non-AD ASIL mix:', pct(Counter(c['asil'] for c in gen)))
 print('non-AD period mix (ms):', pct(Counter(c['period_ms'] for c in gen)))
 print(f"non-AD CPU {sum(c['cpu_dmips'] for c in gen):,.0f} DMIPS, ROM {sum(c['rom_kb'] for c in gen) / 1024:,.0f} MB, RAM {sum(c['ram_kb'] for c in gen) / 1024:,.0f} MB")
 cpu = [c['cpu_mean_pct'] for c in aw if c.get('cpu_mean_pct') is not None]
-rss = [c['rss_max_mb'] for c in aw if c.get('rss_max_mb') is not None]
+rss = [c['ram_kb'] / 1024.0 for c in aw if c.get('ram_kb') is not None]
 print(f"Autoware CPU measured for {len(cpu)}/{len(aw)} nodes: {sum(cpu):.0f} % of one core; RSS {sum(rss):,.0f} MB; processing times for {sum(1 for c in aw if c.get('processing_time_ms'))} nodes")
 print(f"links {len(flows)}: ", dict(Counter(f['kind'] for f in flows)))
 b = [f['bytes'] for f in flows if f.get('bytes')]
