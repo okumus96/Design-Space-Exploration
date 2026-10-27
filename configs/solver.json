@@ -18,5 +18,141 @@
       3
     ],
     "_comment": "Seed portfolio of the robustness sweep (tools/portfolio.py): one job per rho level and seed, the cheapest checked design per level is kept. Benchmark 2026-10-26 (10 cells, rho 1, 1 h): seeds 3 / 1 / 2 reached gaps 0.6 / 1.5 / 20 %; best of three meets the 1 % target."
+  },
+  "learn": {
+    "instances": {
+      "base_architecture": "configs/full_architecture_v2.json",
+      "base_config_dir": "configs",
+      "cells": [
+        4,
+        12
+      ],
+      "rho_zero_share": 0.15,
+      "removal_share": [
+        0.0,
+        0.4
+      ],
+      "min_components": 15,
+      "demand_factor": [
+        0.8,
+        1.2
+      ],
+      "_comment": "Training variants of the learned search (learn/instances.py, 2026-10-26): per variant a random subset of the candidate cells (count in 'cells'), rho = 0 with share rho_zero_share else uniform in [0.05, 1], whole chains and single components outside the kept chains left out with a share drawn from removal_share (at least min_components remain; devices leave with their driver), CPU / RAM / ROM / TOPS demands and message sizes scaled by independent factors from demand_factor. The real 10-cell instance is never generated as such: it is the held-out test."
+    },
+    "data": {
+      "time_limit": 450,
+      "phase2_time": 30,
+      "threads": 32,
+      "parallel": 1,
+      "per_job": 8,
+      "max_sessions": 8,
+      "_comment": "Label generation (learn/gen_data.py): every variant solved by the exact model (all uncertainty blocks on, its rho) with time_limit seconds for phase 1 and at least phase2_time for phase 2, then checked. One Slurm array task per per_job variants, parallel solves per task with threads Gurobi threads each, at most max_sessions solves at once (each holds one Gurobi WLS session; about 9 concurrent sessions ran without error on 2026-10-26)."
+    },
+    "train": {
+      "hidden": 128,
+      "layers": 3,
+      "heads": 4,
+      "dropout": 0.1,
+      "lr": 0.001,
+      "weight_decay": 0.0001,
+      "batch_size": 16,
+      "epochs": 300,
+      "patience": 30,
+      "standby_weight": 0.5,
+      "val_share": 0.1,
+      "seed": 0,
+      "_comment": "Placement predictor (learn/model.py, learn/train.py): heterogeneous graph transformer, hidden width, message-passing layers, attention heads; AdamW; loss = cross entropy of the primary cell + standby_weight x cross entropy of the standby cell + moved_weight x the destroy head's loss; validation share by variant, early stop after patience epochs. unperturbed_share 1.0 and moved_weight 0 (2026-10-27): every training sample is the car without a design, as at the start of a run, so the placement output cannot learn to copy a given design (with 0.3 the validation top-1 read 83 % but was 41 % without a design); the destroy head is not trained.",
+      "moved_weight": 0.0,
+      "unperturbed_share": 1.0,
+      "perturb_share": [
+        0.05,
+        0.4
+      ]
+    },
+    "search": {
+      "enabled": false,
+      "model": "results/learn/rl_v1/policy_latest.pt",
+      "top_k": 3,
+      "top_k_standby": 3,
+      "time_share": 0.6,
+      "iter_s": 10,
+      "free_share": 0.2,
+      "seed": 1,
+      "_comment": "Learned guide of the exact search (learn/search.py, optimizer.py guide; robustness sweep only): the predictor scores every cell per component at the solve's rho. Start (fix_start, 2026-10-27): the predicted placement is repaired for the capacity rules and fixed in the first solve (at most init_s seconds), the exact model fills in the rest; without a design, start_rounds fallback rounds free start_free (cumulative) of the components, least confident first, then the full model until the first design. fix_start false: the prediction is only a MIP start hint of the full search (the behaviour before 2026-10-27). Then the loop frees free_share of the components per iteration (mode: rl = the policy, random / cells / cluster = its controls; partners = communication partners per freed component in cells mode) for iter_s seconds each. Every design passes the lazy constraints of the full model; a fixed-start or restricted phase 1 reports no bound (status GUIDED).",
+      "mode": "rl",
+      "init_s": 120,
+      "final_s": 30,
+      "stop_gap": 0.0,
+      "fix_start": true,
+      "start_rounds": 3,
+      "start_free": 0.25,
+      "partners": 0.5
+    },
+    "rl": {
+      "variant_dirs": [
+        "results/learn/data_v1/v*"
+      ],
+      "rounds": 60,
+      "episodes_per_round": 8,
+      "max_sessions": 4,
+      "threads": 8,
+      "seed": 0,
+      "init_s": 45,
+      "iter_s": 10,
+      "max_iters": 15,
+      "free_share": 0.2,
+      "final_s": 5,
+      "gurobi_params": "MIPFocus=1,OutputFlag=0",
+      "ppo": {
+        "epochs": 4,
+        "minibatch": 16,
+        "lr": 0.0003,
+        "clip": 0.2,
+        "gamma": 0.95,
+        "lam": 0.9,
+        "entropy": 0.01,
+        "value_coef": 0.5
+      },
+      "_comment": "RL of the destroy policy (learn/rl.py): per round episodes_per_round episodes on random training variants (at most max_sessions at once, threads Gurobi threads each), then PPO. Episode: exact solve for init_s from the policy's start design, then max_iters iterations freeing free_share of the components, iter_s seconds of exact re-solve each; reward = cost reduction in % of the start cost."
+    },
+    "gate": {
+      "cells": [
+        20,
+        33
+      ],
+      "rho": 1.0,
+      "time_limit": 1800,
+      "phase2_time": 60,
+      "marks": [
+        300,
+        600,
+        1200,
+        1800
+      ],
+      "methods": {
+        "milp": "NoRelHeurTime=120,Threads=8",
+        "milp_mf1": "MIPFocus=1,Threads=8",
+        "learned": "MIPFocus=1,Threads=8",
+        "random": "MIPFocus=1,Threads=8",
+        "cells": "MIPFocus=1,Threads=8",
+        "cluster": "MIPFocus=1,Threads=8"
+      },
+      "search_modes": {
+        "learned": "rl",
+        "random": "random",
+        "cells": "cells",
+        "cluster": "cluster"
+      },
+      "search": {
+        "iter_s": 30,
+        "fix_start": false,
+        "init_s": 420
+      },
+      "seeds": [
+        1,
+        2
+      ],
+      "_comment": "Gate test (learn/gate.py): the 65-component architecture on cells (more than the 4-12 of the training variants) at rho, every method time_limit seconds with 8 Gurobi threads: the exact model with the default parameters (milp), with MIPFocus=1 (milp_mf1), the learned search (learn.search on in the mode of search_modes, its phases with MIPFocus=1) and its control with the components to free drawn at random (random: same start and loop). search: settings of learn.search for the gate (iter_s 30: one iteration at 20-33 cells needs more than the 10 s of the 4-12 cell training; fix_start false, init_s 420: the neighbourhood comparison starts every method from the same first design of the full search, which needs up to 6 min at 33 cells). seeds: every method once per seed (Gurobi Seed and learn.search seed); the baselines of results/learn/gate_v2 ran before the seeds, with the default seed. Report: best cost at the marks, checker verdict."
+    }
   }
 }

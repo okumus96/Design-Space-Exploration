@@ -37,14 +37,86 @@ def get_distance(loc1, loc2):
     return manhattan_dist
 
 _STEINER_CACHE = {}
+STEINER_DP_MAX = 9   # terminals up to which the Dreyfus-Wagner recursion (3^k) is faster than the flow model
+
+
+def _steiner_flow(D, T):
+    """Exact minimum Steiner tree of the terminal indices T in the metric D as a mixed-integer program: directed
+    multi-commodity flow from T[0] to every other terminal (HiGHS via scipy, no Gurobi licence session), on the edges
+    that pass the bottleneck Steiner distance test (Duin & Volgenant, Networks 1989): an edge longer than every hop
+    of some path between its ends whose inner nodes are terminals is in no minimum tree. Returns (length, arcs)."""
+    import numpy as np
+    from scipy.optimize import Bounds, LinearConstraint, milp
+    from scipy.sparse import coo_matrix
+    n, k = len(D), len(T)
+    DT = D[np.ix_(T, T)]
+    B = np.zeros((k, k))   # bottleneck distances between the terminals, along their minimum spanning tree
+    best, par, done, order = DT[0].copy(), np.zeros(k, dtype=np.int64), np.zeros(k, dtype=bool), [0]
+    done[0] = True
+    for _ in range(k - 1):
+        x = int(np.where(done, np.inf, best).argmin())
+        B[x, order] = B[order, x] = np.maximum(B[par[x], order], best[x])
+        order.append(x)
+        done[x] = True
+        closer = DT[x] < best
+        best, par = np.where(closer, DT[x], best), np.where(closer, x, par)
+    DnT = D[:, T]
+    via = np.maximum(DnT[:, :, None], B[None]).min(axis=1)    # u -> terminals -> terminal t
+    S = np.maximum(via[:, None, :], DnT[None]).min(axis=2)    # u -> terminals -> v
+    S = np.minimum(S, S.T)
+    iu, iv = np.triu_indices(n, 1)
+    keep = D[iu, iv] <= S[iu, iv] + 1e-9 * np.maximum(1.0, D[iu, iv])
+    tail = np.concatenate([iu[keep], iv[keep]])
+    head = np.concatenate([iv[keep], iu[keep]])
+    m, K, root = len(tail), k - 1, T[0]
+    ar, one = np.arange(m), np.ones(m)
+    # variables: arc used y (m), then the flow of every terminal but the root (K x m)
+    rows, cols, vals, lo, hi = [], [], [], [], []
+    for t in range(K):   # conservation: out - in = 1 at the root, -1 at the terminal, 0 elsewhere
+        rows += [t * n + tail, t * n + head]
+        cols += [m * (1 + t) + ar] * 2
+        vals += [one, -one]
+        b = np.zeros(n)
+        b[root], b[T[t + 1]] = 1.0, -1.0
+        lo.append(b)
+        hi.append(b)
+    for t in range(K):   # flow only on used arcs
+        rows += [K * n + t * m + ar] * 2
+        cols += [m * (1 + t) + ar, ar]
+        vals += [one, -one]
+        lo.append(np.full(m, -np.inf))
+        hi.append(np.zeros(m))
+    rows.append(K * n + K * m + head)   # one arc into every node
+    cols.append(ar)
+    vals.append(one)
+    lo.append(np.zeros(n))
+    hi.append(np.ones(n))
+    A = coo_matrix((np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(K * n + K * m + n, m * (1 + K)))
+    ub = np.ones(m * (1 + K))
+    ub[:m][head == root] = 0.0
+    res = milp(np.concatenate([D[tail, head], np.zeros(K * m)]), integrality=np.r_[np.ones(m), np.zeros(K * m)],
+               bounds=Bounds(0.0, ub), constraints=LinearConstraint(A.tocsr(), np.concatenate(lo), np.concatenate(hi)),
+               options={'mip_rel_gap': 0.0})
+    if not res.success:
+        raise RuntimeError(f"Steiner tree flow model: {res.message}")
+    used = {int(a) for a in ar if res.x[a] > 0.5}
+    succ = {}
+    for a in used:
+        succ.setdefault(int(tail[a]), []).append(a)
+    arcs, stack = [], [root]   # the arborescence from the root (drops unconnected zero-length arcs)
+    while stack:
+        for a in succ.get(stack.pop(), []):
+            arcs.append((int(tail[a]), int(head[a])))
+            stack.append(int(head[a]))
+    return float(sum(D[a, b] for a, b in arcs)), arcs
 
 
 def steiner_tree(terminals, points):
-    """Exact minimum Steiner tree (Dreyfus-Wagner) of the terminal ids in the complete graph over `points`
-    {id: Point} (candidate sites and devices) with the cable lengths of get_distance (channel graph). The length of
-    a bus line that runs from member to member along the cable channels; exact, hence monotone in the terminal set
-    (a bigger set never has a shorter tree), which keeps the lazy bus-length cuts of the optimiser valid.
-    Returns (length, [(id_a, id_b), ...] tree edges)."""
+    """Exact minimum Steiner tree of the terminal ids in the complete graph over `points` {id: Point} (candidate
+    sites and devices) with the cable lengths of get_distance (channel graph): Dreyfus-Wagner up to STEINER_DP_MAX
+    terminals, above that the flow model of _steiner_flow. The length of a bus line that runs from member to member
+    along the cable channels; exact, hence monotone in the terminal set (a bigger set never has a shorter tree), which
+    keeps the lazy bus-length cuts of the optimiser valid. Returns (length, [(id_a, id_b), ...] tree edges)."""
     import numpy as np
     ids = tuple(sorted(points))
     key = (ids, tuple(sorted(set(terminals))))
@@ -61,6 +133,9 @@ def steiner_tree(terminals, points):
         res = (0.0, [])
     elif k == 2:
         res = (float(D[T[0], T[1]]), [(ids[T[0]], ids[T[1]])])
+    elif k > STEINER_DP_MAX:
+        length, arcs = _steiner_flow(D, T)
+        res = (length, sorted({tuple(sorted((ids[a], ids[b]))) for a, b in arcs if a != b}))
     else:
         full = (1 << k) - 1
         dp = np.full((1 << k, n), np.inf)

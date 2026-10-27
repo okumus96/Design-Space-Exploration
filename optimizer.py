@@ -96,7 +96,6 @@ class AssignmentOptimizer:
         model.setParam('OutputFlag', 1)
         model.setParam('MIPFocus', 2)
         #model.setParam('Symmetry', 1)
-        model.setParam("Method", 6)
         model.setParam("Seed", 0)  # Fixed seed for reproducible results across runs
         #model.setParam("MIPGap", 0.001)  # 1% gap for faster solutions (adjust as needed)
         model.update()
@@ -1183,7 +1182,7 @@ class AssignmentOptimizer:
 
         return model, objectives
 
-    def optimize(self, scs, locations, sensors, actuators, cable_types, comm_matrix, partitions=None, hardwares=None, interfaces=None, enable_comm_bw_constraints=True, comm_bw_big_m=10000, minimize_cable_length=False, cable_length_limit=None, cost_limit=None, time_limit=None, mip_gap=None, lp_path=None, uncertainty=None, backbone=None, phase2_time=600, gurobi_params=None, chains=None, start=None, lns=None):
+    def optimize(self, scs, locations, sensors, actuators, cable_types, comm_matrix, partitions=None, hardwares=None, interfaces=None, enable_comm_bw_constraints=True, comm_bw_big_m=10000, minimize_cable_length=False, cable_length_limit=None, cost_limit=None, time_limit=None, mip_gap=None, lp_path=None, uncertainty=None, backbone=None, phase2_time=600, gurobi_params=None, chains=None, start=None, lns=None, guide=None):
         """
         Dynamic selection of partitions + HW + interfaces + cables.
         
@@ -1286,6 +1285,68 @@ class AssignmentOptimizer:
                     v.Start = val
                     matched += 1
             print(f"  Start solution: {matched} of {model.NumVars} variables taken from the previous solve")
+
+        # Learned guide (learn/search.py, configs/solver.json learn.search): phase 1 searches only the cells the predictor
+        # ranks highest for every component and its standby, starting from the most probable placement; the guided
+        # improvement loop then frees components with uncertain predictions together with their communication partners
+        # over all cells. The bound of the restricted phase 1 is no bound of the full model and is not reported as one.
+        guided = bool(guide)
+        guide_ub = []   # (variable, upper bound) of the restricted pairs, lifted after phase 1
+        if guided:
+            for (i, j), var in x.items():
+                al = guide.get('allowed', {}).get(scs[i].id)
+                if al is not None and locations[j].id not in al:
+                    guide_ub.append(var)
+                st = guide.get('start', {}).get(scs[i].id)
+                if st is not None:
+                    var.Start = 1.0 if locations[j].id == st else 0.0
+            for (i, j), var in net['r'].items():
+                al = guide.get('allowed_standby', guide.get('allowed', {})).get(scs[i].id)
+                if al is not None and locations[j].id not in al:
+                    guide_ub.append(var)
+                st = guide.get('start_standby', {}).get(scs[i].id)
+                if st is not None:
+                    var.Start = 1.0 if locations[j].id == st else 0.0
+            for var in guide_ub:
+                var.UB = 0.0
+            print(f"  Guide: {len(guide_ub)} of {len(x) + len(net['r'])} placement / standby variables excluded in phase 1, "
+                  f"start from the most probable placement")
+            # fixed start (guide fix_start; HANDOFF 16.23 method 3 part 1): the placement and standbys of the start
+            # design are fixed in the first solve, so the exact model only fills in partitions, hardware, network and
+            # cables; freed again before the improvement loop. Fallback rounds free the least confident components.
+            guide_fix = []
+            cell_index = {loc.id: j for j, loc in enumerate(locations)}
+            if guide.get('fix_start'):
+                for (i, j), var in x.items():
+                    st = guide['start'].get(scs[i].id)
+                    if st is not None and (i, cell_index.get(st)) in x:
+                        guide_fix.append((i, var, 1.0 if locations[j].id == st else 0.0))
+                for (i, j), var in (net['r'].items() if guide.get('fix_standby') else ()):
+                    st = guide.get('start_standby', {}).get(scs[i].id)
+                    if st is not None and (i, cell_index.get(st)) in net['r']:
+                        guide_fix.append((i, var, 1.0 if locations[j].id == st else 0.0))
+                print(f"  Start: placement of {len({i for i, _v, _ in guide_fix})} components fixed to the start design "
+                      f"for the first solve, standbys {'fixed' if guide.get('fix_standby') else 'free'}")
+            model._start_used = False
+            idx_of = {sc.id: i for i, sc in enumerate(scs)}
+            g_nbrs = {i: set() for i in range(n_sc)}
+            for m_ in comm_matrix:
+                a_, b_ = idx_of.get(m_['src']), idx_of.get(m_['dst'])
+                if a_ is not None and b_ is not None and a_ != b_:
+                    g_nbrs[a_].add(b_)
+                    g_nbrs[b_].add(a_)
+            g_weight = [1.05 - float(guide.get('confidence', {}).get(sc.id, 0.5)) for sc in scs]
+
+            def guided_pick(rng, free_share, design=None):
+                """components with uncertain predictions (sampled by 1 - confidence) and up to three communication
+                partners each, until free_share of all components are free"""
+                free = set()
+                k = max(1, int(round(free_share * n_sc)))
+                while len(free) < k:
+                    s_ = rng.choices(range(n_sc), weights=g_weight)[0]
+                    free.add(s_)
+                    free.update(rng.sample(sorted(g_nbrs[s_]), min(3, len(g_nbrs[s_]))))
+                return free
 
         if time_limit is not None:
             try:
@@ -2181,24 +2242,40 @@ class AssignmentOptimizer:
                       f"valid repairs {st['repair_valid']}, used {m._repairs_used}, repair failures {st['repair_fail']}, "
                       f"rejected by {st['rejected_by']}, cuts by {st['cuts_by']}", flush=True)
 
-        def _lns_improve(obj_expr, info, cfg, budget_s):
+        def _lns_improve(obj_expr, info, cfg, budget_s, pick=None):
             """Fix-and-optimize improvement of the phase-1 incumbent (configs/solver.json: lns). Every iteration fixes the
             placement of a random (1 - free_share) share of the components to the incumbent and re-solves the exact model
             with the rest free for iter_s seconds (the lazy constraints and all cuts stay active, so every accepted design
             is a feasible design of the full model); an improvement replaces the incumbent. Random neighbourhoods only,
-            so no structural preference. The phase-1 bound is kept for the gap: the loop never changes the bound."""
+            so no structural preference. The phase-1 bound is kept for the gap: the loop never changes the bound.
+            pick(rng, free_share, design): the free components (indices or ids) of an iteration instead, given the current
+            design {'x': {comp: cell}, 'r': {comp: cell}} (the guided loop and the learned policy, learn.search); a pick
+            with an observe(before, after) method learns the result of every iteration. Without a phase-1 bound (guided
+            phase 1) the loop runs until the time is used or max_iters iterations are done."""
             rng = random.Random(int(cfg.get('seed', 1)))
             free_share, iter_s = float(cfg.get('free_share', 0.3)), float(cfg.get('iter_s', 120))
+            max_iters = cfg.get('max_iters')
             all_vars = model.getVars()
             best_val, best = obj_expr.getValue(), model.getAttr('X', all_vars)
-            bound = info['bound']
-            x_items = list(x.items())
+            bound = info.get('bound')
+            gap_of = (lambda v: (v - bound) / max(1e-9, abs(v))) if bound is not None else (lambda v: None)
+            x_items, r_items = list(x.items()), list(net['r'].items())
+            sc_pos = {sc.id: i for i, sc in enumerate(scs)}
             t_end, it, improved = time.time() + budget_s, 0, 0
-            print(f"\n[LNS] start {best_val:.4f}, bound {bound:.4f}, budget {budget_s:.0f} s, free share {free_share}, {iter_s:.0f} s per iteration", flush=True)
-            while time.time() < t_end - 10 and (best_val - bound) / max(1e-9, abs(best_val)) > float(cfg.get('stop_gap', 0.01)):
+            norel = model.Params.NoRelHeurTime
+            model.setParam('NoRelHeurTime', 0)   # every iteration starts from the incumbent: no no-relaxation phase
+            print(f"\n[LNS] start {best_val:.4f}, bound {bound}, budget {budget_s:.0f} s, free share {free_share}, {iter_s:.0f} s per iteration", flush=True)
+            while time.time() < t_end - 10 and (bound is None or gap_of(best_val) > float(cfg.get('stop_gap', 0.01))) \
+                    and (max_iters is None or it < int(max_iters)):
                 it += 1
-                free = {i for i in range(n_sc) if rng.random() < free_share}
                 vals = dict(zip((v.VarName for v in all_vars), best))
+                if pick:
+                    design = {'x': {scs[i].id: locations[j].id for (i, j), var in x_items if vals[var.VarName] > 0.5},
+                              'r': {scs[i].id: locations[j].id for (i, j), var in r_items if vals[var.VarName] > 0.5}}
+                    free = {sc_pos[c] if isinstance(c, str) else c for c in pick(rng, free_share, design)}
+                else:
+                    free = {i for i in range(n_sc) if rng.random() < free_share}
+                before = best_val
                 for (i, j), var in x_items:
                     if i not in free:
                         var.LB = var.UB = round(vals[var.VarName])
@@ -2208,7 +2285,11 @@ class AssignmentOptimizer:
                 model.optimize(lazy_cb)
                 if model.SolCount > 0 and obj_expr.getValue() < best_val - 1e-6:
                     best_val, best, improved = obj_expr.getValue(), model.getAttr('X', all_vars), improved + 1
-                    print(f"[LNS] iteration {it}: improved to {best_val:.4f} (gap to the phase-1 bound {100 * (best_val - bound) / best_val:.2f} %)", flush=True)
+                    print(f"[LNS] iteration {it}: improved to {best_val:.4f} at {time.time() - t_end + budget_s:.0f} s "
+                          f"(total {time.time() - getattr(model, '_t_phase1', t_end - budget_s):.0f} s)"
+                          + (f" (gap to the phase-1 bound {100 * gap_of(best_val):.2f} %)" if bound is not None else ''), flush=True)
+                if hasattr(pick, 'observe'):
+                    pick.observe(before, best_val)
                 for (i, j), var in x_items:
                     var.LB, var.UB = 0.0, 1.0
             # leave the model in the state of the best design: everything fixed to it, one short solve
@@ -2217,15 +2298,17 @@ class AssignmentOptimizer:
                 var.LB = var.UB = round(vals[var.VarName])
             keep_steiner_cuts()
             model.setAttr('Start', all_vars, best)
-            model.setParam('TimeLimit', 120.0)
+            model.setParam('TimeLimit', float(cfg.get('final_s', 120.0)))
             model.optimize(lazy_cb)
             for (i, j), var in x_items:
                 var.LB, var.UB = 0.0, 1.0
+            model.setParam('NoRelHeurTime', norel)
             if model.SolCount > 0:
                 best_val = min(best_val, obj_expr.getValue())
             info['objective'] = float(best_val)
-            info['mip_gap'] = float((best_val - bound) / max(1e-9, abs(best_val)))
-            print(f"[LNS] done: {it} iterations, {improved} improvements, final {best_val:.4f}, gap {100 * info['mip_gap']:.2f} %", flush=True)
+            info['mip_gap'] = gap_of(best_val)
+            print(f"[LNS] done: {it} iterations, {improved} improvements, final {best_val:.4f}"
+                  + (f", gap {100 * info['mip_gap']:.2f} %" if info['mip_gap'] is not None else ''), flush=True)
             return {'iterations': it, 'improvements': improved, 'final': float(best_val)}
 
         def _solve_lexicographic():
@@ -2237,14 +2320,82 @@ class AssignmentOptimizer:
             print(f"\n[Lexicographic] Phase 1: minimize {primary_name}")
             lns_cfg = dict(lns or {})
             lns_on = bool(lns_cfg.get('enabled')) and tl is not None
-            if lns_on:   # phase 1 gets a share of the time, the improvement loop the rest
-                model.setParam('TimeLimit', max(60.0, tl * (1.0 - float(lns_cfg.get('time_share', 0.5)))))
+            if guided:   # the guide brings its own improvement loop (configs/solver.json: learn.search)
+                lns_cfg, lns_on = dict(guide.get('lns', {})), tl is not None
+            t_phase1 = model._t_phase1 = time.time()
+            if lns_on:   # phase 1 gets a share of the time (or init_s seconds), the improvement loop the rest
+                model.setParam('TimeLimit', float(lns_cfg['init_s']) if lns_cfg.get('init_s') is not None
+                               else max(60.0, tl * (1.0 - float(lns_cfg.get('time_share', 0.5)))))
+            fixed_now = guided and bool(guide_fix) and not model._start_used
+            if fixed_now:
+                model._start_used = True
+                for _i, var, val in guide_fix:
+                    var.LB = var.UB = val
             model.optimize(lazy_cb)
+            if guided:
+                if fixed_now:   # no design with the fixed placement: free the least confident components, round by round
+                    rounds, by_conf = 0, sorted({i for i, _v, _ in guide_fix},
+                                                key=lambda i: guide.get('confidence', {}).get(scs[i].id, 0.5))
+                    freed = set()   # grows over the rounds
+                    while model.SolCount == 0 and rounds < int(guide.get('start_rounds', 3)) and tl is not None \
+                            and time.time() - t_phase1 < tl - 10:
+                        rounds += 1
+                        freed |= set(by_conf[:int(round(float(guide.get('start_free', 0.25)) * rounds * len(by_conf)))])
+                        why = ''
+                        if model.status == GRB.INFEASIBLE:
+                            # the conflicting constraints (IIS, the unsat core of HANDOFF 16.24) name the components
+                            # that must move: those are freed as well, chain bounds free the whole chain
+                            import re
+                            try:
+                                model.computeIIS()
+                                names = [c.ConstrName for c in model.getConstrs() if c.IISConstr]
+                                if lp_path:   # --write_lp: the conflict for inspection
+                                    model.write(os.path.join(os.path.dirname(lp_path), f'start_iis_{rounds}.ilp'))
+                            except gp.GurobiError as e:
+                                names = []
+                                print(f"[Start] IIS not available: {e}")
+                            rules = {}
+                            for nm in names:
+                                rule = re.match(r'^[a-z]+(?:_[a-z]+)*', nm)
+                                rules[rule.group(0) if rule else nm] = rules.get(rule.group(0) if rule else nm, 0) + 1
+                            involved = {i for i, sc in enumerate(scs) if any(sc.id in nm for nm in names)}
+                            for ch in (chains or []):
+                                if any(nm == f"chain_lb_{ch['id']}" or nm.startswith(f"chain_lb_{ch['id']}_") for nm in names):
+                                    involved.update(idx_of[s] for s in ch.get('swcs', []) if s in idx_of)
+                            freed |= involved
+                            why = f"; rejected by {rules}, {len(involved)} components involved"
+                        for i, var, _val in guide_fix:
+                            if i in freed:
+                                var.LB, var.UB = 0.0, 1.0
+                        print(f"\n[Start] no design with the fixed placement (status {model.status}){why}; round {rounds}: "
+                              f"{len(freed)} components freed", flush=True)
+                        model.setParam('TimeLimit', max(10.0, min(float(lns_cfg.get('init_s', 120)), tl - (time.time() - t_phase1))))
+                        model.optimize(lazy_cb)
+                    for _i, var, _val in guide_fix:
+                        var.LB, var.UB = 0.0, 1.0
+                    if model.SolCount > 0:
+                        print(f"[Start] first design {primary_expr.getValue():.4f} after {time.time() - t_phase1:.0f} s "
+                              f"({rounds} fallback round(s))", flush=True)
+                for var in guide_ub:   # back to the full model: the guide only restricts where the search starts
+                    var.UB = 1.0
+                if model.SolCount == 0 and tl is not None:   # continue on the full model up to the first design only
+                    print("\n[Guide] no design " + ("within the predicted cells" if guide_ub else f"after {model.Runtime:.0f} s")
+                          + "; phase 1 continues on the full model until the first design", flush=True)
+                    model.setParam('TimeLimit', max(10.0, tl - (time.time() - t_phase1)))
+                    model.setParam('SolutionLimit', 1)
+                    model.optimize(lazy_cb)
+                    model.setParam('SolutionLimit', 2000000000)
             phases.append(self._phase_info(model, primary_name))
+            if guided and (guide_ub or guide_fix):   # a restricted / fixed-start search proves nothing about the full model
+                phases[-1].update({'status': 'GUIDED', 'restricted_bound': phases[-1]['bound'], 'bound': None, 'mip_gap': None})
             print(f"[callback] after phase 1: {model._cb_stats}, repairs used {model._repairs_used}", flush=True)
-            if lns_on and model.SolCount > 0 and model.status == GRB.TIME_LIMIT and phases[-1]['mip_gap'] is not None \
-                    and phases[-1]['mip_gap'] > float(lns_cfg.get('stop_gap', 0.01)):
-                phases[-1]['lns'] = _lns_improve(primary_expr, phases[-1], lns_cfg, tl - model.Runtime)
+            if lns_on and model.SolCount > 0 and (guided or (model.status == GRB.TIME_LIMIT and phases[-1]['mip_gap'] is not None
+                                                             and phases[-1]['mip_gap'] > float(lns_cfg.get('stop_gap', 0.01)))):
+                budget = (tl - (time.time() - t_phase1)) if guided else (tl - model.Runtime)
+                if guided and lns_cfg.get('max_iters'):   # an episode of the learned policy always gets its iterations
+                    budget = max(budget, int(lns_cfg['max_iters']) * (float(lns_cfg.get('iter_s', 120)) + 2.0) + 10.0)
+                phases[-1]['lns'] = _lns_improve(primary_expr, phases[-1], lns_cfg, budget,
+                                                 pick=(guide.get('policy') or guided_pick) if guided else None)
             lex_constr = None
             if model.SolCount > 0 and model.status in (GRB.OPTIMAL, GRB.TIME_LIMIT):
                 primary_val = primary_expr.getValue()
@@ -2263,7 +2414,8 @@ class AssignmentOptimizer:
                 model.setObjective(secondary_expr, GRB.MINIMIZE)
                 model.setAttr('Start', all_vars, phase1)
                 if tl is not None:
-                    model.setParam('TimeLimit', max(tl - model.Runtime, float(phase2_time)))
+                    used = (time.time() - t_phase1) if guided else model.Runtime   # guided: phase 1 had several solves
+                    model.setParam('TimeLimit', max(tl - used, float(phase2_time)))
                 print(f"\n[Lexicographic] Phase 2: minimize {secondary_name} with {primary_name} <= {primary_val:.6f}")
                 model.optimize(lazy_cb)
                 phases.append(self._phase_info(model, secondary_name))
@@ -2383,11 +2535,11 @@ class AssignmentOptimizer:
     def optimize_growth_sweep(self, scs, locations, sensors, actuators, cable_types, comm_matrix,
                               partitions=None, hardwares=None, interfaces=None, solve_time_limit=None, mip_gap=None,
                               lp_dir=None, uncertainty=None, backbone=None, phase2_time=600, gurobi_params=None,
-                              chains=None, lns=None, **_ignored):
+                              chains=None, lns=None, guide=None, **_ignored):
         """
         Cost against software growth: for every growth level of configs/uncertainty.json (growth.alpha_levels) the
         min-cost design (second phase: cable length). Returns the solutions in the order of the levels; each carries
-        solve_info.growth_alpha.
+        solve_info.growth_alpha. guide(rho): the learned guide of a level (learn/search.py), None = exact search only.
         """
         params = (uncertainty or {}).get('params', {})
         levels = [float(a) for a in params.get('rho', {}).get('levels', params.get('growth', {}).get('alpha_levels', [0.0]))]
@@ -2410,7 +2562,7 @@ class AssignmentOptimizer:
                 time_limit=solve_time_limit, mip_gap=mip_gap,
                 lp_path=(os.path.join(lp_dir, f"model_alpha_{alpha:g}.lp.gz") if lp_dir else None),
                 uncertainty=unc, backbone=backbone, phase2_time=phase2_time, gurobi_params=gurobi_params,
-                chains=chains, start=self.last_values, lns=lns)
+                chains=chains, start=self.last_values, lns=lns, guide=(guide(alpha) if guide else None))
             if sol:
                 solutions.append(sol)
             else:
@@ -2422,7 +2574,8 @@ class AssignmentOptimizer:
     def optimize_pareto_epsilon_constraint(self, scs, locations, sensors, actuators, cable_types, comm_matrix,
                                            partitions=None, hardwares=None, interfaces=None,
                                            enable_comm_bw_constraints=True, comm_bw_big_m=10000, num_points=5,
-                                           solve_time_limit=None, mip_gap=None, lp_dir=None, uncertainty=None, backbone=None, phase2_time=600, gurobi_params=None, chains=None):
+                                           solve_time_limit=None, mip_gap=None, lp_dir=None, uncertainty=None, backbone=None, phase2_time=600, gurobi_params=None, chains=None,
+                                           **_ignored):
         """
         Build Pareto front between total_cost and cable_length via epsilon-constraint.
 

@@ -138,10 +138,18 @@ def main(args):
 
     # Step 2: Run optimization
     opt = AssignmentOptimizer()
-    
+
     # Step 3: Run Pareto optimization
     start_time = time.time()
     sweep = opt.optimize_growth_sweep if any(uncertainty.get(k) for k in UNCERTAINTY_BLOCKS) else opt.optimize_pareto_epsilon_constraint
+    # learned guide of the exact search (configs/solver.json: learn.search; robustness sweep only)
+    search_cfg = config_reader.get_solver_config().get('learn', {}).get('search', {})
+    guide = {}
+    if search_cfg.get('enabled') and sweep == opt.optimize_growth_sweep:
+        from learn.search import make_guide
+        guide = {'guide': make_guide(search_cfg, args.config_dir, args.architecture_json, args.num_locs)}
+    elif search_cfg.get('enabled'):
+        print("[Guide] learn.search is on but the run has no robustness sweep (--uncertainty): exact search only")
     pareto_solutions = sweep(
         scs, locations, sensors, actuators, cable_types, comm_matrix,
         partitions=partitions,
@@ -157,6 +165,7 @@ def main(args):
         mip_gap=args.mip_gap,
         lp_dir=args.output_dir if args.write_lp else None,
         uncertainty=uncertainty,
+        **guide,
     )
     end_time = time.time()
     print(f"#"*80)

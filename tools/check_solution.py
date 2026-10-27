@@ -411,9 +411,50 @@ class SolutionCheck:
                     self.err('tops_capacity', f"{site}: {hf} {l:.2f} TOPS > {cap:.2f} ({self.hw_units.get((site, hf), 0)} units)")
 
     # -------------------------------------------------------------------------------------------- peripherals
+    def steiner_flow(self, key):
+        """minimum Steiner tree length of many terminals: integer program of directed flows from the first terminal
+        to each other one (scipy HiGHS), without the edges whose ends a path with only terminals inside joins by
+        shorter hops (bottleneck Steiner distance, Duin & Volgenant 1989; minimax closure over the terminals)"""
+        import numpy as np
+        from scipy.optimize import Bounds, LinearConstraint, milp
+        from scipy.sparse import lil_matrix
+        nodes = sorted(set(self.cands) | set(self.devices) | set(key))
+        ix = {v: i for i, v in enumerate(nodes)}
+        n = len(nodes)
+        D = np.array([[min(self.dist(a, b), self.dist(b, a)) for b in nodes] for a in nodes])
+        np.fill_diagonal(D, 0.0)
+        W = D.copy()
+        for t in (ix[v] for v in key):   # minimax distances with terminals as the only inner nodes
+            W = np.minimum(W, np.maximum(W[:, t][:, None], W[t][None, :]))
+        arcs = [(a, b) for a in range(n) for b in range(n) if a != b and not W[a, b] < D[a, b] - 1e-9 * max(1.0, D[a, b])]
+        root, sinks = ix[key[0]], [ix[v] for v in key[1:]]
+        m, K = len(arcs), len(sinks)
+        A = lil_matrix((K * n + K * m + n, m + K * m))
+        lo, hi = np.zeros(K * n + K * m + n), np.zeros(K * n + K * m + n)
+        for k, s in enumerate(sinks):
+            for j, (a, b) in enumerate(arcs):
+                A[k * n + a, m + k * m + j] += 1.0
+                A[k * n + b, m + k * m + j] -= 1.0
+                A[K * n + k * m + j, m + k * m + j] = 1.0
+                A[K * n + k * m + j, j] = -1.0
+            lo[k * n + root] = hi[k * n + root] = 1.0
+            lo[k * n + s] = hi[k * n + s] = -1.0
+            lo[K * n + k * m:K * n + (k + 1) * m] = -np.inf
+        for j, (a, b) in enumerate(arcs):
+            A[K * n + K * m + b, j] = 1.0
+        hi[K * n + K * m:] = 1.0
+        ub = np.ones(m + K * m)
+        ub[[j for j, (a, b) in enumerate(arcs) if b == root]] = 0.0
+        res = milp(np.r_[[D[a, b] for a, b in arcs], np.zeros(K * m)], integrality=np.r_[np.ones(m), np.zeros(K * m)],
+                   bounds=Bounds(0.0, ub), constraints=LinearConstraint(A.tocsr(), lo, hi), options={'mip_rel_gap': 0.0})
+        if not res.success:
+            raise RuntimeError(f"Steiner flow model: {res.message}")
+        return float(res.fun)
+
     def steiner(self, terminals):
         """minimum Steiner tree length of the terminals in the complete graph over the candidate sites and all
-        devices with the channel cable lengths (classic Dreyfus-Wagner rooted at the first terminal)"""
+        devices with the channel cable lengths (classic Dreyfus-Wagner rooted at the first terminal; the flow model
+        of steiner_flow above 8 terminals)"""
         key = tuple(sorted(set(terminals)))
         if key in self._st_cache:
             return self._st_cache[key]
@@ -421,6 +462,8 @@ class SolutionCheck:
             val = 0.0
         elif len(key) == 2:
             val = self.dist(key[0], key[1])
+        elif len(key) > 8:
+            val = self.steiner_flow(key)
         else:
             nodes = sorted(set(self.cands) | set(self.devices))
             d = {(a, b): min(self.dist(a, b), self.dist(b, a)) for a in nodes for b in nodes}
@@ -583,7 +626,10 @@ class SolutionCheck:
                 self.err('bus_capacity', f"{bid}: device load {load} > {self.bus_umax} x {self.ct[n]['cap']}")
             st = self.steiner(list(b['units']) + list(b['devices']))
             self.checked['bus_length'] += 1
-            if not _le(st, float(b['length_m'])):   # within the solver's tolerances (binary members at 1 - IntFeasTol)
+            # the solver's cut len >= st x (sum of the members - (n - 1)) with binary members at 1 - IntFeasTol (1e-5)
+            # guarantees len >= st x (1 - n x 1e-5): that is the length the check requires
+            n_members = len(b['units']) + len(b['devices'])
+            if not _le(st * (1.0 - 1e-5 * n_members), float(b['length_m'])):
                 self.err('bus_length', f"{bid}: cable {float(b['length_m']):.3f} m shorter than the Steiner tree of its members {st:.3f} m")
             elif float(b['length_m']) > st + 1e-4:
                 self.warn('bus_length', f"{bid}: cable {float(b['length_m']):.3f} m longer than needed ({st:.3f} m)")
