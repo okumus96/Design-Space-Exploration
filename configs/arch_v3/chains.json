@@ -4,9 +4,9 @@
   "seed": 1,
   "scale": 25.0,
   "counts": {
-   "autoware_components": 159,
+   "autoware_components": 138,
    "non_ad_components": 5725,
-   "flows": 14542,
+   "flows": 14484,
    "chains": 386
   },
   "sources": {

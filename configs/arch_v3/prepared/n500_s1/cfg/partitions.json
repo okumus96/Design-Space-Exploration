@@ -1,0 +1,22 @@
+{
+ "partition": {
+  "cost": 800,
+  "cpu_cap": 49000,
+  "ram_cap": 16777216,
+  "rom_cap": 67108864,
+  "max_per_asil_per_site": 3,
+  "description": "Infrastructure cost to open/establish a partition at a location. Supports all ASIL levels (0-4). max_per_asil_per_site bounds the partitions of one ASIL at one site (3 = the slot count of the v1 model).",
+  "cost_source": "USD; central HPC unit USD 800-3,000+ (market research, Dataintelo; low confidence), low end used for one compute block of partition size (R-Car V4H class); provisional until the demands are calibrated"
+ },
+ "site": {
+  "max_partitions": 4,
+  "cpu_cap": 196000,
+  "ram_cap": 67108864,
+  "rom_cap": 268435456,
+  "fixed_cost": 70,
+  "switch_node_cost": 70,
+  "description": "Caps and fixed activation cost of the control unit at a cell (the single unit size of configs/vehicle.json installation_space.ecu_size): at most max_partitions partitions, and the hosted demand of the whole unit (sum over all its partitions, with the demand margins and hot standbys, as in the partition capacity constraint) at most cpu/ram/rom_cap times the site derating (same units as the partition capacities). null = unlimited, fixed_cost 0 = free. Provisional values 2026-10-20 (two partitions' worth of compute, four partitions) until the data pass. switch_node_cost (2026-10-30): the same unit cost for a cell that holds only a switch and no software (its own housing, supply and mounting); 0 = the switch chip only (hardwares.json), the model before 2026-10-30.",
+  "cost_source": "USD; body zone node USD 45-90 (market research, Dataintelo; low confidence), midpoint: housing, supply, board"
+ },
+ "_v3": "capacities of the schema-v3 instances (tools/arch_v3_prepare.py): partition = one R-Car V4H-class block (configs/unit_classes.json central_ad_soc: 49,000 DMIPS, 16 GB RAM, 64 GB flash assumed), site = 4 blocks; costs unchanged"
+}

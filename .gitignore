@@ -20,3 +20,4 @@ assets/
 configs/routing_space.*
 configs/bay_candidates.json
 .mcp.json
+configs/arch_v3/prepared/*/cfg/routing_space.*

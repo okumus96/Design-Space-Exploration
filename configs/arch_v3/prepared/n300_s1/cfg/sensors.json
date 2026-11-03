@@ -1,0 +1,286 @@
+{
+ "_comment": "Positions in metres in the vehicle frame of configs/vehicle.json (x right, y front, z up from ground). Source: nuPlan suite layout on IONIQ 5 geometry (assumption until nuPlan extrinsics are transferred).",
+ "sensors": [
+  {
+   "type": "CAMERA",
+   "id": "CAM_Front_Center",
+   "interface": "ETH",
+   "volume": 288.0,
+   "position": {
+    "x": -0.0,
+    "y": 0.388,
+    "z": 1.447
+   },
+   "snapped": "moved 0.17 m onto the car skin of the reference model",
+   "rate_hz": 10.0,
+   "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): D3 Engineering D3RCM camera, 2000x1200 at 10 Hz; Sony IMX390 sensor, 12-bit A/D (Sony 2017); uncompressed 2000*1200*12 bit = 28.8 Mbit per frame. The real link is FPD-Link III (SerDes), modelled as a dedicated Ethernet attachment"
+  },
+  {
+   "type": "LIDAR",
+   "id": "LIDAR_Front",
+   "interface": "ETH",
+   "volume": 9.42,
+   "position": {
+    "x": -0.0,
+    "y": 2.297,
+    "z": 0.555
+   },
+   "snapped": "moved 0.06 m onto the car skin of the reference model",
+   "rate_hz": 20.0,
+   "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): Hesai Pandar20A/B at 20 Hz, 360k points/s; data rate estimated as half the Pandar40P stream (same packet format, half the point rate)"
+  },
+  {
+   "type": "LIDAR",
+   "id": "LIDAR_Left_Pillar",
+   "interface": "ETH",
+   "volume": 18.84,
+   "position": {
+    "x": -0.749,
+    "y": 0.83,
+    "z": 1.131
+   },
+   "snapped": "moved 0.26 m onto the car skin of the reference model",
+   "rate_hz": 20.0,
+   "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): Hesai Pandar40P at 20 Hz, 720k points/s; point cloud data rate 18.84 Mbit/s single return (Hesai Pandar40P user manual)"
+  },
+  {
+   "type": "LIDAR",
+   "id": "LIDAR_Right_Pillar",
+   "interface": "ETH",
+   "volume": 18.84,
+   "position": {
+    "x": 0.745,
+    "y": 0.831,
+    "z": 1.132
+   },
+   "snapped": "moved 0.26 m onto the car skin of the reference model",
+   "rate_hz": 20.0,
+   "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): Hesai Pandar40P at 20 Hz, 720k points/s; point cloud data rate 18.84 Mbit/s single return (Hesai Pandar40P user manual)"
+  },
+  {
+   "type": "LIDAR",
+   "id": "LIDAR_Rear",
+   "interface": "ETH",
+   "volume": 9.42,
+   "position": {
+    "x": -0.0,
+    "y": -2.267,
+    "z": 0.609
+   },
+   "snapped": "moved 0.03 m onto the car skin of the reference model",
+   "rate_hz": 20.0,
+   "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): Hesai Pandar20A/B at 20 Hz, 360k points/s; data rate estimated as half the Pandar40P stream (same packet format, half the point rate)"
+  },
+  {
+   "type": "LIDAR",
+   "id": "LIDAR_Top",
+   "interface": "ETH",
+   "volume": 18.84,
+   "position": {
+    "x": -0.0,
+    "y": -0.305,
+    "z": 1.549
+   },
+   "snapped": "moved 0.16 m onto the car skin of the reference model",
+   "rate_hz": 20.0,
+   "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): Hesai Pandar40P at 20 Hz, 720k points/s; point cloud data rate 18.84 Mbit/s single return (Hesai Pandar40P user manual)"
+  },
+  {
+   "type": "IMU",
+   "id": "IMU_Top_Center",
+   "interface": "SPI",
+   "volume": 0.04,
+   "position": {
+    "x": 0.0,
+    "y": 0.1,
+    "z": 0.62
+   },
+   "rate_hz": 100.0,
+   "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): Honeywell HG1120 at 100 Hz; HG1120 brochure: navigation/control data rates 100/600 Hz, SPI 2-9 Mbit/s or RS-422/CAN 1 Mbit/s; about 50 B per sample (3 rates, 3 accelerations, status; estimate) = 0.4 kbit"
+  },
+  {
+   "type": "GPS",
+   "id": "GPS_Center",
+   "interface": "UART",
+   "volume": 0.02,
+   "position": {
+    "x": -0.001,
+    "y": -1.204,
+    "z": 1.586
+   },
+   "snapped": "moved 0.02 m onto the car skin of the reference model",
+   "rate_hz": 20.0,
+   "data_source": "nuPlan suite (Karnchanachari et al., ICRA 2024): Trimble BX992 at 20 Hz; about 125 B per fix (position, velocity, covariance; estimate) = 1 kbit"
+  },
+  {
+   "type": "ACCELERATOR_PEDAL",
+   "id": "accelerator_pedal",
+   "interface": "CAN",
+   "volume": 0.0064,
+   "position": {
+    "x": -0.4,
+    "y": 0.9,
+    "z": 0.45
+   },
+   "rate_hz": 100.0,
+   "source": "assumption: endpoint of the non-AD functions (CAN bus of the function; placed at: driver footwell in front of the left seat, at the floor below the dashboard; one 8-byte frame per 10 ms period per driver)"
+  },
+  {
+   "type": "CHARGE_PORT",
+   "id": "charge_port",
+   "interface": "CAN",
+   "volume": 0.00064,
+   "position": {
+    "x": 0.9,
+    "y": -1.75,
+    "z": 0.9
+   },
+   "rate_hz": 10.0,
+   "source": "assumption: endpoint of the non-AD functions (CAN bus of the function; placed at: charging inlet in the rear right quarter panel above the wheel arch (IONIQ 5); one 8-byte frame per 100 ms period per driver)"
+  },
+  {
+   "type": "DOOR_LOCK_SWITCHES_LEFT",
+   "id": "door_lock_switches_left",
+   "interface": "CAN",
+   "volume": 0.0032,
+   "position": {
+    "x": -0.85,
+    "y": 0.3,
+    "z": 0.88
+   },
+   "rate_hz": 50.0,
+   "source": "assumption: endpoint of the non-AD functions (CAN bus of the function; placed at: left doors: driver door inner panel; one 8-byte frame per 20 ms period per driver)"
+  },
+  {
+   "type": "DOOR_LOCK_SWITCHES_RIGHT",
+   "id": "door_lock_switches_right",
+   "interface": "CAN",
+   "volume": 0.0032,
+   "position": {
+    "x": 0.85,
+    "y": 0.3,
+    "z": 0.88
+   },
+   "rate_hz": 50.0,
+   "source": "assumption: endpoint of the non-AD functions (CAN bus of the function; placed at: right doors: front passenger door inner panel; one 8-byte frame per 20 ms period per driver)"
+  },
+  {
+   "type": "GEAR_SELECTOR",
+   "id": "gear_selector",
+   "interface": "CAN",
+   "volume": 0.0096,
+   "position": {
+    "x": -0.3,
+    "y": 0.78,
+    "z": 0.88
+   },
+   "rate_hz": 100.0,
+   "source": "assumption: endpoint of the non-AD functions (CAN bus of the function; placed at: column-mounted drive selector right of the steering column (IONIQ 5); one 8-byte frame per 10 ms period per driver)"
+  },
+  {
+   "type": "KEYLESS_RECEIVER",
+   "id": "keyless_receiver",
+   "interface": "CAN",
+   "volume": 0.00448,
+   "position": {
+    "x": 0.0,
+    "y": -0.95,
+    "z": 1.5
+   },
+   "rate_hz": 50.0,
+   "source": "assumption: endpoint of the non-AD functions (CAN bus of the function; placed at: RF receiver in the rear headliner (common place of keyless / RF receivers); one 8-byte frame per 20 ms period per driver)"
+  },
+  {
+   "type": "MICROPHONES",
+   "id": "microphones",
+   "interface": "ETH",
+   "volume": 0.256,
+   "position": {
+    "x": 0.0,
+    "y": 0.3,
+    "z": 1.53
+   },
+   "rate_hz": 10.0,
+   "source": "assumption: endpoint of the non-AD functions (ETH bus of the function; placed at: overhead console behind the windscreen header; one 8-byte frame per 100 ms period per driver; audio stream as sourced)"
+  },
+  {
+   "type": "PARKING_SENSORS",
+   "id": "parking_sensors",
+   "interface": "LIN",
+   "volume": 0.00128,
+   "position": {
+    "x": 0.35,
+    "y": -2.25,
+    "z": 0.5
+   },
+   "rate_hz": 20.0,
+   "source": "assumption: endpoint of the non-AD functions (LIN bus of the function; placed at: ultrasonic sensors in the rear bumper (one endpoint for the set); one 8-byte frame per 50 ms period per driver)"
+  },
+  {
+   "type": "SEAT_CONTROLS",
+   "id": "seat_controls",
+   "interface": "LIN",
+   "volume": 0.0032,
+   "position": {
+    "x": -0.67,
+    "y": 0.2,
+    "z": 0.52
+   },
+   "rate_hz": 50.0,
+   "source": "assumption: endpoint of the non-AD functions (LIN bus of the function; placed at: outer side of the driver seat base; one 8-byte frame per 20 ms period per driver)"
+  },
+  {
+   "type": "START_BUTTON",
+   "id": "start_button",
+   "interface": "CAN",
+   "volume": 0.0064,
+   "position": {
+    "x": -0.22,
+    "y": 0.82,
+    "z": 0.92
+   },
+   "rate_hz": 100.0,
+   "source": "assumption: endpoint of the non-AD functions (CAN bus of the function; placed at: start / stop button on the dashboard right of the steering column; one 8-byte frame per 10 ms period per driver)"
+  },
+  {
+   "type": "TPMS_RECEIVER",
+   "id": "tpms_receiver",
+   "interface": "CAN",
+   "volume": 0.00064,
+   "position": {
+    "x": 0.0,
+    "y": -0.85,
+    "z": 0.42
+   },
+   "rate_hz": 10.0,
+   "source": "assumption: endpoint of the non-AD functions (CAN bus of the function; placed at: cabin centre under the rear seat cushion, between the wheels; one 8-byte frame per 100 ms period per driver)"
+  },
+  {
+   "type": "WINDOW_SWITCHES_LEFT",
+   "id": "window_switches_left",
+   "interface": "LIN",
+   "volume": 0.0032,
+   "position": {
+    "x": -0.82,
+    "y": 0.12,
+    "z": 0.76
+   },
+   "rate_hz": 50.0,
+   "source": "assumption: endpoint of the non-AD functions (LIN bus of the function; placed at: left doors: driver door armrest switch pack (master switches); one 8-byte frame per 20 ms period per driver)"
+  },
+  {
+   "type": "WINDOW_SWITCHES_RIGHT",
+   "id": "window_switches_right",
+   "interface": "LIN",
+   "volume": 0.0032,
+   "position": {
+    "x": 0.82,
+    "y": 0.12,
+    "z": 0.76
+   },
+   "rate_hz": 50.0,
+   "source": "assumption: endpoint of the non-AD functions (LIN bus of the function; placed at: right doors: front passenger door armrest switch; one 8-byte frame per 20 ms period per driver)"
+  }
+ ],
+ "_data_comment": "volume = data rate (Mbit/s), rate_hz = message rate; one message = volume * 1000 / rate_hz kbit. Data pass 2026-10-21, sources per device (data_source); estimates are marked."
+}

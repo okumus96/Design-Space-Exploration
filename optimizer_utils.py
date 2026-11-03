@@ -37,14 +37,86 @@ def get_distance(loc1, loc2):
     return manhattan_dist
 
 _STEINER_CACHE = {}
+STEINER_DP_MAX = 9   # terminals up to which the Dreyfus-Wagner recursion (3^k) is faster than the flow model
+
+
+def _steiner_flow(D, T):
+    """Exact minimum Steiner tree of the terminal indices T in the metric D as a mixed-integer program: directed
+    multi-commodity flow from T[0] to every other terminal (HiGHS via scipy, no Gurobi licence session), on the edges
+    that pass the bottleneck Steiner distance test (Duin & Volgenant, Networks 1989): an edge longer than every hop
+    of some path between its ends whose inner nodes are terminals is in no minimum tree. Returns (length, arcs)."""
+    import numpy as np
+    from scipy.optimize import Bounds, LinearConstraint, milp
+    from scipy.sparse import coo_matrix
+    n, k = len(D), len(T)
+    DT = D[np.ix_(T, T)]
+    B = np.zeros((k, k))   # bottleneck distances between the terminals, along their minimum spanning tree
+    best, par, done, order = DT[0].copy(), np.zeros(k, dtype=np.int64), np.zeros(k, dtype=bool), [0]
+    done[0] = True
+    for _ in range(k - 1):
+        x = int(np.where(done, np.inf, best).argmin())
+        B[x, order] = B[order, x] = np.maximum(B[par[x], order], best[x])
+        order.append(x)
+        done[x] = True
+        closer = DT[x] < best
+        best, par = np.where(closer, DT[x], best), np.where(closer, x, par)
+    DnT = D[:, T]
+    via = np.maximum(DnT[:, :, None], B[None]).min(axis=1)    # u -> terminals -> terminal t
+    S = np.maximum(via[:, None, :], DnT[None]).min(axis=2)    # u -> terminals -> v
+    S = np.minimum(S, S.T)
+    iu, iv = np.triu_indices(n, 1)
+    keep = D[iu, iv] <= S[iu, iv] + 1e-9 * np.maximum(1.0, D[iu, iv])
+    tail = np.concatenate([iu[keep], iv[keep]])
+    head = np.concatenate([iv[keep], iu[keep]])
+    m, K, root = len(tail), k - 1, T[0]
+    ar, one = np.arange(m), np.ones(m)
+    # variables: arc used y (m), then the flow of every terminal but the root (K x m)
+    rows, cols, vals, lo, hi = [], [], [], [], []
+    for t in range(K):   # conservation: out - in = 1 at the root, -1 at the terminal, 0 elsewhere
+        rows += [t * n + tail, t * n + head]
+        cols += [m * (1 + t) + ar] * 2
+        vals += [one, -one]
+        b = np.zeros(n)
+        b[root], b[T[t + 1]] = 1.0, -1.0
+        lo.append(b)
+        hi.append(b)
+    for t in range(K):   # flow only on used arcs
+        rows += [K * n + t * m + ar] * 2
+        cols += [m * (1 + t) + ar, ar]
+        vals += [one, -one]
+        lo.append(np.full(m, -np.inf))
+        hi.append(np.zeros(m))
+    rows.append(K * n + K * m + head)   # one arc into every node
+    cols.append(ar)
+    vals.append(one)
+    lo.append(np.zeros(n))
+    hi.append(np.ones(n))
+    A = coo_matrix((np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(K * n + K * m + n, m * (1 + K)))
+    ub = np.ones(m * (1 + K))
+    ub[:m][head == root] = 0.0
+    res = milp(np.concatenate([D[tail, head], np.zeros(K * m)]), integrality=np.r_[np.ones(m), np.zeros(K * m)],
+               bounds=Bounds(0.0, ub), constraints=LinearConstraint(A.tocsr(), np.concatenate(lo), np.concatenate(hi)),
+               options={'mip_rel_gap': 0.0})
+    if not res.success:
+        raise RuntimeError(f"Steiner tree flow model: {res.message}")
+    used = {int(a) for a in ar if res.x[a] > 0.5}
+    succ = {}
+    for a in used:
+        succ.setdefault(int(tail[a]), []).append(a)
+    arcs, stack = [], [root]   # the arborescence from the root (drops unconnected zero-length arcs)
+    while stack:
+        for a in succ.get(stack.pop(), []):
+            arcs.append((int(tail[a]), int(head[a])))
+            stack.append(int(head[a]))
+    return float(sum(D[a, b] for a, b in arcs)), arcs
 
 
 def steiner_tree(terminals, points):
-    """Exact minimum Steiner tree (Dreyfus-Wagner) of the terminal ids in the complete graph over `points`
-    {id: Point} (candidate sites and devices) with the cable lengths of get_distance (channel graph). The length of
-    a bus line that runs from member to member along the cable channels; exact, hence monotone in the terminal set
-    (a bigger set never has a shorter tree), which keeps the lazy bus-length cuts of the optimiser valid.
-    Returns (length, [(id_a, id_b), ...] tree edges)."""
+    """Exact minimum Steiner tree of the terminal ids in the complete graph over `points` {id: Point} (candidate
+    sites and devices) with the cable lengths of get_distance (channel graph): Dreyfus-Wagner up to STEINER_DP_MAX
+    terminals, above that the flow model of _steiner_flow. The length of a bus line that runs from member to member
+    along the cable channels; exact, hence monotone in the terminal set (a bigger set never has a shorter tree), which
+    keeps the lazy bus-length cuts of the optimiser valid. Returns (length, [(id_a, id_b), ...] tree edges)."""
     import numpy as np
     ids = tuple(sorted(points))
     key = (ids, tuple(sorted(set(terminals))))
@@ -52,7 +124,12 @@ def steiner_tree(terminals, points):
         return _STEINER_CACHE[key]
     if ('D', ids) not in _STEINER_CACHE:
         D = np.array([[0.0 if a == b else float(get_distance(points[a], points[b])) for b in ids] for a in ids])
-        _STEINER_CACHE[('D', ids)] = np.minimum(D, D.T)
+        D = np.minimum(D, D.T)
+        # shortest paths (Floyd-Warshall): channel lengths between tabled points and Manhattan lengths to devices
+        # without a channel attachment do not form a metric, and Dreyfus-Wagner is exact only on a metric
+        for k in range(len(ids)):
+            D = np.minimum(D, D[:, k:k + 1] + D[k:k + 1, :])
+        _STEINER_CACHE[('D', ids)] = D
     D = _STEINER_CACHE[('D', ids)]
     pos = {a: k for k, a in enumerate(ids)}
     T = [pos[t] for t in key[1]]
@@ -61,6 +138,9 @@ def steiner_tree(terminals, points):
         res = (0.0, [])
     elif k == 2:
         res = (float(D[T[0], T[1]]), [(ids[T[0]], ids[T[1]])])
+    elif k > STEINER_DP_MAX:
+        length, arcs = _steiner_flow(D, T)
+        res = (length, sorted({tuple(sorted((ids[a], ids[b]))) for a, b in arcs if a != b}))
     else:
         full = (1 << k) - 1
         dp = np.full((1 << k, n), np.inf)
@@ -159,6 +239,48 @@ def build_latency_map(cable_types):
         dict: Dictionary mapping cable type names to their latency_per_meter values
     """
     return {name: ct.latency_per_meter for name, ct in cable_types.items()}
+
+
+def nominal_lane(net, t, getv):
+    """The flow that stands for base flow t in the nominal state. For the lanes of a bus device (gateway rule): the first
+    lane whose gateway is the user's own unit (no backbone crossing), else the first lane with both ends placed; every
+    other flow stands for itself. The lanes are redundant channels, the function uses the best one."""
+    tr = net['flow_meta'][t]
+    if tr['type'] not in ('BUS_SC', 'SC_BUS'):
+        return t
+    best = None
+    for key, t2 in sorted(net['base_variants'][t].items(), key=lambda kv: kv[1]):
+        if 'r' in key:
+            continue
+        src, dst = net['flow_ends'][t2]
+        u = next((k for k, var in src.items() if getv(var) > 0.5), None)
+        v = next((k for k, var in dst.items() if getv(var) > 0.5), None)
+        if u is None or v is None:
+            continue
+        if u == v:
+            return t2
+        best = t2 if best is None else best
+    return best if best is not None else t
+
+
+def lane_keys(net, t_base, order, getv):
+    """the variant keys of base flow t_base in the order the failure rules try them: for the lanes of a bus device the
+    lanes without a backbone crossing first (per instance, primaries before standbys), as nominal_lane"""
+    tr = net['flow_meta'][t_base]
+    keys = order[tr['type']]
+    if tr['type'] not in ('BUS_SC', 'SC_BUS'):
+        return keys
+    variants = net['base_variants'][t_base]
+
+    def rank(k):
+        t = variants.get(k)
+        if t is None:
+            return 2
+        src, dst = net['flow_ends'][t]
+        u = next((kk for kk, var in src.items() if getv(var) > 0.5), None)
+        v = next((kk for kk, var in dst.items() if getv(var) > 0.5), None)
+        return 0 if (u is not None and u == v) else 1
+    return sorted(keys, key=lambda k: ('r' in k, rank(k)))
 
 
 def flow_routes(net, getv):
@@ -330,6 +452,9 @@ def failure_report(net, scs, locations, getv, uncertainty=None):
         scenarios += [('cable', k) for k in sorted(used_links)]
         scenarios += [('line', ln) for ln in sorted(used_lines)]
     order = {'SC_SC': [('x', 'x'), ('x', 'r'), ('r', 'x'), ('r', 'r')], 'SENS_SC': [('a', 'x'), ('a', 'r')], 'SC_ACT': [('x', 'a'), ('r', 'a')]}
+    n_lanes = max((sum(1 for b in (net.get('bus') or {}).get('inst', []) if b[0] == n) for n in bus_types), default=0)
+    order['BUS_SC'] = [(f'a{k}', inst) for inst in ('x', 'r') for k in range(n_lanes)]
+    order['SC_BUS'] = [(inst, f'a{k}') for inst in ('x', 'r') for k in range(n_lanes)]
 
     def ends(t):
         src, dst = net['flow_ends'][t]
@@ -339,6 +464,9 @@ def failure_report(net, scs, locations, getv, uncertainty=None):
         u, v = ends(t)
         if u is None or v is None or (kind == 'cell' and elem in (u, v)):
             return False
+        tr_t = net['flow_meta'][t]
+        if kind == 'line' and tr_t['type'] in ('BUS_SC', 'SC_BUS') and tr_t.get('line') == elem:
+            return False   # a lane dies with its own line (as the callback's flow_alive)
         if u == v:
             return True
         rt = routes.get(t)
@@ -362,7 +490,7 @@ def failure_report(net, scs, locations, getv, uncertainty=None):
     inputs, act_outputs = {}, {}
     for t_base in net['base_variants']:
         tr = net['flow_meta'][t_base]
-        if tr['type'] == 'SC_ACT':
+        if tr['type'] in ('SC_ACT', 'SC_BUS'):
             act_outputs.setdefault(tr['src_idx'], []).append(t_base)
         else:
             inputs.setdefault(tr['dst_idx'], []).append(t_base)
@@ -391,7 +519,7 @@ def failure_report(net, scs, locations, getv, uncertainty=None):
         # traffic after the failure: flows that keep running plus the first surviving variant of every data flow
         carried = {t for t in net['flow_meta'] if not flow_is_silent(net, t, hot_val) and alive(t, kind, elem)}
         for t_base, variants in net['base_variants'].items():
-            pick = next((variants[k] for k in order[net['flow_meta'][t_base]['type']] if k in variants and alive(variants[k], kind, elem)), None)
+            pick = next((variants[k] for k in lane_keys(net, t_base, order, getv) if k in variants and alive(variants[k], kind, elem)), None)
             if pick is not None:
                 carried.add(pick)
         msgs = resource_messages(net, routes, getv, carried=carried, failed_line=(elem if kind == 'line' else None))
@@ -409,7 +537,7 @@ def failure_report(net, scs, locations, getv, uncertainty=None):
             total, broken = 0.0, False
             for t_base in ch['flows']:
                 picked = None
-                for key in order[net['flow_meta'][t_base]['type']]:
+                for key in lane_keys(net, t_base, order, getv):
                     t = net['base_variants'][t_base].get(key)
                     if t is not None and alive(t, kind, elem):
                         picked = t
@@ -456,6 +584,7 @@ def chain_latencies(net, routes, getv):
     for ch in net.get('chains', []):
         total, crossings = 0.0, []
         for t in ch['flows']:
+            t = nominal_lane(net, t, getv)
             r = routes.get(t)
             if r is None or r[3] is None:
                 continue
@@ -630,6 +759,7 @@ def calculate_sensor_actuator_cable_costs(x, scs, locations, sensors, actuators,
     actuator_lookup = build_actuator_lookup(actuators)
     
     bus_types = set((bus or {}).get('types', ()))
+    dev_f = float((bus or {}).get('dev_factor', 1.0) or 1.0)   # power and ground cores of a device connection
 
     hosts = list((x or {}).items()) + list((standby_r or {}).items())   # a standby has its own cable to the device
     for (i, j), var in hosts:
@@ -641,7 +771,7 @@ def calculate_sensor_actuator_cable_costs(x, scs, locations, sensors, actuators,
                     continue
                 dist = get_distance(dev.location, locations[j].location)
                 cable_length += dist
-                cable_cost += dist * cost_map.get(dev.interface, 0.0)
+                cable_cost += dev_f * dist * cost_map.get(dev.interface, 0.0)
 
     # ETH attachment cables
     for att, devs in ((attach_s, sensors), (attach_a, actuators)):
@@ -649,14 +779,14 @@ def calculate_sensor_actuator_cable_costs(x, scs, locations, sensors, actuators,
             if av.X > 0.5 and getattr(devs[di], 'location', None):
                 dist = get_distance(devs[di].location, locations[j].location)
                 cable_length += dist
-                cable_cost += dist * cost_map.get(getattr(devs[di], 'interface', 'ETH'), 0.0)
+                cable_cost += dev_f * dist * cost_map.get(getattr(devs[di], 'interface', 'ETH'), 0.0)
 
     # bus lines (CAN, LIN, FlexRay): one cable through all members of a bus
     for b, lv in (bus or {}).get('len', {}).items():
         length = float(lv.X)
         if length > 1e-9:
             cable_length += length
-            cable_cost += length * cost_map.get(b[0], 0.0)
+            cable_cost += dev_f * length * cost_map.get(b[0], 0.0)
 
     return cable_length, cable_cost
 
@@ -845,6 +975,11 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
         num_partitions_opened = sum(int(round(var.X)) for var in P.values())
         site_fixed_cost = float(partitions.get('site_fixed_cost', 0) or 0)
         site_cost = site_fixed_cost * sum(1 for var in y.values() if var.X > 0.5)
+        # a unit that holds only a switch pays site.switch_node_cost (optimizer.py, 2026-10-30; absent = 0)
+        switch_node_cost = float(partitions.get('switch_node_cost', 0) or 0)
+        if switch_node_cost > 0:
+            site_cost += switch_node_cost * sum(1 for j, var in y.items() if var.X < 0.5 and hw_use.get((j, 'SWITCH')) is not None
+                                                and hw_use[j, 'SWITCH'].X > 0.5)
         
         # Extract HW and interfaces opened
         hw_cost, hw_opened = calculate_hardware_cost(hw_use, hardwares, locations)
@@ -1000,7 +1135,10 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
                       f"volume {vol_fwd:.1f} / {vol_rev:.1f}" + ("  (relayed)" if len(path) > 2 else ""))
             print(f"  Summary: {len(backbone_routes)} site pairs with traffic, {relayed} relayed")
             for (a, b, w_if), load in arc_load.items():
-                key = f"{locations[min(a, b)].id}|{locations[max(a, b)].id}|{w_if}"
+                # undirected pair, key by the smaller cell name (the checker's convention, tools/check_solution._pk);
+                # by index the key differed from the checker's for the named cells (2026-10-31, final30 run)
+                ia, ib = locations[a].id, locations[b].id
+                key = f"{min(ia, ib)}|{max(ia, ib)}|{w_if}"
                 comm_link_peak_load[key] = max(comm_link_peak_load.get(key, 0.0), float(load))
             if net.get('critical'):
                 failure_scenarios = failure_report(net, scs, locations, lambda var: var.X, uncertainty)
@@ -1032,12 +1170,17 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
                     src, dst = scs[tr['src_idx']].id, scs[tr['dst_idx']].id
                 elif tr['type'] == 'SENS_SC':
                     src, dst = sensors[tr['sensor_idx']].id, scs[tr['dst_idx']].id
+                elif tr['type'] == 'BUS_SC':
+                    src, dst = tr['dev'], scs[tr['dst_idx']].id
+                elif tr['type'] == 'SC_BUS':
+                    src, dst = scs[tr['src_idx']].id, tr['dev']
                 else:
                     src, dst = scs[tr['src_idx']].id, actuators[tr['act_idx']].id
                 entry = {'type': tr['type'], 'src': src, 'dst': dst, 'line': None,
                          'src_inst': tr.get('src_inst', 'a' if tr['type'] == 'SENS_SC' else 'x'),
                          'dst_inst': tr.get('dst_inst', 'a' if tr['type'] == 'SC_ACT' else 'x'),
-                         'iface': None, 'path': None}
+                         'iface': None, 'path': None,
+                         'lane_line': f"{tr['line'][0]}{tr['line'][1] + 1}" if tr['type'] in ('BUS_SC', 'SC_BUS') else None}
                 rt = routes.get(t)
                 if rt is not None:
                     u, v, w_if, p_idx = rt
@@ -1076,6 +1219,11 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
                 if av.X > 0.5:
                     eth_sensor_attachments[sensors[si].id] = locations[j].id
 
+        bus_gateways = {}
+        for (d, b, j), gv in ((net.get('bus') or {}).get('gw') or {}).items() if net else []:
+            if gv.X > 0.5:
+                bus_gateways.setdefault(d, {})[f"{b[0]}{b[1] + 1}"] = locations[j].id
+
         eth_actuator_attachments = {}
         if attach_a:
             for (ai, j), av in attach_a.items():
@@ -1099,6 +1247,7 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
             'lost_functions': lost_summary,
             'eth_sensor_attachments': eth_sensor_attachments,
             'eth_actuator_attachments': eth_actuator_attachments,
+            'bus_gateways': bus_gateways,
             'buses': bus_report,
             'bus_line_limit_reached': line_limit,
             'cable_length': cable_length,

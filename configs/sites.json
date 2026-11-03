@@ -2,502 +2,907 @@
   "_generated_by": "tools/vehicle_layout/generate_layout.py (voxel routing space)",
   "vehicle": "Hyundai IONIQ 5",
   "_comment": "Generated file, do not edit; change configs/vehicle.json / routing_space.npz and re-run the generator.",
-  "grid_spacing": 0.12,
+  "grid_spacing": 0.35,
   "sites": [
     {
-      "id": "S01",
-      "zone": "engine_bay",
+      "id": "BAY_L",
+      "zone": "BAY_L",
+      "name": "engine bay, left inner fender above the wheel house",
       "thermal_class": "engine_bay",
       "derating": 0.9,
-      "clearance": 0.117,
       "position": {
-        "x": -0.69,
-        "y": 0.96,
-        "z": 0.912
+        "x": -0.48,
+        "y": 1.6,
+        "z": 0.88
       },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v853",
-      "drop_length": 0.0
+      "orient": "flat_y",
+      "source": "reference-model clearance maximum in the bay (2026-10-16); the Tesla Model 3 front body controller sits under the cowl screen between the strut towers (Tesla service manual)",
+      "bbox": {
+        "x": [
+          -0.58,
+          -0.38
+        ],
+        "y": [
+          1.45,
+          1.75
+        ],
+        "z": [
+          0.85,
+          0.91
+        ]
+      },
+      "attach_node": "v1784",
+      "drop_length": 0.095
     },
     {
-      "id": "S02",
-      "zone": "trunk",
-      "thermal_class": "trunk",
+      "id": "BAY_R",
+      "zone": "BAY_R",
+      "name": "engine bay, right inner fender above the wheel house",
+      "thermal_class": "engine_bay",
       "derating": 0.9,
-      "clearance": 0.136,
       "position": {
-        "x": -0.57,
-        "y": -2.16,
-        "z": 0.432
+        "x": 0.48,
+        "y": 1.6,
+        "z": 0.88
       },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v1118",
-      "drop_length": 0.001
+      "orient": "flat_y",
+      "source": "reference-model clearance maximum in the bay (2026-10-16); the Tesla Model 3 front body controller sits under the cowl screen between the strut towers (Tesla service manual)",
+      "bbox": {
+        "x": [
+          0.38,
+          0.58
+        ],
+        "y": [
+          1.45,
+          1.75
+        ],
+        "z": [
+          0.85,
+          0.91
+        ]
+      },
+      "attach_node": "v6133",
+      "drop_length": 0.096
     },
     {
-      "id": "S03",
-      "zone": "cabin",
+      "id": "COWL_L",
+      "zone": "COWL_L",
+      "name": "under the scuttle panel (plenum), engine-bay side, left",
+      "thermal_class": "engine_bay",
+      "derating": 0.9,
+      "position": {
+        "x": -0.3,
+        "y": 1.3,
+        "z": 0.91
+      },
+      "orient": "flat",
+      "source": "classic ECU place under the windscreen scuttle (Bosch EDC15 / EDC16 units in VAG and BMW cars, actronics)",
+      "bbox": {
+        "x": [
+          -0.45,
+          -0.15
+        ],
+        "y": [
+          1.2,
+          1.4
+        ],
+        "z": [
+          0.88,
+          0.94
+        ]
+      },
+      "attach_node": "v2719",
+      "drop_length": 0.036
+    },
+    {
+      "id": "COWL_R",
+      "zone": "COWL_R",
+      "name": "under the scuttle panel (plenum), engine-bay side, right",
+      "thermal_class": "engine_bay",
+      "derating": 0.9,
+      "position": {
+        "x": 0.3,
+        "y": 1.3,
+        "z": 0.91
+      },
+      "orient": "flat",
+      "source": "classic ECU place under the windscreen scuttle (Bosch EDC15 / EDC16 units in VAG and BMW cars, actronics)",
+      "bbox": {
+        "x": [
+          0.15,
+          0.45
+        ],
+        "y": [
+          1.2,
+          1.4
+        ],
+        "z": [
+          0.88,
+          0.94
+        ]
+      },
+      "attach_node": "v4656",
+      "drop_length": 0.036
+    },
+    {
+      "id": "BAY_C",
+      "zone": "BAY_C",
+      "name": "front bay, above the drive unit",
+      "thermal_class": "engine_bay",
+      "derating": 0.9,
+      "position": {
+        "x": 0.0,
+        "y": 1.58,
+        "z": 0.87
+      },
+      "orient": "flat",
+      "source": "reference-model clearance maximum in the bay (2026-10-16)",
+      "bbox": {
+        "x": [
+          -0.15,
+          0.15
+        ],
+        "y": [
+          1.48,
+          1.68
+        ],
+        "z": [
+          0.84,
+          0.9
+        ]
+      },
+      "attach_node": "v3582",
+      "drop_length": 0.207
+    },
+    {
+      "id": "DASH_L",
+      "zone": "DASH_L",
+      "name": "behind the instrument panel, driver side, above the knee area",
       "thermal_class": "cabin",
       "derating": 1.0,
-      "clearance": 0.103,
       "position": {
-        "x": -0.57,
-        "y": 0.84,
-        "z": 0.792
+        "x": -0.55,
+        "y": 0.9,
+        "z": 0.75
       },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v1364",
-      "drop_length": 0.0
+      "orient": "flat",
+      "source": "IONIQ 5 IBU (integrated body unit) in the instrument panel (Hyundai parts listing); Hyundai Accent ECU under the dash at the A-pillar (actronics)",
+      "bbox": {
+        "x": [
+          -0.7,
+          -0.4
+        ],
+        "y": [
+          0.8,
+          1.0
+        ],
+        "z": [
+          0.72,
+          0.78
+        ]
+      },
+      "attach_node": "v1370",
+      "drop_length": 0.027
     },
     {
-      "id": "S04",
-      "zone": "trunk",
-      "thermal_class": "trunk",
-      "derating": 0.9,
-      "clearance": 0.109,
-      "position": {
-        "x": -0.45,
-        "y": -2.16,
-        "z": 0.552
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v1824",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S05",
-      "zone": "trunk",
-      "thermal_class": "trunk",
-      "derating": 0.9,
-      "clearance": 0.119,
-      "position": {
-        "x": -0.45,
-        "y": -2.04,
-        "z": 0.552
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v1837",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S06",
-      "zone": "trunk",
-      "thermal_class": "trunk",
-      "derating": 0.9,
-      "clearance": 0.119,
-      "position": {
-        "x": -0.45,
-        "y": -1.92,
-        "z": 0.552
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v1846",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S07",
-      "zone": "trunk",
-      "thermal_class": "trunk",
-      "derating": 0.9,
-      "clearance": 0.112,
-      "position": {
-        "x": -0.45,
-        "y": -1.8,
-        "z": 0.552
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v1860",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S08",
-      "zone": "trunk",
-      "thermal_class": "trunk",
-      "derating": 0.9,
-      "clearance": 0.127,
-      "position": {
-        "x": -0.45,
-        "y": -1.44,
-        "z": 0.912
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v1906",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S09",
-      "zone": "trunk",
-      "thermal_class": "trunk",
-      "derating": 0.9,
-      "clearance": 0.114,
-      "position": {
-        "x": -0.33,
-        "y": -2.16,
-        "z": 0.552
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v2382",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S10",
-      "zone": "trunk",
-      "thermal_class": "trunk",
-      "derating": 0.9,
-      "clearance": 0.103,
-      "position": {
-        "x": -0.33,
-        "y": -1.8,
-        "z": 1.152
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v2418",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S11",
-      "zone": "trunk",
-      "thermal_class": "trunk",
-      "derating": 0.9,
-      "clearance": 0.11,
-      "position": {
-        "x": -0.21,
-        "y": -2.16,
-        "z": 0.552
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v2764",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S12",
-      "zone": "engine_bay",
-      "thermal_class": "engine_bay",
-      "derating": 0.9,
-      "clearance": 0.107,
-      "position": {
-        "x": -0.21,
-        "y": 2.16,
-        "z": 0.552
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v2910",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S13",
-      "zone": "trunk",
-      "thermal_class": "trunk",
-      "derating": 0.9,
-      "clearance": 0.1,
-      "position": {
-        "x": -0.09,
-        "y": -2.16,
-        "z": 0.552
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v3109",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S14",
-      "zone": "trunk",
-      "thermal_class": "trunk",
-      "derating": 0.9,
-      "clearance": 0.103,
-      "position": {
-        "x": -0.09,
-        "y": -1.8,
-        "z": 1.152
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v3131",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S15",
-      "zone": "engine_bay",
-      "thermal_class": "engine_bay",
-      "derating": 0.9,
-      "clearance": 0.11,
-      "position": {
-        "x": -0.09,
-        "y": 2.16,
-        "z": 0.552
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v3339",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S16",
-      "zone": "trunk",
-      "thermal_class": "trunk",
-      "derating": 0.9,
-      "clearance": 0.103,
-      "position": {
-        "x": 0.03,
-        "y": -1.8,
-        "z": 1.152
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v3653",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S17",
-      "zone": "engine_bay",
-      "thermal_class": "engine_bay",
-      "derating": 0.9,
-      "clearance": 0.11,
-      "position": {
-        "x": 0.03,
-        "y": 2.16,
-        "z": 0.552
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v3869",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S18",
-      "zone": "trunk",
-      "thermal_class": "trunk",
-      "derating": 0.9,
-      "clearance": 0.11,
-      "position": {
-        "x": 0.15,
-        "y": -2.16,
-        "z": 0.552
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v4142",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S19",
-      "zone": "engine_bay",
-      "thermal_class": "engine_bay",
-      "derating": 0.9,
-      "clearance": 0.109,
-      "position": {
-        "x": 0.15,
-        "y": 2.16,
-        "z": 0.552
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v4301",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S20",
-      "zone": "trunk",
-      "thermal_class": "trunk",
-      "derating": 0.9,
-      "clearance": 0.11,
-      "position": {
-        "x": 0.27,
-        "y": -2.16,
-        "z": 0.552
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v4507",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S21",
-      "zone": "trunk",
-      "thermal_class": "trunk",
-      "derating": 0.9,
-      "clearance": 0.103,
-      "position": {
-        "x": 0.27,
-        "y": -1.8,
-        "z": 1.152
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v4533",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S22",
-      "zone": "engine_bay",
-      "thermal_class": "engine_bay",
-      "derating": 0.9,
-      "clearance": 0.106,
-      "position": {
-        "x": 0.27,
-        "y": 2.16,
-        "z": 0.552
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v4679",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S23",
-      "zone": "trunk",
-      "thermal_class": "trunk",
-      "derating": 0.9,
-      "clearance": 0.115,
-      "position": {
-        "x": 0.39,
-        "y": -2.16,
-        "z": 0.552
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v4908",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S24",
-      "zone": "trunk",
-      "thermal_class": "trunk",
-      "derating": 0.9,
-      "clearance": 0.103,
-      "position": {
-        "x": 0.39,
-        "y": -1.8,
-        "z": 1.152
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v4949",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S25",
-      "zone": "trunk",
-      "thermal_class": "trunk",
-      "derating": 0.9,
-      "clearance": 0.149,
-      "position": {
-        "x": 0.51,
-        "y": -2.16,
-        "z": 0.432
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v5468",
-      "drop_length": 0.001
-    },
-    {
-      "id": "S26",
-      "zone": "trunk",
-      "thermal_class": "trunk",
-      "derating": 0.9,
-      "clearance": 0.102,
-      "position": {
-        "x": 0.51,
-        "y": -2.16,
-        "z": 0.552
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v5470",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S27",
-      "zone": "trunk",
-      "thermal_class": "trunk",
-      "derating": 0.9,
-      "clearance": 0.114,
-      "position": {
-        "x": 0.51,
-        "y": -2.04,
-        "z": 0.432
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v5491",
-      "drop_length": 0.001
-    },
-    {
-      "id": "S28",
-      "zone": "trunk",
-      "thermal_class": "trunk",
-      "derating": 0.9,
-      "clearance": 0.114,
-      "position": {
-        "x": 0.51,
-        "y": -2.04,
-        "z": 0.552
-      },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v5493",
-      "drop_length": 0.0
-    },
-    {
-      "id": "S29",
-      "zone": "cabin",
+      "id": "DASH_R",
+      "zone": "DASH_R",
+      "name": "behind the instrument panel, passenger side, behind the glovebox",
       "thermal_class": "cabin",
       "derating": 1.0,
-      "clearance": 0.146,
       "position": {
-        "x": 0.51,
-        "y": 0.84,
-        "z": 0.792
+        "x": 0.55,
+        "y": 0.9,
+        "z": 0.75
       },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v5707",
-      "drop_length": 0.0
+      "orient": "flat",
+      "source": "Tesla Autopilot computer behind the glovebox; Audi data-bus gateway behind the glovebox (parts guides)",
+      "bbox": {
+        "x": [
+          0.4,
+          0.7
+        ],
+        "y": [
+          0.8,
+          1.0
+        ],
+        "z": [
+          0.72,
+          0.78
+        ]
+      },
+      "attach_node": "v6043",
+      "drop_length": 0.027
     },
     {
-      "id": "S30",
-      "zone": "cabin",
+      "id": "KICK_L",
+      "zone": "KICK_L",
+      "name": "kick panel / footwell, left",
       "thermal_class": "cabin",
       "derating": 1.0,
-      "clearance": 0.112,
       "position": {
-        "x": 0.51,
-        "y": 0.84,
-        "z": 0.912
+        "x": -0.72,
+        "y": 0.75,
+        "z": 0.51
       },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v5709",
-      "drop_length": 0.0
+      "orient": "wall_x",
+      "source": "Tesla Model 3 left / right body controllers behind the lower dash trim of the footwells (parts guides; the service manual lists their A-pillar and door harness connectors); body control modules at the driver-side kick panel",
+      "bbox": {
+        "x": [
+          -0.75,
+          -0.69
+        ],
+        "y": [
+          0.65,
+          0.85
+        ],
+        "z": [
+          0.36,
+          0.66
+        ]
+      },
+      "attach_node": "v632",
+      "drop_length": 0.088
     },
     {
-      "id": "S31",
-      "zone": "engine_bay",
-      "thermal_class": "engine_bay",
-      "derating": 0.9,
-      "clearance": 0.118,
+      "id": "KICK_R",
+      "zone": "KICK_R",
+      "name": "kick panel / footwell, right",
+      "thermal_class": "cabin",
+      "derating": 1.0,
       "position": {
-        "x": 0.51,
-        "y": 0.96,
-        "z": 0.912
+        "x": 0.72,
+        "y": 0.75,
+        "z": 0.51
       },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v5721",
-      "drop_length": 0.0
+      "orient": "wall_x",
+      "source": "Tesla Model 3 left / right body controllers behind the lower dash trim of the footwells (parts guides; the service manual lists their A-pillar and door harness connectors); body control modules at the driver-side kick panel",
+      "bbox": {
+        "x": [
+          0.69,
+          0.75
+        ],
+        "y": [
+          0.65,
+          0.85
+        ],
+        "z": [
+          0.36,
+          0.66
+        ]
+      },
+      "attach_node": "v6569",
+      "drop_length": 0.088
     },
     {
-      "id": "S32",
-      "zone": "trunk",
+      "id": "APIL_L",
+      "zone": "APIL_L",
+      "name": "A-pillar base, dashboard end panel, left",
+      "thermal_class": "cabin",
+      "derating": 1.0,
+      "position": {
+        "x": -0.74,
+        "y": 0.6,
+        "z": 0.85
+      },
+      "orient": "wall_x",
+      "source": "A-pillar base above the kick panel (Hyundai Accent ECU under the dash against the A-pillar, actronics; Tesla LH body controller wired to the A-pillar harness, service manual); user 2026-10-30: 30 cells",
+      "bbox": {
+        "x": [
+          -0.77,
+          -0.71
+        ],
+        "y": [
+          0.5,
+          0.7
+        ],
+        "z": [
+          0.7,
+          1.0
+        ]
+      },
+      "attach_node": "v633",
+      "drop_length": 0.172
+    },
+    {
+      "id": "APIL_R",
+      "zone": "APIL_R",
+      "name": "A-pillar base, dashboard end panel, right",
+      "thermal_class": "cabin",
+      "derating": 1.0,
+      "position": {
+        "x": 0.74,
+        "y": 0.6,
+        "z": 0.85
+      },
+      "orient": "wall_x",
+      "source": "A-pillar base above the kick panel (Hyundai Accent ECU under the dash against the A-pillar, actronics; Tesla LH body controller wired to the A-pillar harness, service manual); user 2026-10-30: 30 cells",
+      "bbox": {
+        "x": [
+          0.71,
+          0.77
+        ],
+        "y": [
+          0.5,
+          0.7
+        ],
+        "z": [
+          0.7,
+          1.0
+        ]
+      },
+      "attach_node": "v6331",
+      "drop_length": 0.163
+    },
+    {
+      "id": "TUNNEL",
+      "zone": "TUNNEL",
+      "name": "centre tunnel under the console",
+      "thermal_class": "cabin",
+      "derating": 1.0,
+      "position": {
+        "x": 0.0,
+        "y": 0.45,
+        "z": 0.42
+      },
+      "orient": "flat_y",
+      "source": "airbag control units and gateways on the tunnel (common practice)",
+      "bbox": {
+        "x": [
+          -0.1,
+          0.1
+        ],
+        "y": [
+          0.3,
+          0.6
+        ],
+        "z": [
+          0.39,
+          0.45
+        ]
+      },
+      "attach_node": "v3526",
+      "drop_length": 0.044
+    },
+    {
+      "id": "SEAT_F_L",
+      "zone": "SEAT_F_L",
+      "name": "under the front seat, left",
+      "thermal_class": "cabin",
+      "derating": 1.0,
+      "position": {
+        "x": -0.4,
+        "y": 0.2,
+        "z": 0.41
+      },
+      "orient": "flat",
+      "source": "telematics modules under the front seats (Audi Q5: driver seat, Audi Q7: passenger seat; parts guides)",
+      "bbox": {
+        "x": [
+          -0.55,
+          -0.25
+        ],
+        "y": [
+          0.1,
+          0.3
+        ],
+        "z": [
+          0.38,
+          0.44
+        ]
+      },
+      "attach_node": "v2252",
+      "drop_length": 0.044
+    },
+    {
+      "id": "SEAT_F_R",
+      "zone": "SEAT_F_R",
+      "name": "under the front seat, right",
+      "thermal_class": "cabin",
+      "derating": 1.0,
+      "position": {
+        "x": 0.4,
+        "y": 0.2,
+        "z": 0.41
+      },
+      "orient": "flat",
+      "source": "telematics modules under the front seats (Audi Q5: driver seat, Audi Q7: passenger seat; parts guides)",
+      "bbox": {
+        "x": [
+          0.25,
+          0.55
+        ],
+        "y": [
+          0.1,
+          0.3
+        ],
+        "z": [
+          0.38,
+          0.44
+        ]
+      },
+      "attach_node": "v5063",
+      "drop_length": 0.044
+    },
+    {
+      "id": "SEAT_R_L",
+      "zone": "SEAT_R_L",
+      "name": "under the rear seat, left",
+      "thermal_class": "cabin",
+      "derating": 1.0,
+      "position": {
+        "x": -0.35,
+        "y": -0.85,
+        "z": 0.41
+      },
+      "orient": "flat",
+      "source": "IONIQ 5 ICCU under the rear seat (owner forum); Audi gateway J533 under the rear bench (parts guide)",
+      "bbox": {
+        "x": [
+          -0.5,
+          -0.2
+        ],
+        "y": [
+          -0.95,
+          -0.75
+        ],
+        "z": [
+          0.38,
+          0.44
+        ]
+      },
+      "attach_node": "v2460",
+      "drop_length": 0.032
+    },
+    {
+      "id": "SEAT_R_R",
+      "zone": "SEAT_R_R",
+      "name": "under the rear seat, right",
+      "thermal_class": "cabin",
+      "derating": 1.0,
+      "position": {
+        "x": 0.35,
+        "y": -0.85,
+        "z": 0.41
+      },
+      "orient": "flat",
+      "source": "IONIQ 5 ICCU under the rear seat (owner forum); Audi gateway J533 under the rear bench (parts guide)",
+      "bbox": {
+        "x": [
+          0.2,
+          0.5
+        ],
+        "y": [
+          -0.95,
+          -0.75
+        ],
+        "z": [
+          0.38,
+          0.44
+        ]
+      },
+      "attach_node": "v4786",
+      "drop_length": 0.032
+    },
+    {
+      "id": "BPIL_L",
+      "zone": "BPIL_L",
+      "name": "lower B-pillar, inside the trim, upright, left",
+      "thermal_class": "cabin",
+      "derating": 1.0,
+      "position": {
+        "x": -0.85,
+        "y": -0.2,
+        "z": 0.75
+      },
+      "orient": "wall_x",
+      "source": "user request 2026-10-30; zonal controllers at the corners of the body (onsemi, Promwad)",
+      "bbox": {
+        "x": [
+          -0.88,
+          -0.82
+        ],
+        "y": [
+          -0.3,
+          -0.1
+        ],
+        "z": [
+          0.6,
+          0.9
+        ]
+      },
+      "attach_node": "v333",
+      "drop_length": 0.059
+    },
+    {
+      "id": "BPIL_R",
+      "zone": "BPIL_R",
+      "name": "lower B-pillar, inside the trim, upright, right",
+      "thermal_class": "cabin",
+      "derating": 1.0,
+      "position": {
+        "x": 0.85,
+        "y": -0.2,
+        "z": 0.75
+      },
+      "orient": "wall_x",
+      "source": "user request 2026-10-30; zonal controllers at the corners of the body (onsemi, Promwad)",
+      "bbox": {
+        "x": [
+          0.82,
+          0.88
+        ],
+        "y": [
+          -0.3,
+          -0.1
+        ],
+        "z": [
+          0.6,
+          0.9
+        ]
+      },
+      "attach_node": "v6975",
+      "drop_length": 0.059
+    },
+    {
+      "id": "CPIL_L",
+      "zone": "CPIL_L",
+      "name": "C-pillar / rear quarter, inside the trim, upright, left",
       "thermal_class": "trunk",
       "derating": 0.9,
-      "clearance": 0.121,
       "position": {
-        "x": 0.63,
-        "y": -2.16,
-        "z": 0.432
+        "x": -0.85,
+        "y": -1.42,
+        "z": 0.95
       },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v6178",
-      "drop_length": 0.001
+      "orient": "wall_x",
+      "source": "user request 2026-10-30; quarter-panel electronics (amplifier, telematics) in many cars",
+      "bbox": {
+        "x": [
+          -0.88,
+          -0.82
+        ],
+        "y": [
+          -1.52,
+          -1.32
+        ],
+        "z": [
+          0.8,
+          1.1
+        ]
+      },
+      "attach_node": "v13",
+      "drop_length": 0.047
     },
     {
-      "id": "S33",
-      "zone": "engine_bay",
-      "thermal_class": "engine_bay",
+      "id": "CPIL_R",
+      "zone": "CPIL_R",
+      "name": "C-pillar / rear quarter, inside the trim, upright, right",
+      "thermal_class": "trunk",
       "derating": 0.9,
-      "clearance": 0.116,
       "position": {
-        "x": 0.63,
-        "y": 0.96,
-        "z": 0.912
+        "x": 0.85,
+        "y": -1.42,
+        "z": 0.95
       },
-      "source": "cell of the scanned ECU space (lattice 0.12 m, clearance >= 0.1 m, mount reach 0.15 m)",
-      "attach_node": "v6357",
-      "drop_length": 0.0
+      "orient": "wall_x",
+      "source": "user request 2026-10-30; quarter-panel electronics (amplifier, telematics) in many cars",
+      "bbox": {
+        "x": [
+          0.82,
+          0.88
+        ],
+        "y": [
+          -1.52,
+          -1.32
+        ],
+        "z": [
+          0.8,
+          1.1
+        ]
+      },
+      "attach_node": "v7102",
+      "drop_length": 0.047
+    },
+    {
+      "id": "TRUNK_L",
+      "zone": "TRUNK_L",
+      "name": "trunk side wall above the wheel arch, left",
+      "thermal_class": "trunk",
+      "derating": 0.9,
+      "position": {
+        "x": -0.74,
+        "y": -1.85,
+        "z": 0.95
+      },
+      "orient": "wall_x",
+      "source": "Audi A8 zFAS driver-assistance controller in the luggage compartment (parts guide, Wikipedia); legacy zone trunk_side",
+      "bbox": {
+        "x": [
+          -0.77,
+          -0.71
+        ],
+        "y": [
+          -1.95,
+          -1.75
+        ],
+        "z": [
+          0.8,
+          1.1
+        ]
+      },
+      "attach_node": "v471",
+      "drop_length": 0.027
+    },
+    {
+      "id": "TRUNK_R",
+      "zone": "TRUNK_R",
+      "name": "trunk side wall above the wheel arch, right",
+      "thermal_class": "trunk",
+      "derating": 0.9,
+      "position": {
+        "x": 0.74,
+        "y": -1.85,
+        "z": 0.95
+      },
+      "orient": "wall_x",
+      "source": "Audi A8 zFAS driver-assistance controller in the luggage compartment (parts guide, Wikipedia); legacy zone trunk_side",
+      "bbox": {
+        "x": [
+          0.71,
+          0.77
+        ],
+        "y": [
+          -1.95,
+          -1.75
+        ],
+        "z": [
+          0.8,
+          1.1
+        ]
+      },
+      "attach_node": "v6643",
+      "drop_length": 0.027
+    },
+    {
+      "id": "UFLOOR_L",
+      "zone": "UFLOOR_L",
+      "name": "underbody, beside the rear drive unit, left",
+      "thermal_class": "underbody",
+      "derating": 0.9,
+      "position": {
+        "x": -0.47,
+        "y": -1.7,
+        "z": 0.52
+      },
+      "orient": "flat_y",
+      "source": "sub-trunk space of the reference model (legacy zone sub_trunk)",
+      "bbox": {
+        "x": [
+          -0.57,
+          -0.37
+        ],
+        "y": [
+          -1.85,
+          -1.55
+        ],
+        "z": [
+          0.49,
+          0.55
+        ]
+      },
+      "attach_node": "v1874",
+      "drop_length": 0.043
+    },
+    {
+      "id": "UFLOOR_R",
+      "zone": "UFLOOR_R",
+      "name": "underbody, beside the rear drive unit, right",
+      "thermal_class": "underbody",
+      "derating": 0.9,
+      "position": {
+        "x": 0.47,
+        "y": -1.7,
+        "z": 0.52
+      },
+      "orient": "flat_y",
+      "source": "sub-trunk space of the reference model (legacy zone sub_trunk)",
+      "bbox": {
+        "x": [
+          0.37,
+          0.57
+        ],
+        "y": [
+          -1.85,
+          -1.55
+        ],
+        "z": [
+          0.49,
+          0.55
+        ]
+      },
+      "attach_node": "v5230",
+      "drop_length": 0.043
+    },
+    {
+      "id": "ROOF_F",
+      "zone": "ROOF_F",
+      "name": "headliner behind the mirror",
+      "thermal_class": "roof",
+      "derating": 0.9,
+      "position": {
+        "x": 0.0,
+        "y": 0.3,
+        "z": 1.5
+      },
+      "orient": "flat",
+      "source": "forward camera / ADAS unit at the windscreen (legacy zone roof_front)",
+      "bbox": {
+        "x": [
+          -0.15,
+          0.15
+        ],
+        "y": [
+          0.2,
+          0.4
+        ],
+        "z": [
+          1.47,
+          1.53
+        ]
+      },
+      "attach_node": "v3515",
+      "drop_length": 0.056
+    },
+    {
+      "id": "ROOF_R",
+      "zone": "ROOF_R",
+      "name": "headliner at the rear",
+      "thermal_class": "roof",
+      "derating": 0.9,
+      "position": {
+        "x": 0.0,
+        "y": -1.25,
+        "z": 1.5
+      },
+      "orient": "flat",
+      "source": "antenna / telematics module under the roof antenna (legacy zone roof_rear)",
+      "bbox": {
+        "x": [
+          -0.15,
+          0.15
+        ],
+        "y": [
+          -1.35,
+          -1.15
+        ],
+        "z": [
+          1.47,
+          1.53
+        ]
+      },
+      "attach_node": "v3414",
+      "drop_length": 0.034
+    },
+    {
+      "id": "DOOR_F_L",
+      "zone": "DOOR_F_L",
+      "name": "front door, inside the door, left",
+      "thermal_class": "cabin",
+      "derating": 1.0,
+      "position": {
+        "x": -0.88,
+        "y": 0.35,
+        "z": 0.7
+      },
+      "orient": "wall_x",
+      "source": "door control units inside the doors (common practice)",
+      "bbox": {
+        "x": [
+          -0.91,
+          -0.85
+        ],
+        "y": [
+          0.25,
+          0.45
+        ],
+        "z": [
+          0.55,
+          0.85
+        ]
+      },
+      "attach_node": "v154",
+      "drop_length": 0.235
+    },
+    {
+      "id": "DOOR_F_R",
+      "zone": "DOOR_F_R",
+      "name": "front door, inside the door, right",
+      "thermal_class": "cabin",
+      "derating": 1.0,
+      "position": {
+        "x": 0.88,
+        "y": 0.35,
+        "z": 0.7
+      },
+      "orient": "wall_x",
+      "source": "door control units inside the doors (common practice)",
+      "bbox": {
+        "x": [
+          0.85,
+          0.91
+        ],
+        "y": [
+          0.25,
+          0.45
+        ],
+        "z": [
+          0.55,
+          0.85
+        ]
+      },
+      "attach_node": "v7242",
+      "drop_length": 0.235
+    },
+    {
+      "id": "DOOR_R_L",
+      "zone": "DOOR_R_L",
+      "name": "rear door, inside the door, left",
+      "thermal_class": "cabin",
+      "derating": 1.0,
+      "position": {
+        "x": -0.88,
+        "y": -0.8,
+        "z": 0.7
+      },
+      "orient": "wall_x",
+      "source": "door control units inside the doors (common practice)",
+      "bbox": {
+        "x": [
+          -0.91,
+          -0.85
+        ],
+        "y": [
+          -0.9,
+          -0.7
+        ],
+        "z": [
+          0.55,
+          0.85
+        ]
+      },
+      "attach_node": "v284",
+      "drop_length": 0.125
+    },
+    {
+      "id": "DOOR_R_R",
+      "zone": "DOOR_R_R",
+      "name": "rear door, inside the door, right",
+      "thermal_class": "cabin",
+      "derating": 1.0,
+      "position": {
+        "x": 0.88,
+        "y": -0.8,
+        "z": 0.7
+      },
+      "orient": "wall_x",
+      "source": "door control units inside the doors (common practice)",
+      "bbox": {
+        "x": [
+          0.85,
+          0.91
+        ],
+        "y": [
+          -0.9,
+          -0.7
+        ],
+        "z": [
+          0.55,
+          0.85
+        ]
+      },
+      "attach_node": "v6927",
+      "drop_length": 0.125
     }
   ]
 }

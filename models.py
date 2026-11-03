@@ -39,6 +39,7 @@ class Interface:
     port_cost: float = 0.0    # cost per port/interface on ECU or SC
     hop_latency_ms: float = 0.0  # per-hop processing/queueing bound of a link of this type (switch forwarding, bus arbitration)
     frame_kbit: float = float('inf')  # longest frame (kbit): what a lower-priority message can block a higher one with
+    max_length_m: float = float('inf')  # reach: the longest cable of this type (configs/buses.json cable_types.*.max_length_m)
 
 @dataclass
 class Sensor:

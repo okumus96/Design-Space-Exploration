@@ -1,3 +1,4 @@
+import gc
 import itertools
 import os
 import random
@@ -7,7 +8,7 @@ os.environ.setdefault("GRB_LICENSE_FILE", os.path.expanduser("~/gurobi.lic"))
 import gurobipy as gp
 from gurobipy import GRB
 from benders import routing_lp_cut, failure_lp_cut
-from optimizer_utils import (get_distance, build_sensor_lookup, build_actuator_lookup,
+from optimizer_utils import (get_distance, build_sensor_lookup, build_actuator_lookup, nominal_lane, lane_keys,
                              build_cost_map, build_latency_map, extract_solution,
                              sw_multiplier, site_derating, is_fail_operational, pack_partitions, flow_routes, chain_latencies, steiner_tree,
                              resource_messages, message_kbit, resource_rate, crossing_ms, robust_ms, device_line, device_ms,
@@ -17,13 +18,59 @@ from optimizer_utils import (get_distance, build_sensor_lookup, build_actuator_l
 UNCERTAINTY_BLOCKS = ('sw_margin', 'derating', 'redundancy', 'ai_contention', 'robust_latency', 'growth', 'failures')
 
 # Packing check of the pooled (site, ASIL) capacity constraint: cuts added before giving up (see optimize())
-MAX_PACKING_CUTS = 10
+MAX_PACKING_CUTS = 40
+
+
+_GW_DEBUG = os.environ.get('DSE_GW_DEBUG', '') == '1'
+_CB_VERIFY = os.environ.get('DSE_CB_VERIFY') == '1'   # fix B self-check (test runs only): re-scan every memoised value at the end of a callback call
+
+
+def job_memory_gb():
+    """the memory of this job in GB (10^9 bytes, Gurobi's unit): Slurm's --mem (SLURM_MEM_PER_NODE, in MB), else the
+    nearest cgroup memory limit of the process (cgroup v2 memory.max, walking up the hierarchy), else None"""
+    v = os.environ.get('SLURM_MEM_PER_NODE')
+    if v:
+        try:
+            return float(v) * 1048576 / 1e9
+        except ValueError:
+            pass
+    try:
+        path = open('/proc/self/cgroup').read().strip().split('::', 1)[1].rstrip('/')
+        while True:
+            try:
+                lim = open(f'/sys/fs/cgroup{path}/memory.max').read().strip()
+                if lim != 'max':
+                    return float(lim) / 1e9
+            except OSError:
+                pass
+            if not path:
+                return None
+            path = path.rsplit('/', 1)[0]
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def process_memory_gb():
+    """(resident memory now, peak so far) of this process in GB (10^9 bytes), from /proc/self/status"""
+    now = peak = 0.0
+    try:
+        for line in open('/proc/self/status'):
+            if line.startswith('VmRSS:'):
+                now = float(line.split()[1]) * 1024 / 1e9
+            elif line.startswith('VmHWM:'):
+                peak = float(line.split()[1]) * 1024 / 1e9
+    except OSError:
+        pass
+    return now, peak
 
 
 class AssignmentOptimizer:
     def __init__(self):
         print("Initialized AssignmentOptimizerNew with quadratic ECU-ECU costs and linear sensor/actuator costs")
         self.last_values = None   # variable values of the last solve, the start solution of the next one in a sweep
+        self._session = None      # the model of the last optimize(reuse=True), solved again by the next one on the same instance
+        self._resumable = False   # the last optimize(reuse=True) ended without a design and left its model untouched: optimize(resume=True) solves on
+        self.memory = {'soft_share': 0.75, 'hard_share': 0.9}   # memory guard of every solve (configs/solver.json memory; see optimize)
 
     def calculate_cable_expressions(self, x, scs, locations, sensors, actuators, cable_types, comm_matrix, feasible_locs_per_sc, comm=None, attach_s=None, attach_a=None, bus=None, standby=None):
         """
@@ -35,6 +82,7 @@ class AssignmentOptimizer:
         sensor_lookup = build_sensor_lookup(sensors)
         actuator_lookup = build_actuator_lookup(actuators)
         bus_types = set((bus or {}).get('types', ()))
+        dev_f = float((bus or {}).get('dev_factor', 1.0) or 1.0)   # power and ground cores of a device connection
         cost_terms, dist_terms = [], []
 
         # devices wired directly to the unit hosting their software (not Ethernet, not on a bus line)
@@ -45,7 +93,7 @@ class AssignmentOptimizer:
                 continue
             for j in feasible_locs_per_sc[i]:
                 dist = sum(get_distance(d.location, locations[j].location) for d in devs)
-                cost = sum(get_distance(d.location, locations[j].location) * cost_map.get(d.interface, 0.0) for d in devs)
+                cost = dev_f * sum(get_distance(d.location, locations[j].location) * cost_map.get(d.interface, 0.0) for d in devs)
                 if dist > 0:
                     cost_terms.append((x[i, j], cost))
                     dist_terms.append((x[i, j], dist))
@@ -60,12 +108,12 @@ class AssignmentOptimizer:
             for (di, j), av in (att or {}).items():
                 if getattr(devs[di], 'location', None):
                     dist = get_distance(devs[di].location, locations[j].location)
-                    cost_terms.append((av, dist * cost_map.get(getattr(devs[di], 'interface', 'ETH'), 0.0)))
+                    cost_terms.append((av, dev_f * dist * cost_map.get(getattr(devs[di], 'interface', 'ETH'), 0.0)))
                     dist_terms.append((av, dist))
 
         # bus lines: one cable through all members (length variable, set by the Steiner cuts)
         for b, lv in (bus or {}).get('len', {}).items():
-            cost_terms.append((lv, cost_map.get(b[0], 0.0)))
+            cost_terms.append((lv, dev_f * cost_map.get(b[0], 0.0)))
             dist_terms.append((lv, 1.0))
 
         # backbone cables between units
@@ -96,7 +144,6 @@ class AssignmentOptimizer:
         model.setParam('OutputFlag', 1)
         model.setParam('MIPFocus', 2)
         #model.setParam('Symmetry', 1)
-        model.setParam("Method", 6)
         model.setParam("Seed", 0)  # Fixed seed for reproducible results across runs
         #model.setParam("MIPGap", 0.001)  # 1% gap for faster solutions (adjust as needed)
         model.update()
@@ -107,7 +154,24 @@ class AssignmentOptimizer:
 
         # x[i,j] = SC i hosted at site j. No partition slot index: which partition an SC lands in is not a
         # decision (slots are interchangeable), so every design has exactly one representation.
-        infeasible_ij = infeasible_ij or set()
+        infeasible_ij = set(infeasible_ij or set())
+        # reach (configs/buses.json cable_types.*.max_length_m, 2026-11-03): no cable of a type is longer than its reach;
+        # a device wired directly to its unit (SPI, UART) keeps its software within reach, Ethernet attachments, backbone
+        # links, candidate paths and bus lines are limited below
+        max_len = {n: float(getattr(ct, 'max_length_m', float('inf')) or float('inf')) for n, ct in (cable_types or {}).items()}
+        shared_types = {n for n in ('CAN', 'LIN', 'FLEXRAY') if n in (cable_types or {})}
+        _s_look, _a_look = build_sensor_lookup(sensors), build_actuator_lookup(actuators)
+        n_reach = 0
+        for i, sc in enumerate(scs):
+            devs = [_s_look.get(d) for d in (getattr(sc, 'sensors', None) or [])] + [_a_look.get(d) for d in (getattr(sc, 'actuators', None) or [])]
+            devs = [d for d in devs if d is not None and d.location and d.interface != 'ETH' and d.interface not in shared_types]
+            for d in devs:
+                for j in range(n_locs):
+                    if get_distance(d.location, locations[j].location) > max_len.get(d.interface, float('inf')) + 1e-9 and (i, j) not in infeasible_ij:
+                        infeasible_ij.add((i, j))
+                        n_reach += 1
+        if n_reach:
+            print(f"  Reach: {n_reach} placements excluded (device cable longer than its type's max_length_m)")
         feasible_locs_per_sc = {i: [] for i in range(n_sc)}
         feasible_scs_per_loc = {j: [] for j in range(n_locs)}
         x = {}
@@ -188,11 +252,15 @@ class AssignmentOptimizer:
         attach_s = {}
         for si in eth_sensor_indices:
             for j in range(n_locs):
+                if sensors[si].location and get_distance(sensors[si].location, locations[j].location) > max_len.get('ETH', float('inf')) + 1e-9:
+                    continue   # out of reach
                 attach_s[si, j] = model.addVar(vtype=GRB.BINARY, name=f"attachS_{sensors[si].id}_{locations[j].id}")
 
         attach_a = {}
         for ai in eth_actuator_indices:
             for j in range(n_locs):
+                if actuators[ai].location and get_distance(actuators[ai].location, locations[j].location) > max_len.get('ETH', float('inf')) + 1e-9:
+                    continue   # out of reach
                 attach_a[ai, j] = model.addVar(vtype=GRB.BINARY, name=f"attachA_{actuators[ai].id}_{locations[j].id}")
 
         # Bus lines (CAN, LIN, FlexRay; configs/buses.json: backbone.bus_lines = lines available per type). A line b
@@ -221,12 +289,33 @@ class AssignmentOptimizer:
                 b = (w_if, k)
                 bus['inst'].append(b)
                 bus['act'][b] = model.addVar(vtype=GRB.BINARY, name=f"bus_{w_if}{k + 1}")
-                bus['len'][b] = model.addVar(vtype=GRB.CONTINUOUS, lb=0.0, name=f"busLen_{w_if}{k + 1}")
+                bus['len'][b] = model.addVar(vtype=GRB.CONTINUOUS, lb=0.0, ub=max_len.get(w_if, float('inf')), name=f"busLen_{w_if}{k + 1}")
                 bus['high'][b] = model.addVar(vtype=GRB.BINARY, name=f"busHigh_{w_if}{k + 1}")
                 for j in range(n_locs):
                     bus['unit'][b, j] = model.addVar(vtype=GRB.BINARY, name=f"busUnit_{w_if}{k + 1}_{locations[j].id}")
                 for d in devs:
                     bus['dev'][b, d] = model.addVar(vtype=GRB.BINARY, name=f"busDev_{w_if}{k + 1}_{d}")
+        # Bus gateway (configs/buses.json backbone.bus_gateway; HANDOFF 16.26, 2026-11-03): every lane of a device has one
+        # gateway unit on its line, which forwards the device's data over the backbone to the units of its software;
+        # gw[d, b, j] = 1 when unit j is the gateway of device d's lane on line b. Off: the units of the software sit
+        # on the line themselves (constraint 11 below).
+        bus['gateway'] = bool((backbone or {}).get('bus_gateway', False))
+        # installed device connection = signal pair + power + ground cores (configs/buses.json backbone.device_cable_factor,
+        # 2026-11-03): the factor on every device-connected cable (direct cables, Ethernet attachments, bus lines), not on
+        # the backbone between units, which carries no power
+        bus['dev_factor'] = float((backbone or {}).get('device_cable_factor', 1.0) or 1.0)
+        bus['gw'] = {}
+        if bus['gateway']:
+            for d, info in bus['devices'].items():
+                if not info['users']:
+                    continue
+                for b in bus['inst']:
+                    if b[0] != info['iface']:
+                        continue
+                    for j in range(n_locs):
+                        if (b, j) in bus['unit']:
+                            bus['gw'][d, b, j] = model.addVar(vtype=GRB.BINARY, name=f"busGw_{b[0]}{b[1] + 1}_{d}_{locations[j].id}")
+            print(f"  Bus gateway: on, {len(bus['gw'])} gateway variables")
         if bus['inst']:
             print(f"  Bus lines: " + ", ".join(f"{n} {sum(1 for b in bus['inst'] if b[0] == n)} line(s) for "
                                                f"{sum(1 for d in bus['devices'].values() if d['iface'] == n)} device(s)" for n in bus['types']))
@@ -315,6 +404,33 @@ class AssignmentOptimizer:
                 })
                 t_idx += 1
 
+        # 4. Bus devices under the gateway rule: one flow per lane (line of the device's type), user and direction, from
+        # the lane's gateway to the user (sensor: BUS_SC) or from the user to the gateway (actuator: SC_BUS); the lanes
+        # of a device are variants ('a<k>' = the gateway of line k) of one base flow per device and user, so that a
+        # failure needs one surviving lane; a lane the device does not sit on has no endpoints and carries nothing
+        if bus['gateway']:
+            for d, info in bus['devices'].items():
+                if not info['users'] or float(info['volume']) <= 0:
+                    continue
+                lines = [b for b in bus['inst'] if b[0] == info['iface']]
+                for i in info['users']:
+                    base_id = None
+                    for k, b in enumerate(lines):
+                        tr = {'id': t_idx, 'type': 'BUS_SC' if info['kind'] == 'sensor' else 'SC_BUS', 'dev': d, 'line': b, 'lane': k,
+                              'volume': float(info['volume']), 'kbit': float(info['kbit'])}
+                        if info['kind'] == 'sensor':
+                            tr.update({'dst_idx': i, 'src_inst': f'a{k}', 'dst_inst': 'x'})
+                        else:
+                            tr.update({'src_idx': i, 'src_inst': 'x', 'dst_inst': f'a{k}'})
+                        if base_id is None:
+                            base_id = t_idx
+                        else:
+                            tr['base'] = base_id
+                        traffic_flows.append(tr)
+                        t_idx += 1
+            print(f"  Bus gateway flows: {sum(1 for tr in traffic_flows if tr['type'] in ('BUS_SC', 'SC_BUS'))} lane flows of "
+                  f"{sum(1 for tr in traffic_flows if tr['type'] in ('BUS_SC', 'SC_BUS') and 'base' not in tr)} device-user pairs")
+
         # Standby flows (failures): a standby instance exchanges the flows of its primary with the primary partners
         # and, for critical partners, with their standbys. 'src_inst' / 'dst_inst': 'x' primary, 'r' standby,
         # 'a' peripheral attachment; the endpoints come from the matching variables (flow_ends).
@@ -334,8 +450,12 @@ class AssignmentOptimizer:
                     variants.append(('a', 'r'))
                 elif tr['type'] == 'SC_ACT' and tr['src_idx'] in crit:
                     variants.append(('r', 'a'))
+                elif tr['type'] == 'BUS_SC' and tr['dst_idx'] in crit:
+                    variants.append((tr['src_inst'], 'r'))
+                elif tr['type'] == 'SC_BUS' and tr['src_idx'] in crit:
+                    variants.append(('r', tr['dst_inst']))
                 for si, di in variants:
-                    traffic_flows.append({**tr, 'id': t_idx, 'src_inst': si, 'dst_inst': di, 'base': tr['id']})
+                    traffic_flows.append({**tr, 'id': t_idx, 'src_inst': si, 'dst_inst': di, 'base': tr.get('base', tr['id'])})
                     t_idx += 1
             print(f"  Standby flows: {sum(1 for tr in traffic_flows if 'base' in tr)} added to {sum(1 for tr in traffic_flows if 'base' not in tr)} base flows")
 
@@ -364,6 +484,12 @@ class AssignmentOptimizer:
             elif tr['type'] == 'SENS_SC':
                 src = {u: attach_s[tr['sensor_idx'], u] for u in range(n_locs) if (tr['sensor_idx'], u) in attach_s}
                 dst = {v: (r if di == 'r' else x)[tr['dst_idx'], v] for v in feasible_locs_per_sc[tr['dst_idx']]}
+            elif tr['type'] == 'BUS_SC':
+                src = {u: bus['gw'][tr['dev'], tr['line'], u] for u in range(n_locs) if (tr['dev'], tr['line'], u) in bus['gw']}
+                dst = {v: (r if di == 'r' else x)[tr['dst_idx'], v] for v in feasible_locs_per_sc[tr['dst_idx']]}
+            elif tr['type'] == 'SC_BUS':
+                src = {u: (r if si == 'r' else x)[tr['src_idx'], u] for u in feasible_locs_per_sc[tr['src_idx']]}
+                dst = {v: bus['gw'][tr['dev'], tr['line'], v] for v in range(n_locs) if (tr['dev'], tr['line'], v) in bus['gw']}
             else:  # SC_ACT
                 src = {u: (r if si == 'r' else x)[tr['src_idx'], u] for u in feasible_locs_per_sc[tr['src_idx']]}
                 dst = {v: attach_a[tr['act_idx'], v] for v in range(n_locs) if (tr['act_idx'], v) in attach_a}
@@ -386,7 +512,10 @@ class AssignmentOptimizer:
                 if w_if in bus['types']:
                     paths[u, v, w_if] = [[u, v] for b in bus['inst'] if b[0] == w_if]
                 else:
-                    paths[u, v, w_if] = [[u, v]] + ([[u, r, v] for r in relays[:k_paths - 1]] if w_if == 'ETH' else [])
+                    reach = max_len.get(w_if, float('inf')) + 1e-9
+                    direct = [[u, v]] if site_dist[u, v] <= reach else []
+                    relay = [[u, r, v] for r in relays if site_dist[u, r] <= reach and site_dist[r, v] <= reach][:k_paths - 1] if w_if == 'ETH' else []
+                    paths[u, v, w_if] = direct + relay
                 for p in range(len(paths[u, v, w_if])):
                     sel[u, v, w_if, p] = model.addVar(vtype=GRB.BINARY, name=f"sel_{locations[u].id}_{locations[v].id}_{w_if}_p{p}")
         net = {'paths': paths, 'sel': sel, 'flow_ends': flow_ends, 'bus': bus,
@@ -402,6 +531,7 @@ class AssignmentOptimizer:
                # speed options (configs/buses.json backbone; 2026-10-24): the path requirement of every flow and cell pair
                # in the model from the start, and per-cell cut-set capacity inequalities (both valid, the model stays exact)
                'upfront_paths': bool((backbone or {}).get('upfront_paths', False)),
+               'bus_tree_bounds': str((backbone or {}).get('bus_tree_bounds', 'full') or 'full'),
                'cell_cut_capacity': bool((backbone or {}).get('cell_cut_capacity', False)),
                'benders': bool((backbone or {}).get('benders_cuts', False)),   # Benders feasibility cuts (benders.py)
                'benders_fail': bool((backbone or {}).get('benders_failure_cuts', False)),   # the same per cell-failure scenario
@@ -498,8 +628,14 @@ class AssignmentOptimizer:
         # add cost; 2 keeps the "switch-only node has degree >= 2" rule satisfiable with one neighbour.
         total_traffic_volume = sum(float(tr['volume']) for tr in traffic_flows)
         comm_ub = {n: max(2, int(np.ceil(total_traffic_volume / cap))) if cap < float('inf') else 2 for n, cap in net['cap_of'].items()}
+        max_len_bb = {n: float(getattr(ct, 'max_length_m', float('inf')) or float('inf')) for n, ct in (cable_types or {}).items()}
+        n_out = 0
         for (_j1, _j2, w_if), comm_var in comm.items():
-            comm_var.UB = comm_ub[w_if]
+            within = get_distance(locations[_j1].location, locations[_j2].location) <= max_len_bb.get(w_if, float('inf')) + 1e-9
+            comm_var.UB = comm_ub[w_if] if within else 0
+            n_out += 0 if within else 1
+        if n_out:
+            print(f"  Reach: {n_out} backbone cable options out of reach (max_length_m)")
         net['comm_ub'] = comm_ub
         print(f"  Backbone cable upper bounds per type: {comm_ub} (total traffic {total_traffic_volume:.1f})")
 
@@ -582,6 +718,17 @@ class AssignmentOptimizer:
                         demand <= P[j, a] * partitions.get(f'{res}_cap', float('inf')) * (H_j if res == 'cpu' else 1.0),
                         name=f"{res}_capacity_{locations[j].id}_asil{a}"
                     )
+                    cstats['c2_capacity'] += 1
+                # big items (2026-11-03): a component or hot standby whose demand exceeds half a partition cap in some
+                # resource can share no partition, so the group needs at least one partition per big item; a valid
+                # strengthening of the pooled bound (the packing check after the solve stays the exact rule)
+                def _big(i):
+                    return any(getattr(scs[i], f'{res}_req') * get_sw_multiplier(scs[i]) > 0.5 * float(partitions.get(f'{res}_cap', float('inf'))) * (H_j if res == 'cpu' else 1.0)
+                               for res in ('cpu', 'ram', 'rom'))
+                big = [i for i in scs_ja if _big(i)]
+                if big:
+                    model.addConstr(P[j, a] >= gp.quicksum(x[i, j] for i in big) + gp.quicksum(net['hr'][i, j] for i in big if (i, j) in net['hr']),
+                                    name=f"big_items_{locations[j].id}_asil{a}")
                     cstats['c2_capacity'] += 1
 
         # Constraint 1g (failures): one standby per critical SC on another cell, with a partition of its ASIL and its
@@ -891,13 +1038,34 @@ class AssignmentOptimizer:
                 else:
                     model.addConstr(dv <= 1 - bus['high'][b], name=f"bus_dev_low_{d}_{b[0]}{b[1] + 1}")
                 cstats['c11_bus'] += 2
-                for i in info['users']:
+                for i in ([] if bus['gateway'] else info['users']):   # gateway rule: the gateway is on the line instead
                     for j in feasible_locs_per_sc[i]:
                         model.addConstr(bus['unit'][b, j] >= dv + x[i, j] - 1, name=f"bus_driver_{d}_{scs[i].id}_{b[0]}{b[1] + 1}_{locations[j].id}")
                         cstats['c11_bus'] += 1
                         if (i, j) in net['r']:
                             model.addConstr(bus['unit'][b, j] >= dv + net['r'][i, j] - 1, name=f"bus_standby_{d}_{scs[i].id}_{b[0]}{b[1] + 1}_{locations[j].id}")
                             cstats['c11_bus'] += 1
+        # gateway rule: every lane of a device has exactly one gateway unit, a member of that line
+        for (d, b, j), gv in bus['gw'].items():
+            model.addConstr(gv <= bus['unit'][b, j], name=f"bus_gw_member_{d}_{b[0]}{b[1] + 1}_{locations[j].id}")
+            model.addConstr(gv <= bus['dev'][b, d], name=f"bus_gw_lane_{d}_{b[0]}{b[1] + 1}_{locations[j].id}")
+            cstats['c11_bus'] += 2
+        for d in bus['devices']:
+            for b in bus['inst']:
+                gvs = [bus['gw'][d, b, j] for j in range(n_locs) if (d, b, j) in bus['gw']]
+                if gvs:
+                    model.addConstr(gp.quicksum(gvs) == bus['dev'][b, d], name=f"bus_gw_one_{d}_{b[0]}{b[1] + 1}")
+                    cstats['c11_bus'] += 1
+        # the two lanes of a device of critical software end at two different units: both gateways in one cell
+        # would die with that cell and leave every instance without the device (single-cell failures)
+        for d, info in bus['devices'].items():
+            if info.get('lanes', 1) < 2:
+                continue
+            for j in range(n_locs):
+                gvs = [bus['gw'][d, b, j] for b in bus['inst'] if (d, b, j) in bus['gw']]
+                if len(gvs) > 1:
+                    model.addConstr(gp.quicksum(gvs) <= 1, name=f"bus_gw_apart_{d}_{locations[j].id}")
+                    cstats['c11_bus'] += 1
         for b in bus['inst']:
             name = f"{b[0]}{b[1] + 1}"
             devs = [d for d in bus['devices'] if (b, d) in bus['dev']]
@@ -914,13 +1082,14 @@ class AssignmentOptimizer:
             members = [(locations[j].id, bus['unit'][b, j]) for j in range(n_locs)] + [(d, bus['dev'][b, d]) for d in devs]
             # length >= half the sum, over the members, of the distance to the nearest other possible member (an Euler
             # tour of the line passes every member and is twice its length)
-            nn = {e: min((get_distance(bus['points'][e], bus['points'][f]) for f, _v in members if f != e), default=0.0) for e, _v in members}
+            # pair lengths from the shortest-path closure (steiner_tree of two terminals), the metric of the line's tree
+            nn = {e: min((steiner_tree([e, f], bus['points'])[0] for f, _v in members if f != e), default=0.0) for e, _v in members}
             model.addConstr(bus['len'][b] >= 0.5 * gp.quicksum(nn[e] * v for e, v in members), name=f"bus_len_tour_{name}")
             cstats['c11_bus'] += 1
             for k1 in range(len(members)):
                 for k2 in range(k1 + 1, len(members)):
                     (ida, va), (idb, vb) = members[k1], members[k2]
-                    dist = get_distance(bus['points'][ida], bus['points'][idb])
+                    dist = steiner_tree([ida, idb], bus['points'])[0]
                     if dist > 0:
                         model.addConstr(bus['len'][b] >= dist * (va + vb - 1), name=f"bus_len_pair_{name}_{k1}_{k2}")
                         cstats['c11_bus'] += 1
@@ -947,16 +1116,24 @@ class AssignmentOptimizer:
                     model.addConstr(bus['len'][b] >= st_len * (gp.quicksum(v for _e, v in members) - (len(members) - 1)), name=f"bus_tree_{name}_{label}")
                     cstats['c11_bus'] += 1
             units = [(locations[j].id, bus['unit'][b, j]) for j in range(n_locs)]
-            for size in range(1, min(4, len(allowed)) + 1):
-                for group in itertools.combinations(allowed, size):
-                    gm = [(d, bus['dev'][b, d]) for d in group]
-                    if size >= 2:
-                        tree_bound(gm, '_'.join(group))
-                    for u1 in range(n_locs):
-                        tree_bound(gm + [units[u1]], f"{'_'.join(group)}_{units[u1][0]}")
-                        for u2 in range(u1 + 1, n_locs):
-                            tree_bound(gm + [units[u1], units[u2]], f"{'_'.join(group)}_{units[u1][0]}_{units[u2][0]}")
-            if n_locs <= 12:
+            # bus_tree_bounds (configs/buses.json backbone, 2026-11-01): 'full' = device groups up to 4 with every cell and
+            # every pair of cells (at 500 / 30 cells 1.2 million rows = 83 % of the model, 870 s of Steiner trees per
+            # fresh process); 'one_unit' = the groups alone and with one cell; 'pairs' = none of them (the pair and
+            # tour bounds above and the exact lazy cuts remain). Every variant is valid: the bounds only strengthen
+            # the relaxation, the lazy cuts keep every design's bus length exact.
+            tb_mode = str(net.get('bus_tree_bounds', 'full'))
+            if tb_mode != 'pairs':
+                for size in range(1, min(4, len(allowed)) + 1):
+                    for group in itertools.combinations(allowed, size):
+                        gm = [(d, bus['dev'][b, d]) for d in group]
+                        if size >= 2:
+                            tree_bound(gm, '_'.join(group))
+                        for u1 in range(n_locs):
+                            tree_bound(gm + [units[u1]], f"{'_'.join(group)}_{units[u1][0]}")
+                            if tb_mode == 'full':
+                                for u2 in range(u1 + 1, n_locs):
+                                    tree_bound(gm + [units[u1], units[u2]], f"{'_'.join(group)}_{units[u1][0]}_{units[u2][0]}")
+            if n_locs <= 12 and tb_mode == 'full':
                 for trio in itertools.combinations(range(n_locs), 3):
                     tree_bound([units[k] for k in trio], '_'.join(units[k][0] for k in trio))
 
@@ -1137,7 +1314,17 @@ class AssignmentOptimizer:
         # Fixed activation cost of a site (configs/partitions.json: site.fixed_cost; 0 = free, as in v1)
         site_fixed_cost = float(partitions.get('site_fixed_cost', 0) or 0)
         site_cost_expr = gp.quicksum(site_fixed_cost * y[j] for j in range(n_locs))
-        
+        # A unit that holds only a switch (no software) pays site.switch_node_cost: housing, supply and mounting like an
+        # ECU (HANDOFF 16.26, 2026-10-30); node = SWITCH and not y, exact for binaries; 0 / absent = the chip only, as before
+        switch_node_cost = float(partitions.get('switch_node_cost', 0) or 0)
+        if switch_node_cost > 0 and 'SWITCH' in all_hw:
+            for j in range(n_locs):
+                node = model.addVar(lb=0.0, ub=1.0, name=f"switch_node_{locations[j].id}")
+                model.addConstr(node >= hw_use[j, 'SWITCH'] - y[j], name=f"switch_node_def_{locations[j].id}")
+                model.addConstr(node <= hw_use[j, 'SWITCH'], name=f"switch_node_hw_{locations[j].id}")
+                model.addConstr(node <= 1 - y[j], name=f"switch_node_unit_{locations[j].id}")
+                site_cost_expr += switch_node_cost * node
+
         # HW cost
         hw_cost_expr = gp.quicksum(
             hardwares.get(h, 0) * hw_use[j, h]
@@ -1183,7 +1370,7 @@ class AssignmentOptimizer:
 
         return model, objectives
 
-    def optimize(self, scs, locations, sensors, actuators, cable_types, comm_matrix, partitions=None, hardwares=None, interfaces=None, enable_comm_bw_constraints=True, comm_bw_big_m=10000, minimize_cable_length=False, cable_length_limit=None, cost_limit=None, time_limit=None, mip_gap=None, lp_path=None, uncertainty=None, backbone=None, phase2_time=600, gurobi_params=None, chains=None, start=None, lns=None):
+    def optimize(self, scs, locations, sensors, actuators, cable_types, comm_matrix, partitions=None, hardwares=None, interfaces=None, enable_comm_bw_constraints=True, comm_bw_big_m=10000, minimize_cable_length=False, cable_length_limit=None, cost_limit=None, time_limit=None, mip_gap=None, lp_path=None, uncertainty=None, backbone=None, phase2_time=600, gurobi_params=None, chains=None, start=None, lns=None, fixed=None, phase2_cap=None, reuse=False, resume=False):
         """
         Dynamic selection of partitions + HW + interfaces + cables.
         
@@ -1197,6 +1384,12 @@ class AssignmentOptimizer:
             partitions: Dict with partition config (cost, cpu_cap, etc.) from config_reader
             hardwares: Dict with HW feature costs (e.g., {'SSE_CPU': 200, 'DSP': 300})
             interfaces: Dict of Interface objects (from config_reader)
+            reuse: solve the model of the previous optimize(reuse=True) again when the instance is the same (the
+                translation is skipped; pieces.py polish and clean-up)
+            resume (2026-11-01, pieces.py build): the previous optimize(reuse=True) of this instance ended without a
+                design at its time limit; solve the kept model on for time_limit more seconds. Nothing of the model is
+                touched (no bounds, fixings, start or objective are set again), so Gurobi continues its search where
+                it stopped instead of starting from scratch; the lazy constraints of the earlier attempt stay in force.
         
         Returns:
             List with single solution dict
@@ -1227,58 +1420,249 @@ class AssignmentOptimizer:
         infeasible_ij = set()   # placement restrictions from timing are enforced through the chain constraints
 
         # ======================= CREATE MODEL & VARIABLES =======================
-        model, x, P, y, hw_use, if_use, attach_s, attach_a, bus, comm, traffic_flows, net, feasible_locs_per_sc, feasible_scs_per_loc, var_stats = self._create_model_and_variables(
-            n_sc, n_locs, scs, locations, unique_asils, all_hw, sensors, actuators, all_interfaces, infeasible_ij=infeasible_ij, comm_matrix=comm_matrix,
-            partitions=partitions, backbone=backbone, cable_types=cable_types, uncertainty=uncertainty, chains=chains
-        )
+        # reuse (pieces.py polish and clean-up, 2026-10-30): the model of the previous optimize(reuse=True) of this
+        # optimizer is solved again when the instance is the same (components and cells by id): the translation of the
+        # instance into the Gurobi model (the three build calls and the chain bounds; 11 min at 500 components, 19 min
+        # at 1,000) is skipped, only the fixed placements, the start solution and the solver settings of this call are
+        # applied. The placement bounds changed by an earlier `fixed` / `allow` are restored first; the cuts of earlier
+        # solves (Steiner trees of bus lines, packing cuts) stay, they are valid for every design.
+        key = (tuple(sc.id for sc in scs), tuple(loc.id for loc in locations))
+        session = self._session if (reuse and self._session is not None and self._session['key'] == key) else None
+        resuming = bool(resume) and session is not None and bool(self._resumable)
+        self._resumable = False
+        if resume and not resuming:
+            print("  [resume] no resumable solve of this instance: solved afresh")
+        if session is None:
+            if self._session is not None:   # the model of another instance (2026-11-01): freed before the new one is built
+                old = self._session['parts'][0]
+                self._session = None
+                old.dispose()
+                gc.collect()
+                print("  [memory] the model of the previous instance was freed before the translation of this one", flush=True)
+            model, x, P, y, hw_use, if_use, attach_s, attach_a, bus, comm, traffic_flows, net, feasible_locs_per_sc, feasible_scs_per_loc, var_stats = self._create_model_and_variables(
+                n_sc, n_locs, scs, locations, unique_asils, all_hw, sensors, actuators, all_interfaces, infeasible_ij=infeasible_ij, comm_matrix=comm_matrix,
+                partitions=partitions, backbone=backbone, cable_types=cable_types, uncertainty=uncertainty, chains=chains
+            )
         
-        # ======================= ADD CONSTRAINTS =======================
-        model, cstats = self._add_constraints(
-            model, x, P, y, hw_use, if_use, attach_s, attach_a, bus, comm, traffic_flows, net, scs, locations, sensors, actuators,
-            cable_types, comm_matrix, partitions, unique_asils,
-            feasible_locs_per_sc, feasible_scs_per_loc,
-            enable_comm_bw_constraints=enable_comm_bw_constraints,
-            comm_bw_big_m=comm_bw_big_m,
-            uncertainty=uncertainty
-        )
+            # ======================= ADD CONSTRAINTS =======================
+            model, cstats = self._add_constraints(
+                model, x, P, y, hw_use, if_use, attach_s, attach_a, bus, comm, traffic_flows, net, scs, locations, sensors, actuators,
+                cable_types, comm_matrix, partitions, unique_asils,
+                feasible_locs_per_sc, feasible_scs_per_loc,
+                enable_comm_bw_constraints=enable_comm_bw_constraints,
+                comm_bw_big_m=comm_bw_big_m,
+                uncertainty=uncertainty
+            )
 
-        print("\n[DEBUG] Variable breakdown:")
-        print(f"  total vars: {var_stats['total']}")
-        print(f"  x: {var_stats['x']}")
-        print(f"  P: {var_stats['P']}")
-        print(f"  y: {var_stats['y']}")
-        print(f"  hw_use: {var_stats['hw_use']}")
-        print(f"  if_use: {var_stats['if_use']}")
-        print(f"  attach_s: {var_stats.get('attach_s', 0)}")
-        print(f"  attach_a: {var_stats.get('attach_a', 0)}")
-        print(f"  bus lines: {var_stats.get('bus', 0)}")
-        print(f"  comm: {var_stats['comm']} ({(100.0 * var_stats['comm'] / max(1, var_stats['total'])):.1f}%)")
-        print(f"  traffic_flows: {var_stats['traffic_flows']}")
-        print(f"  sel: {var_stats['sel']}  (site pairs with candidate paths: {var_stats['pairs_with_paths']})")
+            print("\n[DEBUG] Variable breakdown:")
+            print(f"  total vars: {var_stats['total']}")
+            print(f"  x: {var_stats['x']}")
+            print(f"  P: {var_stats['P']}")
+            print(f"  y: {var_stats['y']}")
+            print(f"  hw_use: {var_stats['hw_use']}")
+            print(f"  if_use: {var_stats['if_use']}")
+            print(f"  attach_s: {var_stats.get('attach_s', 0)}")
+            print(f"  attach_a: {var_stats.get('attach_a', 0)}")
+            print(f"  bus lines: {var_stats.get('bus', 0)}")
+            print(f"  comm: {var_stats['comm']} ({(100.0 * var_stats['comm'] / max(1, var_stats['total'])):.1f}%)")
+            print(f"  traffic_flows: {var_stats['traffic_flows']}")
+            print(f"  sel: {var_stats['sel']}  (site pairs with candidate paths: {var_stats['pairs_with_paths']})")
 
-        print("\n[DEBUG] Constraint breakdown:")
-        for k, v in cstats.items():
-            print(f"  {k}: {v}")
+            print("\n[DEBUG] Constraint breakdown:")
+            for k, v in cstats.items():
+                print(f"  {k}: {v}")
 
-        # ======================= BUILD OBJECTIVE =======================
-        model, objectives = self._build_objective_function(
-            model, x, P, y, hw_use, if_use, comm, scs, locations, sensors, actuators,
-            cable_types, comm_matrix, partitions, hardwares, interfaces,
-            n_locs, unique_asils, all_hw, all_interfaces,
-            feasible_locs_per_sc, attach_s=attach_s, attach_a=attach_a, bus=bus,
-            minimize_cable_length=minimize_cable_length, cable_length_limit=cable_length_limit,
-            cost_limit=cost_limit, standby=net['r']
-        )
+            # ======================= BUILD OBJECTIVE =======================
+            model, objectives = self._build_objective_function(
+                model, x, P, y, hw_use, if_use, comm, scs, locations, sensors, actuators,
+                cable_types, comm_matrix, partitions, hardwares, interfaces,
+                n_locs, unique_asils, all_hw, all_interfaces,
+                feasible_locs_per_sc, attach_s=attach_s, attach_a=attach_a, bus=bus,
+                minimize_cable_length=minimize_cable_length, cable_length_limit=cable_length_limit,
+                cost_limit=cost_limit, standby=net['r']
+            )
 
-        model.update()
-        print("\n[DEBUG] Gurobi model size (final):")
-        print(f"  NumVars: {model.NumVars}")
-        print(f"  NumConstrs: {model.NumConstrs}")
+            # Lazy traffic constraints: every integer solution is checked (also every start solution and repair);
+            # a site pair with traffic but no selected path, or a link carrying more than its cables allow, adds a cut.
+            # Chain latency (configs/chains.json): per chain the flows between its consecutive components, including the
+            # sensor-to-driver and driver-to-actuator links of Ethernet peripherals; budget = network time allowed.
+            unc_lat = (uncertainty or {}).get('params', {}).get('robust_latency', {})
+            net['lat'] = {'robust': bool((uncertainty or {}).get('robust_latency')),
+                          'factor': 1.0,   # sigma removed (2026-10-24): the transmission and queueing time is already a worst case
+                          'sync': float(unc_lat.get('sync_ms', 0.0)),
+                          'platform': float(unc_lat.get('platform_mean_ms', unc_lat.get('platform_ms', 0.0)))
+                          + float((uncertainty or {}).get('rho', 1.0)) * (float(unc_lat.get('platform_p99_ms', unc_lat.get('platform_mean_ms', unc_lat.get('platform_ms', 0.0))))
+                                                              - float(unc_lat.get('platform_mean_ms', unc_lat.get('platform_ms', 0.0))))}
+            sc_index = {sc.id: i for i, sc in enumerate(scs)}
+            base_flows = [tr for tr in traffic_flows if 'base' not in tr]
+            flow_of_pair = {(tr['src_idx'], tr['dst_idx']): tr['id'] for tr in base_flows if tr['type'] == 'SC_SC'}
+            flow_into = {tr['dst_idx']: tr['id'] for tr in base_flows if tr['type'] in ('SENS_SC', 'BUS_SC')}
+            flow_from = {tr['src_idx']: tr['id'] for tr in base_flows if tr['type'] in ('SC_ACT', 'SC_BUS')}
+            # a device on a bus line reaches the unit of its software in one bus crossing (fixed per device: kbit / bit
+            # rate + per-hop bound, robust like any crossing); a chain adds it at its first (sensor) and last (actuator) end
+            dev_end = {}       # (component, sensor/actuator) -> the bus device it drives with the longest own crossing
+            for d, info in net['bus']['devices'].items():
+                t_if = cable_types[info['iface']]
+                ms = robust_ms(net, info['kbit'] / float(t_if.capacity) + float(getattr(t_if, 'hop_latency_ms', 0.0)))
+                for i in info['users']:
+                    if ms > dev_end.get((i, info['kind']), (None, -1.0))[1]:
+                        dev_end[i, info['kind']] = (d, ms)
+            net['chains'] = []
+            for ch in (chains or []):
+                idx = [sc_index[s] for s in ch['swcs'] if s in sc_index]
+                if not idx:   # none of the chain's components is in this model (an instance subset): nothing to bound
+                    continue
+                flows = [flow_into[idx[0]]] if idx and idx[0] in flow_into else []
+                flows += [flow_of_pair[a, b] for a, b in zip(idx, idx[1:]) if (a, b) in flow_of_pair]
+                flows += [flow_from[idx[-1]]] if idx and idx[-1] in flow_from else []
+                ends = [dev_end[k] for k in ((idx[0], 'sensor'), (idx[-1], 'actuator')) if idx and k in dev_end]
+                const = sum(ms for _d, ms in ends)   # own crossings of the end devices (their queues come in the cuts)
+                net['chains'].append({'id': ch['id'], 'budget': float(ch['net_budget_ms']), 'const': const, 'dev_ends': [d for d, _ms in ends],
+                                      'degraded': float(ch.get('degraded_bound_ms', float(ch['net_budget_ms']))), 'flows': flows})
+                if const > float(ch['net_budget_ms']):
+                    print(f"  WARNING: chain {ch['id']} cannot meet its budget: its bus crossings alone take {const:.2f} ms")
+            if net['chains']:
+                print(f"  Chains: {len(net['chains'])} (network budgets {min(c['budget'] for c in net['chains']):.1f} - "
+                      f"{max(c['budget'] for c in net['chains']):.1f} ms, robust latency {net['lat']['robust']})")
+
+            # Priorities (configs/buses.json: backbone.priorities): fixed-priority, non-preemptive queues, as CAN arbitrates
+            # by identifier and Ethernet switches serve IEEE 802.1Q traffic classes. A chain message gets the tightest
+            # network budget of its chains (deadline-monotonic), a standby copy that of its base flow, the end device of a
+            # chain that of the chain; all other traffic comes last. A message waits for every message of equal or higher
+            # priority once and for at most one frame of a lower-priority one (cable_types.frame_kbit).
+            net['frame_kbit'] = {n: float(getattr((cable_types or {}).get(n), 'frame_kbit', float('inf'))) for n in net['bb_ifaces']}
+            if (backbone or {}).get('priorities'):
+                pf, pd = {}, {}
+                for ch in net['chains']:
+                    for t in ch['flows']:
+                        pf[t] = min(pf.get(t, float('inf')), ch['budget'])
+                    for d in ch['dev_ends']:
+                        pd[d] = min(pd.get(d, float('inf')), ch['budget'])
+                for t, tr in net['flow_meta'].items():
+                    if tr.get('base') in pf:
+                        pf[t] = pf[tr['base']]
+                net['prio'] = {'f': pf, 'd': pd}
+                print(f"  Priorities: {len(set(pf.values()) | set(pd.values()))} chain classes for {len(pf)} flows and "
+                      f"{len(pd)} devices, all other traffic last")
+
+            # Chain latency bound in the model itself (valid; the exact rule with the queues stays in the callback): a
+            # chain flow whose two ends are on different sites crosses the network at least once, at no less than its own
+            # transmission and per-hop bound on its fastest eligible type (robust constants included). Without it the
+            # solver sees latency only through rejected candidates. cross[t] >= src_j - dst_j bounds [ends on different
+            # sites] from below.
+            # After the failure of cell c, for chains whose flows all join two critical SCs (a design that survives never
+            # loses such a chain): a flow a -> b with the primary of a at c runs from the standby of a to an instance of b
+            # and crosses for sure when the standby of a is on neither instance's site:
+            # z >= x[a,c] + 2 r[a,j] - x[b,j] - r[b,j] - 2, and the same with a and b exchanged.
+            def min_crossing(t):
+                return min(robust_ms(net, net['kbit'][t] / net['cap_of'][n] + net['hop_ms'][n]) for n in net['flow_elig'][t])
+
+            cross, cross_c, n_nom, n_fail = {}, {}, 0, 0
+            for ch in net['chains']:
+                terms = []
+                for t in ch['flows']:
+                    if t not in cross:
+                        src, dst = net['flow_ends'][t]
+                        cross[t] = model.addVar(lb=0.0, ub=1.0, name=f"cross_{t}")
+                        tr_c = net['flow_meta'][t]
+                        if tr_c['type'] in ('BUS_SC', 'SC_BUS'):
+                            # the lanes of a bus device: the user crosses the backbone only when no lane's gateway
+                            # sits at its own unit (the LP sees the latency price of a remote gateway)
+                            user = dst if tr_c['type'] == 'BUS_SC' else src
+                            lines_c = [b for b in bus['inst'] if b[0] == bus['devices'][tr_c['dev']]['iface']]
+                            for j, var in user.items():
+                                gws = [bus['gw'][tr_c['dev'], b, j] for b in lines_c if (tr_c['dev'], b, j) in bus['gw']]
+                                model.addConstr(cross[t] >= var - gp.quicksum(gws), name=f"cross_{t}_{j}")
+                        else:
+                            for j, var in src.items():
+                                model.addConstr(cross[t] >= var - (dst[j] if j in dst else 0), name=f"cross_{t}_{j}")
+                    terms.append(min_crossing(t) * cross[t])
+                model.addConstr(gp.quicksum(terms) <= ch['budget'] - ch['const'], name=f"chain_lb_{ch['id']}")
+                n_nom += 1
+            crit = set(net['critical'])
+            for ch in net['chains']:
+                meta = [net['flow_meta'][t] for t in ch['flows']]
+                if not meta or any(tr['type'] != 'SC_SC' or tr['src_idx'] not in crit or tr['dst_idx'] not in crit for tr in meta):
+                    continue
+                for c in range(n_locs):
+                    terms = []
+                    for t, tr in zip(ch['flows'], meta):
+                        a, b = tr['src_idx'], tr['dst_idx']
+                        if (a, c) not in x and (b, c) not in x:
+                            continue
+                        if (t, c) not in cross_c:
+                            z = cross_c[t, c] = model.addVar(lb=0.0, ub=1.0, name=f"cross_{t}_fail_{locations[c].id}")
+                            for p, q in ((a, b), (b, a)):
+                                if (p, c) not in x:
+                                    continue
+                                for j in feasible_locs_per_sc[p]:
+                                    if (p, j) in net['r']:
+                                        model.addConstr(z >= x[p, c] + 2 * net['r'][p, j] - x.get((q, j), 0) - net['r'].get((q, j), 0) - 2,
+                                                        name=f"cross_{t}_fail_{locations[c].id}_{scs[p].id}_{locations[j].id}")
+                        terms.append(min_crossing(t) * cross_c[t, c])
+                    if terms:
+                        model.addConstr(gp.quicksum(terms) <= ch['degraded'] - ch['const'], name=f"chain_lb_{ch['id']}_fail_{locations[c].id}")
+                        n_fail += 1
+            if net['chains']:
+                print(f"  Chain latency bounds in the model: {n_nom} nominal, {n_fail} after a cell failure")
+            model.update()
+            print("\n[DEBUG] Gurobi model size (final):")
+            print(f"  NumVars: {model.NumVars}")
+            print(f"  NumConstrs: {model.NumConstrs}")
+            bounds = [(var, var.LB, var.UB) for fam in (x, net['r']) for var in fam.values()]
+            self._session = {'key': key, 'bounds': bounds, 'parts': (model, x, P, y, hw_use, if_use, attach_s, attach_a, bus, comm,
+                                                                     traffic_flows, net, feasible_locs_per_sc, feasible_scs_per_loc,
+                                                                     objectives)} if reuse else None
+        else:
+            (model, x, P, y, hw_use, if_use, attach_s, attach_a, bus, comm, traffic_flows, net, feasible_locs_per_sc,
+             feasible_scs_per_loc, objectives) = session['parts']
+            if not resuming:
+                for var, lb, ub in session['bounds']:
+                    var.LB, var.UB = lb, ub
+                model.update()
+            print(f"\n  Model {'resumed: the search continues where the previous attempt stopped' if resuming else 'reused'} "
+                  f"from the previous solve: {model.NumVars} variables, {model.NumConstrs} constraints; the translation is skipped")
+
+
+        # Fixed placements (pieces.py): fixed = {'x': {sc id: cell id}, 'r': {sc id: standby cell id}} locks the primary
+        # cell of the already placed components and the cell of their standbys by bounds; everything else (the free
+        # components, partitions, hardware, cables, bus lines, hot / cold) stays a decision and every rule of the model,
+        # lazy ones included, is still checked on the whole design.
+        if fixed and not resuming:
+            sc_index = {sc.id: i for i, sc in enumerate(scs)}
+            loc_index = {loc.id: j for j, loc in enumerate(locations)}
+            n_fix = {'x': 0, 'r': 0}
+            for kind, family in (('x', x), ('r', net['r'])):
+                for sid, cell in (fixed.get(kind) or {}).items():
+                    i, jj = sc_index.get(sid), loc_index.get(cell)
+                    if i is None or jj is None or not any((i, j) in family for j in feasible_locs_per_sc[i]):
+                        continue
+                    for j in feasible_locs_per_sc[i]:
+                        if (i, j) in family:
+                            family[i, j].LB = family[i, j].UB = 1.0 if j == jj else 0.0
+                    n_fix[kind] += 1
+            # allowed cells (pieces.py, parallel build): a component listed in fixed['allow'] may be placed, and get its
+            # standby, only in the given cells
+            n_allow = 0
+            for sid, cells in (fixed.get('allow') or {}).items():
+                i = sc_index.get(sid)
+                if i is None:
+                    continue
+                ok = {loc_index[c] for c in cells if c in loc_index}
+                for j in feasible_locs_per_sc[i]:
+                    if j not in ok:
+                        if (i, j) in x:
+                            x[i, j].UB = 0.0
+                        if (i, j) in net['r']:
+                            net['r'][i, j].UB = 0.0
+                n_allow += 1
+            model.update()
+            print(f"  Fixed placements: {n_fix['x']} components, {n_fix['r']} standbys; restricted to their own cells: {n_allow}")
 
         # Start solution: the values of the previous solve of a sweep (growth level, Pareto point), matched by variable
         # name. Only a starting incumbent for the branch-and-bound: Gurobi checks it (through the lazy callback) and
         # drops it if it violates a constraint of this model; the proven optimum is not affected.
-        if start:
+        if start and not resuming:
             matched = 0
             for v in model.getVars():
                 val = start.get(v.VarName)
@@ -1298,6 +1682,26 @@ class AssignmentOptimizer:
         if mip_gap is not None:
             model.setParam('MIPGap', float(mip_gap))
             print(f"  MIPGap: {float(mip_gap)}")
+        # Memory guard (2026-11-01, after the 500 run on the corrected cells, job 3186, was killed by the OOM killer at
+        # 300 GB inside the root barrier of a polish round, 3.5 h in): Gurobi stops a solve by itself before the job's
+        # memory is used up. SoftMemLimit = memory.soft_share x the job's memory: a graceful stop, the incumbent is
+        # kept (checked only between the solver's steps, so a jump inside one step can pass it); MemLimit =
+        # memory.hard_share x the job's memory: checked at every allocation, a GurobiError caught below (no design
+        # from that solve, the model is dropped and rebuilt by the next one). Both less what the process holds
+        # outside Gurobi (Python data, the Steiner cache); job memory from SLURM_MEM_PER_NODE or the cgroup limit, no
+        # limit without one. configs/solver.json memory; a MemLimit / SoftMemLimit in gurobi_params overrides.
+        job_gb = job_memory_gb()
+        mem_cfg = dict(self.memory or {})
+        if job_gb and (mem_cfg.get('soft_share') or mem_cfg.get('hard_share')):
+            rss_now, _rss_peak = process_memory_gb()
+            outside = max(0.0, rss_now - float(model.MemUsed))
+            limits = {}
+            for name, share in (('SoftMemLimit', mem_cfg.get('soft_share')), ('MemLimit', mem_cfg.get('hard_share'))):
+                if share:
+                    limits[name] = max(1.0, float(share) * job_gb - outside)
+                    model.setParam(name, limits[name])
+            print(f"  [memory] job {job_gb:.0f} GB, process {rss_now:.1f} GB (Gurobi {float(model.MemUsed):.1f} GB): "
+                  + ", ".join(f"{k} {v:.0f} GB" for k, v in limits.items()), flush=True)
         # Extra Gurobi parameters for experiments, e.g. "MIPFocus=3,Cuts=2" (--gurobi_params)
         for item in (gurobi_params or '').split(','):
             if '=' in item:
@@ -1314,118 +1718,6 @@ class AssignmentOptimizer:
 
         tl = float(time_limit) if (time_limit is not None and float(time_limit) > 0) else None
 
-        # Lazy traffic constraints: every integer solution is checked (also every start solution and repair);
-        # a site pair with traffic but no selected path, or a link carrying more than its cables allow, adds a cut.
-        # Chain latency (configs/chains.json): per chain the flows between its consecutive components, including the
-        # sensor-to-driver and driver-to-actuator links of Ethernet peripherals; budget = network time allowed.
-        unc_lat = (uncertainty or {}).get('params', {}).get('robust_latency', {})
-        net['lat'] = {'robust': bool((uncertainty or {}).get('robust_latency')),
-                      'factor': 1.0,   # sigma removed (2026-10-24): the transmission and queueing time is already a worst case
-                      'sync': float(unc_lat.get('sync_ms', 0.0)),
-                      'platform': float(unc_lat.get('platform_mean_ms', unc_lat.get('platform_ms', 0.0)))
-                      + float((uncertainty or {}).get('rho', 1.0)) * (float(unc_lat.get('platform_p99_ms', unc_lat.get('platform_mean_ms', unc_lat.get('platform_ms', 0.0))))
-                                                          - float(unc_lat.get('platform_mean_ms', unc_lat.get('platform_ms', 0.0))))}
-        sc_index = {sc.id: i for i, sc in enumerate(scs)}
-        base_flows = [tr for tr in traffic_flows if 'base' not in tr]
-        flow_of_pair = {(tr['src_idx'], tr['dst_idx']): tr['id'] for tr in base_flows if tr['type'] == 'SC_SC'}
-        flow_into = {tr['dst_idx']: tr['id'] for tr in base_flows if tr['type'] == 'SENS_SC'}
-        flow_from = {tr['src_idx']: tr['id'] for tr in base_flows if tr['type'] == 'SC_ACT'}
-        # a device on a bus line reaches the unit of its software in one bus crossing (fixed per device: kbit / bit
-        # rate + per-hop bound, robust like any crossing); a chain adds it at its first (sensor) and last (actuator) end
-        dev_end = {}       # (component, sensor/actuator) -> the bus device it drives with the longest own crossing
-        for d, info in net['bus']['devices'].items():
-            t_if = cable_types[info['iface']]
-            ms = robust_ms(net, info['kbit'] / float(t_if.capacity) + float(getattr(t_if, 'hop_latency_ms', 0.0)))
-            for i in info['users']:
-                if ms > dev_end.get((i, info['kind']), (None, -1.0))[1]:
-                    dev_end[i, info['kind']] = (d, ms)
-        net['chains'] = []
-        for ch in (chains or []):
-            idx = [sc_index[s] for s in ch['swcs'] if s in sc_index]
-            flows = [flow_into[idx[0]]] if idx and idx[0] in flow_into else []
-            flows += [flow_of_pair[a, b] for a, b in zip(idx, idx[1:]) if (a, b) in flow_of_pair]
-            flows += [flow_from[idx[-1]]] if idx and idx[-1] in flow_from else []
-            ends = [dev_end[k] for k in ((idx[0], 'sensor'), (idx[-1], 'actuator')) if idx and k in dev_end]
-            const = sum(ms for _d, ms in ends)   # own crossings of the end devices (their queues come in the cuts)
-            net['chains'].append({'id': ch['id'], 'budget': float(ch['net_budget_ms']), 'const': const, 'dev_ends': [d for d, _ms in ends],
-                                  'degraded': float(ch.get('degraded_bound_ms', float(ch['net_budget_ms']))), 'flows': flows})
-            if const > float(ch['net_budget_ms']):
-                print(f"  WARNING: chain {ch['id']} cannot meet its budget: its bus crossings alone take {const:.2f} ms")
-        if net['chains']:
-            print(f"  Chains: {len(net['chains'])} (network budgets {min(c['budget'] for c in net['chains']):.1f} - "
-                  f"{max(c['budget'] for c in net['chains']):.1f} ms, robust latency {net['lat']['robust']})")
-
-        # Priorities (configs/buses.json: backbone.priorities): fixed-priority, non-preemptive queues, as CAN arbitrates
-        # by identifier and Ethernet switches serve IEEE 802.1Q traffic classes. A chain message gets the tightest
-        # network budget of its chains (deadline-monotonic), a standby copy that of its base flow, the end device of a
-        # chain that of the chain; all other traffic comes last. A message waits for every message of equal or higher
-        # priority once and for at most one frame of a lower-priority one (cable_types.frame_kbit).
-        net['frame_kbit'] = {n: float(getattr((cable_types or {}).get(n), 'frame_kbit', float('inf'))) for n in net['bb_ifaces']}
-        if (backbone or {}).get('priorities'):
-            pf, pd = {}, {}
-            for ch in net['chains']:
-                for t in ch['flows']:
-                    pf[t] = min(pf.get(t, float('inf')), ch['budget'])
-                for d in ch['dev_ends']:
-                    pd[d] = min(pd.get(d, float('inf')), ch['budget'])
-            for t, tr in net['flow_meta'].items():
-                if tr.get('base') in pf:
-                    pf[t] = pf[tr['base']]
-            net['prio'] = {'f': pf, 'd': pd}
-            print(f"  Priorities: {len(set(pf.values()) | set(pd.values()))} chain classes for {len(pf)} flows and "
-                  f"{len(pd)} devices, all other traffic last")
-
-        # Chain latency bound in the model itself (valid; the exact rule with the queues stays in the callback): a
-        # chain flow whose two ends are on different sites crosses the network at least once, at no less than its own
-        # transmission and per-hop bound on its fastest eligible type (robust constants included). Without it the
-        # solver sees latency only through rejected candidates. cross[t] >= src_j - dst_j bounds [ends on different
-        # sites] from below.
-        # After the failure of cell c, for chains whose flows all join two critical SCs (a design that survives never
-        # loses such a chain): a flow a -> b with the primary of a at c runs from the standby of a to an instance of b
-        # and crosses for sure when the standby of a is on neither instance's site:
-        # z >= x[a,c] + 2 r[a,j] - x[b,j] - r[b,j] - 2, and the same with a and b exchanged.
-        def min_crossing(t):
-            return min(robust_ms(net, net['kbit'][t] / net['cap_of'][n] + net['hop_ms'][n]) for n in net['flow_elig'][t])
-
-        cross, cross_c, n_nom, n_fail = {}, {}, 0, 0
-        for ch in net['chains']:
-            terms = []
-            for t in ch['flows']:
-                if t not in cross:
-                    src, dst = net['flow_ends'][t]
-                    cross[t] = model.addVar(lb=0.0, ub=1.0, name=f"cross_{t}")
-                    for j, var in src.items():
-                        model.addConstr(cross[t] >= var - (dst[j] if j in dst else 0), name=f"cross_{t}_{j}")
-                terms.append(min_crossing(t) * cross[t])
-            model.addConstr(gp.quicksum(terms) <= ch['budget'] - ch['const'], name=f"chain_lb_{ch['id']}")
-            n_nom += 1
-        crit = set(net['critical'])
-        for ch in net['chains']:
-            meta = [net['flow_meta'][t] for t in ch['flows']]
-            if not meta or any(tr['type'] != 'SC_SC' or tr['src_idx'] not in crit or tr['dst_idx'] not in crit for tr in meta):
-                continue
-            for c in range(n_locs):
-                terms = []
-                for t, tr in zip(ch['flows'], meta):
-                    a, b = tr['src_idx'], tr['dst_idx']
-                    if (a, c) not in x and (b, c) not in x:
-                        continue
-                    if (t, c) not in cross_c:
-                        z = cross_c[t, c] = model.addVar(lb=0.0, ub=1.0, name=f"cross_{t}_fail_{locations[c].id}")
-                        for p, q in ((a, b), (b, a)):
-                            if (p, c) not in x:
-                                continue
-                            for j in feasible_locs_per_sc[p]:
-                                if (p, j) in net['r']:
-                                    model.addConstr(z >= x[p, c] + 2 * net['r'][p, j] - x.get((q, j), 0) - net['r'].get((q, j), 0) - 2,
-                                                    name=f"cross_{t}_fail_{locations[c].id}_{scs[p].id}_{locations[j].id}")
-                    terms.append(min_crossing(t) * cross_c[t, c])
-                if terms:
-                    model.addConstr(gp.quicksum(terms) <= ch['degraded'] - ch['const'], name=f"chain_lb_{ch['id']}_fail_{locations[c].id}")
-                    n_fail += 1
-        if net['chains']:
-            print(f"  Chain latency bounds in the model: {n_nom} nominal, {n_fail} after a cell failure")
-
         model.setParam('LazyConstraints', 1)
         watched = []
         for t, (src, dst) in net['flow_ends'].items():
@@ -1433,7 +1725,7 @@ class AssignmentOptimizer:
         watched += list(net['sel'].values()) + list(net['w'].values())
         watched += list(x.values()) + list(y.values()) + list(hw_use.values()) + list(P.values())
         watched += list(net['r'].values()) + [v for v in net['hot'].values() if v is not None] + list(net['hr'].values())
-        watched += list(attach_s.values()) + list(attach_a.values())
+        watched += list(attach_s.values()) + list(attach_a.values()) + list(bus['gw'].values())
         watched += list(bus['act'].values()) + list(bus['len'].values()) + list(bus['unit'].values()) + list(bus['dev'].values())
         seen_ids, cb_vars = set(), []
         for var in watched:
@@ -1460,7 +1752,7 @@ class AssignmentOptimizer:
         model._repairs_used = 0
         # callback statistics (printed every 60 s and stored in solve_info): integer candidates from Gurobi, how many
         # were rejected by a lazy check, repair attempts, valid repairs, and the stage where a repair failed
-        model._cb_stats = {'candidates': 0, 'rejected': 0, 'repair_tries': 0, 'repair_valid': 0, 'repair_fail': {},
+        model._cb_stats = {'time_s': 0.0, 'candidates': 0, 'rejected': 0, 'repair_tries': 0, 'repair_valid': 0, 'repair_fail': {},
                            'rejected_by': {}, 'cuts_by': {}}
         model._cb_last_print = 0.0
         has_switch_hw = 'SWITCH' in all_hw
@@ -1468,7 +1760,8 @@ class AssignmentOptimizer:
         # Gurobi drops callback cuts after each optimize, but these are valid for every solution, so they are kept as
         # model constraints between the phases (a start solution's bus lengths are recomputed by Gurobi's LP and
         # would otherwise fall below the trees and be rejected)
-        model._st_cuts, model._st_added = {}, set()
+        if session is None:   # a reused model keeps the cuts of the earlier solves (they are model constraints)
+            model._st_cuts, model._st_added = {}, set()
 
         def keep_steiner_cuts():
             for key, (members, st_len) in model._st_cuts.items():
@@ -1479,7 +1772,7 @@ class AssignmentOptimizer:
                     model._st_added.add(key)
 
         # a start solution brings its bus lines: their trees are added right away for the same reason
-        if start:
+        if start and not resuming:
             for b in bus['inst']:
                 if start.get(bus['act'][b].VarName, 0.0) < 0.5:
                     continue
@@ -1504,25 +1797,40 @@ class AssignmentOptimizer:
             if where != GRB.Callback.MIPSOL:
                 return
             cuts_before = m._lazy_cuts
+            _t0 = time.perf_counter()   # time inside the callback, summed in _cb_stats['time_s'] (2026-11-01)
             m._cb_stats['candidates'] += 1
             vals = dict(zip((id(v) for v in cb_vars), m.cbGetSolution(cb_vars)))
             cv = dict(zip(comm_keys, m.cbGetSolution(comm_vars)))
             getv = lambda var: vals[id(var)]
             routes = flow_routes(net, getv)
 
+            # Fix B (2026-11-01): the candidate is one snapshot (vals) for the whole call, so the endpoints of a flow,
+            # its silent flag and its route configuration are the same in every failure scenario; they are computed
+            # once per call and kept in these dicts, which die with the call (the next candidate starts empty).
+            _ends, _silent, _fcfg = {}, {}, {}
+
             def ends_of_t(t):
-                src, dst = net['flow_ends'][t]
-                return (next((k for k, var in src.items() if getv(var) > 0.5), None),
-                        next((k for k, var in dst.items() if getv(var) > 0.5), None))
+                r = _ends.get(t)
+                if r is None:
+                    src, dst = net['flow_ends'][t]
+                    r = _ends[t] = (next((k for k, var in src.items() if getv(var) > 0.5), None),
+                                    next((k for k, var in dst.items() if getv(var) > 0.5), None))
+                return r
             hot_val = {i: (1.0 if net['hot'][i] is None else getv(net['hot'][i])) for i in net['critical']}
 
-            def silent(t):
+            def _silent_scan(t):
                 # a standby flow of a cold standby carries no traffic in the nominal state (path must still exist)
                 tr = net['flow_meta'][t]
                 for inst, key in ((tr.get('src_inst', 'x'), 'src_idx'), (tr.get('dst_inst', 'x'), 'dst_idx')):
                     if inst == 'r' and hot_val.get(tr[key], 1.0) < 0.5:
                         return True
                 return False
+
+            def silent(t):
+                s = _silent.get(t)
+                if s is None:
+                    s = _silent[t] = _silent_scan(t)
+                return s
 
             def indicator(t, u, v, w_if, p):
                 # linear lower bound of [flow t starts at u, ends at v, uses type w_if on path p]
@@ -1719,9 +2027,15 @@ class AssignmentOptimizer:
                 rt = routes[k]
                 return traffic_indicator(k, rt[0], rt[1], rt[2], rt[3])
 
+            def active_lane(t):
+                # a bus device's base flow stands for its lanes: the lane whose gateway is the user's own unit when there is
+                # one (no crossing), else the first lane with both ends placed (optimizer_utils.nominal_lane)
+                return nominal_lane(net, t, getv)
+
             for ch in net['chains']:
                 picks = []
                 for t in ch['flows']:
+                    t = active_lane(t)
                     rt = routes.get(t)
                     if rt is None or rt[3] is None:
                         continue
@@ -1738,10 +2052,29 @@ class AssignmentOptimizer:
             pos_x = {i: next((j for j in feasible_locs_per_sc[i] if getv(x[i, j]) > 0.5), None) for i in range(n_sc)}
             pos_r = {i: next((j for j in feasible_locs_per_sc[i] if getv(net['r'][i, j]) > 0.5), None) for i in net['critical']}
 
-            def ends_of(t):
+            ends_of = ends_of_t   # fix B: the same memo
+
+            def _flow_cfg_scan(t, routes_):
+                # the parts of flow_alive that do not depend on the failed element: (w_if, p, path, cfg) of flow t in
+                # routes_, None when its path is missing; only called with both endpoints placed and u != v
+                u, v = ends_of(t)
+                rt = routes_.get(t)
+                if rt is None or rt[3] is None:
+                    return None
                 src, dst = net['flow_ends'][t]
-                return (next((k for k, var in src.items() if getv(var) > 0.5), None),
-                        next((k for k, var in dst.items() if getv(var) > 0.5), None))
+                _u, _v, w_if, p = rt
+                pair = (min(u, v), max(u, v))
+                cfg = [src[u], dst[v], net['sel'][pair + (w_if, p)]]
+                if len(net['flow_elig'][t]) > 1:
+                    cfg.append(net['w'][t, w_if])
+                return w_if, p, net['paths'][pair + (w_if,)][p], cfg
+
+            def flow_cfg(t, routes_):
+                # memo per (routes object, flow); the object itself is kept so a reused id cannot alias another dict
+                e = _fcfg.get((id(routes_), t))
+                if e is None or e[0] is not routes_:
+                    e = _fcfg[(id(routes_), t)] = (routes_, _flow_cfg_scan(t, routes_))
+                return e[1]
 
             def flow_alive(t, kind, elem, routes_):
                 # (alive, variables that fix this outcome, path missing). The variables are what a valid cut needs:
@@ -1754,17 +2087,16 @@ class AssignmentOptimizer:
                 src, dst = net['flow_ends'][t]
                 if kind == 'cell' and elem in (u, v):
                     return False, [src[u] if u == elem else dst[v]], False
+                tr_t = net['flow_meta'][t]
+                if kind == 'line' and tr_t['type'] in ('BUS_SC', 'SC_BUS') and tr_t['line'] == elem:
+                    return False, [src[u] if tr_t['type'] == 'BUS_SC' else dst[v]], False   # the lane's own line failed
                 if u == v:
                     return True, [src[u], dst[v]], False
-                rt = routes_.get(t)
-                if rt is None or rt[3] is None:
+                c = flow_cfg(t, routes_)
+                if c is None:
                     return False, [], True
-                _u, _v, w_if, p = rt
-                pair = (min(u, v), max(u, v))
-                path = net['paths'][pair + (w_if,)][p]
-                cfg = [src[u], dst[v], net['sel'][pair + (w_if, p)]]
-                if len(net['flow_elig'][t]) > 1:
-                    cfg.append(net['w'][t, w_if])
+                w_if, p, path, cfg = c
+                cfg = list(cfg)   # a fresh list for the caller, as before
                 if kind in ('cell', 'switch') and elem in path[1:-1]:
                     return False, cfg, False
                 if kind == 'switch' and w_if == 'ETH' and elem in (u, v):
@@ -1792,6 +2124,10 @@ class AssignmentOptimizer:
                         att = ends_of(t_base)[0 if tr['type'] == 'SENS_SC' else 1]
                         if kind in ('cell', 'switch') and elem == att:
                             continue
+                    elif tr['type'] in ('BUS_SC', 'SC_BUS'):
+                        # the lanes of a bus device are alternatives: one surviving lane serves the instance (a gateway's
+                        # failure is in scope, the two lanes of a critical device exist for it)
+                        keys = [k for k in base_variants[t_base] if (k[1] if tr['type'] == 'BUS_SC' else k[0]) == inst]
                     else:
                         partner = tr['dst_idx'] if role == 'src' else tr['src_idx']
                         if partner not in pos_r:
@@ -1828,10 +2164,16 @@ class AssignmentOptimizer:
                         scenarios += [('cable', key) for key in used]
                     scenarios += [('line', ln) for ln in sorted({(rt[2], rt[3]) for rt in routes_.values()
                                                                 if rt and rt[2] in bus['types'] and rt[3] is not None})]
+                    if bus['gateway']:   # a lane dies with its line: every open line is a scenario
+                        have = {e for k, e in scenarios if k == 'line'}
+                        scenarios += [('line', b) for b in bus['inst'] if b not in have and getv(bus['act'][b]) > 0.5]
                 return scenarios
 
             VARIANT_ORDER = {'SC_SC': [('x', 'x'), ('x', 'r'), ('r', 'x'), ('r', 'r')],
                              'SENS_SC': [('a', 'x'), ('a', 'r')], 'SC_ACT': [('x', 'a'), ('r', 'a')]}
+            n_lanes = max((sum(1 for b in bus['inst'] if b[0] == n) for n in bus['types']), default=0)
+            VARIANT_ORDER['BUS_SC'] = [(f'a{k}', inst) for inst in ('x', 'r') for k in range(n_lanes)]
+            VARIANT_ORDER['SC_BUS'] = [(inst, f'a{k}') for inst in ('x', 'r') for k in range(n_lanes)]
 
             def degraded_check(states, routes_, add_cuts):
                 """chain network latency in every failure scenario over the surviving instances, with the queues of the
@@ -1867,6 +2209,8 @@ class AssignmentOptimizer:
                         total, _ = chain_terms(ch, picks, msgs, term, False, routes_, fl)
                         if total > ch['degraded'] + 1e-6:
                             violations += 1
+                            if _GW_DEBUG and not add_cuts and m._cb_stats['repair_tries'] <= 6:
+                                print(f"[gateway debug] repair {m._cb_stats['repair_tries']} degraded: chain {ch['id']} {total:.3f} > {ch['degraded']} in scenario {st['kind']} {st['elem']}; picks {[(t, routes_.get(t)) for t, _i in picks]}", flush=True)
                             if add_cuts:
                                 _t, terms = chain_terms(ch, picks, msgs, term, True, routes_, fl)
                                 m.cbLazy(gp.quicksum(terms) <= ch['degraded'] - ch['const'])
@@ -1921,7 +2265,7 @@ class AssignmentOptimizer:
                                 carried[t] = None
                     for t_base, variants in base_variants.items():
                         reasons, pick = [], None
-                        for key in VARIANT_ORDER[net['flow_meta'][t_base]['type']]:
+                        for key in lane_keys(net, t_base, VARIANT_ORDER, getv):
                             t = variants.get(key)
                             if t is None:
                                 continue
@@ -2115,6 +2459,34 @@ class AssignmentOptimizer:
             if m._lazy_cuts > cuts_before and placement_ok and m._repair is None:
                 m._cb_stats['repair_tries'] += 1
                 stage = None
+                if bus['gw']:
+                    # gateway rule: the repair keeps the candidate's lines and members but re-places every lane's gateway
+                    # where the data is used: the first lane at the unit of the device's software, the second lane at
+                    # the standby's unit (else another member, the lanes stay apart); the relaxation sees no queueing
+                    # price for a remote gateway, so its gateways are arbitrary
+                    moved = 0
+                    for d, info in bus['devices'].items():
+                        if not info['users']:
+                            continue
+                        lines_d = [b for b in bus['inst'] if (b, d) in bus['dev'] and getv(bus['dev'][b, d]) > 0.5]
+                        hosts = [pos_x[i] for i in info['users'] if pos_x.get(i) is not None]
+                        stby = [pos_r[i] for i in info['users'] if pos_r.get(i) is not None]
+                        taken = set()
+                        for k, b in enumerate(lines_d):
+                            members = [j for j in range(n_locs) if (b, j) in bus['unit'] and getv(bus['unit'][b, j]) > 0.5]
+                            cur = next((j for j in members if (d, b, j) in bus['gw'] and getv(bus['gw'][d, b, j]) > 0.5), None)
+                            prefer = [j for j in (hosts if k == 0 else stby + hosts) if j in members and j not in taken]
+                            new = prefer[0] if prefer else (cur if cur not in taken else next((j for j in members if j not in taken), cur))
+                            if new is not None and new != cur:
+                                for j in members:
+                                    if (d, b, j) in bus['gw']:
+                                        vals[id(bus['gw'][d, b, j])] = 1.0 if j == new else 0.0
+                                moved += 1
+                            if new is not None:
+                                taken.add(new)
+                    if moved:
+                        _ends.clear()
+                        _fcfg.clear()   # the memos depend on the gateway values
                 fix = {var: (getv(var) if id(var) in cont_ids else round(getv(var))) for var in cb_vars}
                 for var in net['sel'].values():
                     fix[var] = 0
@@ -2160,8 +2532,13 @@ class AssignmentOptimizer:
                     if key[0] == 'line' and ld > capacity_left(key, None) + 1e-6:
                         feasible, stage = False, stage or 'bus line capacity'
                 if feasible and net['chains']:
-                    feasible = all(c['ok'] for c in chain_latencies(net, rep_routes, getv).values())
+                    cl_rep = chain_latencies(net, rep_routes, getv)
+                    feasible = all(c['ok'] for c in cl_rep.values())
                     stage = stage or (None if feasible else 'chain latency')
+                    if _GW_DEBUG and not feasible and m._cb_stats['repair_tries'] <= 6:
+                        bad = {k: (round(c['latency_ms'], 3), c['budget_ms'], round(c['device_bus_ms'], 3), [(x['from'], x['to'], x['iface'], x['hops'], x['ms']) for x in c['crossings']])
+                               for k, c in cl_rep.items() if not c['ok']}
+                        print(f"[gateway debug] repair {m._cb_stats['repair_tries']} chain latency violations: {bad}", flush=True)
                 if feasible and net['critical']:
                     feasible = scenario_check(rep_routes, False) == 0
                     stage = stage or (None if feasible else 'failure survival')
@@ -2173,13 +2550,35 @@ class AssignmentOptimizer:
                     m._cb_stats['repair_valid'] += 1
                 else:
                     m._cb_stats['repair_fail'][stage] = m._cb_stats['repair_fail'].get(stage, 0) + 1
+            if _CB_VERIFY:
+                for t, r in _ends.items():
+                    src, dst = net['flow_ends'][t]
+                    fresh = (next((k for k, var in src.items() if getv(var) > 0.5), None),
+                             next((k for k, var in dst.items() if getv(var) > 0.5), None))
+                    if fresh != r:
+                        raise RuntimeError(f'fix B check failed: endpoints of flow {t}: {r} vs {fresh}')
+                for t, s_ in _silent.items():
+                    if _silent_scan(t) != s_:
+                        raise RuntimeError(f'fix B check failed: silent flag of flow {t}')
+                for (_rid, t), (robj, c) in _fcfg.items():
+                    fresh = _flow_cfg_scan(t, robj)
+                    same = (fresh is None and c is None) or (fresh is not None and c is not None and fresh[0] == c[0] and fresh[1] == c[1]
+                                                              and list(fresh[2]) == list(c[2]) and [id(v) for v in fresh[3]] == [id(v) for v in c[3]])
+                    if not same:
+                        raise RuntimeError(f'fix B check failed: route configuration of flow {t}')
+                m._cb_stats['verified'] = m._cb_stats.get('verified', 0) + 1
+            if _GW_DEBUG and bus['gw'] and m._cb_stats['candidates'] <= 8:
+                hosts = {d: sorted({locations[pos_x[i]].id for i in info['users'] if pos_x.get(i) is not None}) for d, info in bus['devices'].items() if info['users']}
+                lanes_dbg = [f"{d}@{b[0]}{b[1] + 1}->{locations[j].id} (hosts {hosts.get(d)})" for (d, b, j), var in bus['gw'].items() if getv(var) > 0.5]
+                print(f"[gateway debug] candidate {m._cb_stats['candidates']}: cuts by {dict(m._cb_stats['cuts_by'])}; lanes: {lanes_dbg}", flush=True)
+            m._cb_stats['time_s'] = round(m._cb_stats['time_s'] + (time.perf_counter() - _t0), 3)
             now = time.time()
             if now - m._cb_last_print >= 60.0:
                 m._cb_last_print = now
                 st = m._cb_stats
                 print(f"[callback] candidates {st['candidates']}, rejected {st['rejected']}, repair tries {st['repair_tries']}, "
                       f"valid repairs {st['repair_valid']}, used {m._repairs_used}, repair failures {st['repair_fail']}, "
-                      f"rejected by {st['rejected_by']}, cuts by {st['cuts_by']}", flush=True)
+                      f"rejected by {st['rejected_by']}, cuts by {st['cuts_by']}, callback time {st['time_s']:.0f} s", flush=True)
 
         def _lns_improve(obj_expr, info, cfg, budget_s):
             """Fix-and-optimize improvement of the phase-1 incumbent (configs/solver.json: lns). Every iteration fixes the
@@ -2232,7 +2631,8 @@ class AssignmentOptimizer:
             """Phase 1: primary objective. Phase 2: secondary objective with the primary fixed at its phase-1 value."""
             if tl is not None:
                 model.setParam('TimeLimit', tl)
-            model.setObjective(primary_expr, GRB.MINIMIZE)
+            if not resuming:   # a resumed model keeps its objective: setting it again would restart the search
+                model.setObjective(primary_expr, GRB.MINIMIZE)
             phases = []
             print(f"\n[Lexicographic] Phase 1: minimize {primary_name}")
             lns_cfg = dict(lns or {})
@@ -2242,6 +2642,12 @@ class AssignmentOptimizer:
             model.optimize(lazy_cb)
             phases.append(self._phase_info(model, primary_name))
             print(f"[callback] after phase 1: {model._cb_stats}, repairs used {model._repairs_used}", flush=True)
+            if model.status == GRB.MEM_LIMIT and model.SolCount > 0:   # soft memory limit (2026-11-01): the design is kept
+                # as it is; phase 2 would start the same root solve again
+                print("\n[Lexicographic] Phase 1 stopped at the soft memory limit with a design; phase 2 is skipped", flush=True)
+                phases.append({'objective_name': secondary_name, 'status': 'SKIPPED', 'objective': None, 'bound': None,
+                               'mip_gap': None, 'runtime_s': 0.0, 'node_count': 0.0})
+                return phases, None
             if lns_on and model.SolCount > 0 and model.status == GRB.TIME_LIMIT and phases[-1]['mip_gap'] is not None \
                     and phases[-1]['mip_gap'] > float(lns_cfg.get('stop_gap', 0.01)):
                 phases[-1]['lns'] = _lns_improve(primary_expr, phases[-1], lns_cfg, tl - model.Runtime)
@@ -2263,7 +2669,8 @@ class AssignmentOptimizer:
                 model.setObjective(secondary_expr, GRB.MINIMIZE)
                 model.setAttr('Start', all_vars, phase1)
                 if tl is not None:
-                    model.setParam('TimeLimit', max(tl - model.Runtime, float(phase2_time)))
+                    # phase2_cap (pieces.py, intermediate steps): exactly that time, not the rest of the time limit
+                    model.setParam('TimeLimit', float(phase2_cap) if phase2_cap is not None else max(tl - model.Runtime, float(phase2_time)))
                 print(f"\n[Lexicographic] Phase 2: minimize {secondary_name} with {primary_name} <= {primary_val:.6f}")
                 model.optimize(lazy_cb)
                 phases.append(self._phase_info(model, secondary_name))
@@ -2285,16 +2692,32 @@ class AssignmentOptimizer:
         # the P[j,a] partitions opened for them. Every solution is checked; a failing group gets a cut and the
         # model is solved again.
         partition_map = {}
-        packing_cuts = 0
+        packing_cuts, unpackable = 0, False
         while True:
-            phases, lex_constr = _solve_lexicographic()
-            if not (model.SolCount > 0 and model.status in (GRB.OPTIMAL, GRB.TIME_LIMIT)):
+            try:
+                phases, lex_constr = _solve_lexicographic()
+            except gp.GurobiError as e:
+                if e.errno != GRB.Error.OUT_OF_MEMORY:
+                    raise
+                rss_now, rss_peak = process_memory_gb()
+                print(f"\n✗ Gurobi stopped at its memory limit (MemLimit {model.Params.MemLimit:.1f} GB; process {rss_now:.1f} GB now, "
+                      f"peak {rss_peak:.1f} GB): no design from this solve; the model is dropped and rebuilt by the next solve", flush=True)
+                self.last_status = 'MEM_LIMIT'
+                self._resumable = False
+                self._session = None
+                model.dispose()
+                gc.collect()
+                return None
+            if not (model.SolCount > 0 and model.status in (GRB.OPTIMAL, GRB.TIME_LIMIT, GRB.MEM_LIMIT)):
                 break
             partition_map, failed = pack_partitions(x, P, scs, locations, partitions, uncertainty, standby=net['hr'])
             if not failed:
                 break
             if packing_cuts >= MAX_PACKING_CUTS:
-                print(f"\n[Packing] WARNING: {len(failed)} (site, ASIL) group(s) still not packable after {packing_cuts} cuts; keeping the solution")
+                # 2026-11-03: an unpackable design is no design (the 150 gateway run kept one after 10 cuts, and every
+                # polish round with those placements fixed was infeasible afterwards)
+                print(f"\n[Packing] {len(failed)} (site, ASIL) group(s) still not packable after {packing_cuts} cuts: no design from this solve")
+                unpackable = True
                 break
             for (j, a, members, p_val) in failed:
                 # If all SCs of the group are hosted at site j, at least p_val + 1 partitions are needed
@@ -2310,7 +2733,10 @@ class AssignmentOptimizer:
             print(f"[Packing] Solving again with {packing_cuts} cut(s)")
 
         # ======================= RETURN FORMATTED SOLUTION =======================
-        if model.SolCount > 0 and model.status in (GRB.OPTIMAL, GRB.TIME_LIMIT):
+        result = None
+        if unpackable:
+            self.last_status = 'UNPACKABLE'
+        elif model.SolCount > 0 and model.status in (GRB.OPTIMAL, GRB.TIME_LIMIT, GRB.MEM_LIMIT):
             time_limited = any(ph['status'] != 'OPTIMAL' for ph in phases)
             if time_limited:
                 print(f"\n⚠ Time limit reached; keeping best solution found (gaps: " + ", ".join(
@@ -2350,25 +2776,36 @@ class AssignmentOptimizer:
                 'growth_alpha': float((uncertainty or {}).get('growth_alpha', 0.0)) if (uncertainty or {}).get('growth') else None,
                 'rho': float((uncertainty or {}).get('rho', 1.0)) if any((uncertainty or {}).get(k) for k in UNCERTAINTY_BLOCKS) else None,
             }
-            formatted_solution['status'] = 'TIME_LIMIT' if time_limited else 'OPTIMAL'
+            formatted_solution['status'] = ('MEM_LIMIT' if any(ph['status'] == 'MEM_LIMIT' for ph in phases)
+                                            else 'TIME_LIMIT' if time_limited else 'OPTIMAL')
             # values of this solution, the start of the next solve of a sweep (names are unique: checked once here)
             names = model.getAttr('VarName', model.getVars())
             if len(set(names)) != len(names):
                 print(f"  [WARN] {len(names) - len(set(names))} duplicate variable names; start solutions may be incomplete")
             self.last_values = dict(zip(names, model.getAttr('X', model.getVars())))
-            return formatted_solution
+            self.last_status = formatted_solution['status']
+            result = formatted_solution
         elif model.status == GRB.TIME_LIMIT:
             print(f"\n✗ Optimization reached time limit without any feasible solution. Skipping this Pareto point.")
-            return None
+            self.last_status = 'TIME_LIMIT'
+            self._resumable = bool(reuse)   # the model is untouched after a phase-1 time limit: optimize(resume=True) can solve on
+        elif model.status == GRB.MEM_LIMIT:
+            print(f"\n✗ Optimization stopped at the soft memory limit without any feasible solution.")
+            self.last_status = 'MEM_LIMIT'
         else:
             print(f"\n✗ Optimization failed. Status: {model.status}")
-            return None
+            self.last_status = 'INFEASIBLE' if model.status == GRB.INFEASIBLE else str(model.status)
+        if lex_constr is not None:   # the phase-2 bound of this solve must not stay in a reused model
+            model.remove(lex_constr)
+        rss_now, rss_peak = process_memory_gb()
+        print(f"  [memory] after the solve: process {rss_now:.1f} GB now, peak {rss_peak:.1f} GB; Gurobi peak {float(model.MaxMemUsed):.1f} GB", flush=True)
+        return result
 
     @staticmethod
     def _phase_info(model, objective_name):
         """Solver statistics of one lexicographic phase."""
         status_names = {GRB.OPTIMAL: 'OPTIMAL', GRB.TIME_LIMIT: 'TIME_LIMIT', GRB.INFEASIBLE: 'INFEASIBLE',
-                        GRB.INF_OR_UNBD: 'INF_OR_UNBD', GRB.UNBOUNDED: 'UNBOUNDED'}
+                        GRB.INF_OR_UNBD: 'INF_OR_UNBD', GRB.UNBOUNDED: 'UNBOUNDED', GRB.MEM_LIMIT: 'MEM_LIMIT'}
         has_sol = model.SolCount > 0
         return {
             'objective_name': objective_name,

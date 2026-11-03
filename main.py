@@ -11,6 +11,7 @@ import argparse
 from config_reader import ConfigReader
 from architecture_loader import load_architecture_from_json
 from optimizer import AssignmentOptimizer, UNCERTAINTY_BLOCKS
+from pieces import build_by_pieces
 from visualizer import Visualization
 from report import ReportGenerator
 from tabulate import tabulate
@@ -61,6 +62,9 @@ def save_run_results(args, pareto_solutions, pareto_time_s):
             for idx, sol in enumerate(pareto_solutions, 1)
         ],
     }
+    # the architecture file as solved was copied at the start of the run (main: architecture_used.json); the checker
+    # prefers this copy, since instance files may be regenerated while a run is going
+    run_info['architecture_copy'] = "architecture_used.json"
     with open(os.path.join(args.output_dir, "run_info.json"), "w") as f:
         json.dump(run_info, f, indent=2, default=str)
     for idx, sol in enumerate(pareto_solutions, 1):
@@ -106,6 +110,8 @@ def main(args):
     print("=" * 80)
 
     os.makedirs(args.output_dir, exist_ok=True)
+    # freeze the instance at the start: the architecture file may be regenerated while this run is going
+    shutil.copy(args.architecture_json, os.path.join(args.output_dir, "architecture_used.json"))
     config_reader = ConfigReader(args.config_dir)
     # Gurobi parameters: --gurobi_params, else the default of configs/solver.json
     gurobi_params = args.gurobi_params if args.gurobi_params else config_reader.get_solver_config().get('gurobi_params')
@@ -138,26 +144,37 @@ def main(args):
 
     # Step 2: Run optimization
     opt = AssignmentOptimizer()
+    opt.memory = config_reader.get_solver_config().get('memory') or opt.memory   # memory guard shares (solver.json)
     
     # Step 3: Run Pareto optimization
     start_time = time.time()
-    sweep = opt.optimize_growth_sweep if any(uncertainty.get(k) for k in UNCERTAINTY_BLOCKS) else opt.optimize_pareto_epsilon_constraint
-    pareto_solutions = sweep(
-        scs, locations, sensors, actuators, cable_types, comm_matrix,
-        partitions=partitions,
-        hardwares=hardwares,
-        interfaces=interfaces,
-        backbone=config_reader.get_backbone_config(),
-        phase2_time=args.phase2_time,
-        gurobi_params=gurobi_params,
-        lns=config_reader.get_solver_config().get('lns'),   # fix-and-optimize improvement loop (configs/solver.json)
-        chains=config_reader.get_chains(),
-        num_points=args.num_points,
-        solve_time_limit=args.time_limit,
-        mip_gap=args.mip_gap,
-        lp_dir=args.output_dir if args.write_lp else None,
-        uncertainty=uncertainty,
-    )
+    pieces_cfg = config_reader.get_solver_config().get('pieces') or {}
+    if pieces_cfg.get('enabled'):
+        # first design by pieces (pieces.py; configs/solver.json: pieces): group by group with the exact model
+        pareto_solutions = build_by_pieces(
+            opt, scs, locations, sensors, actuators, cable_types, comm_matrix,
+            partitions=partitions, hardwares=hardwares, interfaces=interfaces,
+            backbone=config_reader.get_backbone_config(), uncertainty=uncertainty, chains=config_reader.get_chains(),
+            gurobi_params=gurobi_params, cfg=pieces_cfg, phase2_time=args.phase2_time,
+        )
+    else:
+        sweep = opt.optimize_growth_sweep if any(uncertainty.get(k) for k in UNCERTAINTY_BLOCKS) else opt.optimize_pareto_epsilon_constraint
+        pareto_solutions = sweep(
+            scs, locations, sensors, actuators, cable_types, comm_matrix,
+            partitions=partitions,
+            hardwares=hardwares,
+            interfaces=interfaces,
+            backbone=config_reader.get_backbone_config(),
+            phase2_time=args.phase2_time,
+            gurobi_params=gurobi_params,
+            lns=config_reader.get_solver_config().get('lns'),   # fix-and-optimize improvement loop (configs/solver.json)
+            chains=config_reader.get_chains(),
+            num_points=args.num_points,
+            solve_time_limit=args.time_limit,
+            mip_gap=args.mip_gap,
+            lp_dir=args.output_dir if args.write_lp else None,
+            uncertainty=uncertainty,
+        )
     end_time = time.time()
     print(f"#"*80)
     print(f"Pareto optimization completed in {end_time - start_time:.2f} seconds.")
@@ -176,7 +193,9 @@ def main(args):
         sys.stdout.flush()
         subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools", "architecture_diagram.py"),
                         os.path.join(args.output_dir, f"solution_{idx}.json"), "--config_dir", args.config_dir,
-                        "--architecture", args.architecture_json], check=False)
+                        "--architecture", (os.path.join(args.output_dir, 'architecture_used.json')   # the run's own copy (2026-11-03):
+                                            if os.path.exists(os.path.join(args.output_dir, 'architecture_used.json'))   # the prepared file may be regenerated meanwhile
+                                            else args.architecture_json)], check=False)
     
     # Display detailed solution analysis
     if pareto_solutions:

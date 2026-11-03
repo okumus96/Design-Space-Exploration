@@ -98,7 +98,12 @@ def load_architecture_from_json(json_filepath, config_reader, num_locs=None):
         )
 
         sc_type = comp.get('type', '')
-        if sc_type == 'sensor':
+        if comp.get('sensors') or comp.get('actuators'):
+            # schema v3 prepared (tools/arch_v3_prepare.py): the driver lists its devices
+            sc.sensors = [d for d in comp.get('sensors') or [] if d in sensor_by_id]
+            sc.actuators = [d for d in comp.get('actuators') or [] if d in actuator_by_id]
+            sc.interface_required = sorted({sensor_by_id[d].interface for d in sc.sensors} | {actuator_by_id[d].interface for d in sc.actuators})
+        elif sc_type == 'sensor':
             dev_id = _extract_device_id_from_driver_sc(sc.id)
             if dev_id and dev_id in sensor_by_id:
                 sc.sensors = [dev_id]
@@ -113,6 +118,13 @@ def load_architecture_from_json(json_filepath, config_reader, num_locs=None):
         scs.append(sc)
 
     comm_matrix = []
+    if architecture.get('flows'):
+        # schema v3 prepared: one flow per pair with its volume (Mbit/s) and largest message (kbit)
+        for fl in architecture['flows']:
+            if fl['src'] in sc_id_to_idx and fl['dst'] in sc_id_to_idx and fl['src'] != fl['dst']:
+                comm_matrix.append({'src': fl['src'], 'dst': fl['dst'], 'volume': float(fl['volume']), 'kbit': float(fl['kbit'])})
+        print(f"  Message flows from the architecture file: {len(comm_matrix)}")
+        return scs, comm_matrix, sensors, actuators, cable_types, locations
     for comp in components:
         dst = comp['id']
         for src in comp.get('receives_from', []):

@@ -115,9 +115,14 @@ class SolutionCheck:
         self.path = solution_path
         self.sol = _load(solution_path)
         info_path = os.path.join(os.path.dirname(os.path.abspath(solution_path)), 'run_info.json')
-        args = _load(info_path).get('args', {}) if os.path.exists(info_path) else {}
+        info = _load(info_path) if os.path.exists(info_path) else {}
+        args = info.get('args', {})
         self.config_dir = _repo_path(config_dir or args.get('config_dir') or 'configs')
-        self.architecture = _repo_path(architecture or args.get('architecture_json') or 'configs/full_architecture_v2.json')
+        copy = os.path.join(os.path.dirname(os.path.abspath(solution_path)), info.get('architecture_copy') or '') if info.get('architecture_copy') else None
+        # the run's own copy of the architecture (main.py: architecture_used.json) wins over the path it was read from,
+        # which may have been regenerated since
+        self.architecture = (_repo_path(architecture) if architecture else copy if copy and os.path.exists(copy)
+                             else _repo_path(args.get('architecture_json') or 'configs/full_architecture_v2.json'))
         self.num_locs = args.get('num_locs')
         self.errors, self.warnings = [], []
         self.checked = defaultdict(int)
@@ -166,8 +171,8 @@ class SolutionCheck:
         buses = cfg('buses.json')
         self.ct = {n: {'cost': float(s['cost_per_meter']), 'cap': float(s.get('capacity', float('inf'))),
                        'port': float(s.get('port_cost', 0)), 'hop': float(s.get('hop_latency_ms', 0.0)),
-                       'frame': float(s.get('frame_kbit', float('inf')))}
-                   for n, s in buses['cable_types'].items()}
+                       'frame': float(s.get('frame_kbit', float('inf'))), 'max_len': float(s.get('max_length_m', float('inf')) or float('inf'))}
+                   for n, s in buses['cable_types'].items() if isinstance(s, dict)}
         self.priorities = bool(buses.get('backbone', {}).get('priorities'))
         self._prio = None
         self.k_paths = max(1, int(buses.get('backbone', {}).get('candidate_paths', 3)))
@@ -218,12 +223,16 @@ class SolutionCheck:
             for r in RES:
                 sc[r] = float(int(c.get(f'{r}_req', 0)))
             m = DRIVER_RE.match(sc['id'])
-            if m and sc['type'] in ('sensor', 'actuator'):
+            if c.get('sensors') or c.get('actuators'):   # schema v3 prepared: the driver lists its devices
+                sc['devices'] = [d for d in list(c.get('sensors') or []) + list(c.get('actuators') or []) if d in self.devices]
+            elif m and sc['type'] in ('sensor', 'actuator'):
                 dev = self.devices.get(m.group(1))
                 if dev is not None and dev['kind'] == sc['type']:
                     sc['devices'] = [m.group(1)]
             self.scs[sc['id']] = sc
             self.sc_order.append(sc['id'])
+        # schema v3 prepared: the message flows per pair come with the architecture (volume Mbit/s, largest message kbit)
+        self.arch_flows = [dict(f) for f in arch.get('flows', []) if f['src'] in self.scs and f['dst'] in self.scs and f['src'] != f['dst']]
         si = self.sol.get('solve_info', {})
         self.flags = dict(si.get('uncertainty') or {})
         self.alpha = float(si.get('growth_alpha') or 0.0)
@@ -241,6 +250,8 @@ class SolutionCheck:
         self.has_switch_hw = 'SWITCH' in self.hw_price
         lines_cfg = buses.get('backbone', {}).get('bus_lines', {})
         self.bus_umax = float(buses.get('backbone', {}).get('bus_max_utilization', 1.0))
+        self.dev_factor = float(buses.get('backbone', {}).get('device_cable_factor', 1.0) or 1.0)   # power + ground cores of a device connection
+        self.bus_lines = {k: int(v) for k, v in (buses.get('backbone', {}).get('bus_lines') or {}).items()}   # lines per bus type
         self.flow_types = [n for n in self.ct if n not in SHARED_BUSES or int(lines_cfg.get(n, 1)) > 0]
 
     # ------------------------------------------------------------------------------------------- solution parsing
@@ -266,6 +277,7 @@ class SolutionCheck:
             self.cables[_pk(lk['src_loc'], lk['dst_loc']) + (lk['iface'],)] += int(lk.get('count', 1))
         self.attach = dict(s.get('eth_sensor_attachments', {}))
         self.attach.update(s.get('eth_actuator_attachments', {}))
+        self.gateways = {d: dict(v) for d, v in (s.get('bus_gateways') or {}).items()}   # device -> {line id: gateway unit}
         self.buses = list(s.get('buses') or [])
         self.bus_by_id = {b['id']: b for b in self.buses}
         self.bus_of = defaultdict(list)                 # device -> ids of the bus lines it sits on
@@ -411,19 +423,75 @@ class SolutionCheck:
                     self.err('tops_capacity', f"{site}: {hf} {l:.2f} TOPS > {cap:.2f} ({self.hw_units.get((site, hf), 0)} units)")
 
     # -------------------------------------------------------------------------------------------- peripherals
+    def steiner_flow(self, key):
+        """minimum Steiner tree length of many terminals: integer program of directed flows from the first terminal
+        to each other one (scipy HiGHS), without the edges whose ends a path with only terminals inside joins by
+        shorter hops (bottleneck Steiner distance, Duin & Volgenant 1989; minimax closure over the terminals)"""
+        import numpy as np
+        from scipy.optimize import Bounds, LinearConstraint, milp
+        from scipy.sparse import lil_matrix
+        nodes = sorted(set(self.cands) | set(self.devices) | set(key))
+        ix = {v: i for i, v in enumerate(nodes)}
+        n = len(nodes)
+        M = self._metric(nodes)
+        D = np.array([[M[a, b] for b in nodes] for a in nodes])
+        np.fill_diagonal(D, 0.0)
+        W = D.copy()
+        for t in (ix[v] for v in key):   # minimax distances with terminals as the only inner nodes
+            W = np.minimum(W, np.maximum(W[:, t][:, None], W[t][None, :]))
+        arcs = [(a, b) for a in range(n) for b in range(n) if a != b and not W[a, b] < D[a, b] - 1e-9 * max(1.0, D[a, b])]
+        root, sinks = ix[key[0]], [ix[v] for v in key[1:]]
+        m, K = len(arcs), len(sinks)
+        A = lil_matrix((K * n + K * m + n, m + K * m))
+        lo, hi = np.zeros(K * n + K * m + n), np.zeros(K * n + K * m + n)
+        for k, s in enumerate(sinks):
+            for j, (a, b) in enumerate(arcs):
+                A[k * n + a, m + k * m + j] += 1.0
+                A[k * n + b, m + k * m + j] -= 1.0
+                A[K * n + k * m + j, m + k * m + j] = 1.0
+                A[K * n + k * m + j, j] = -1.0
+            lo[k * n + root] = hi[k * n + root] = 1.0
+            lo[k * n + s] = hi[k * n + s] = -1.0
+            lo[K * n + k * m:K * n + (k + 1) * m] = -np.inf
+        for j, (a, b) in enumerate(arcs):
+            A[K * n + K * m + b, j] = 1.0
+        hi[K * n + K * m:] = 1.0
+        ub = np.ones(m + K * m)
+        ub[[j for j, (a, b) in enumerate(arcs) if b == root]] = 0.0
+        res = milp(np.r_[[D[a, b] for a, b in arcs], np.zeros(K * m)], integrality=np.r_[np.ones(m), np.zeros(K * m)],
+                   bounds=Bounds(0.0, ub), constraints=LinearConstraint(A.tocsr(), lo, hi), options={'mip_rel_gap': 0.0})
+        if not res.success:
+            raise RuntimeError(f"Steiner flow model: {res.message}")
+        return float(res.fun)
+
+    def _metric(self, nodes):
+        """shortest-path closure of the cable lengths between the nodes (channel lengths between tabled points,
+        Manhattan lengths to devices without a channel attachment: together not a metric)"""
+        key = ('metric', tuple(nodes))
+        if key not in self._st_cache:
+            import numpy as np
+            D = np.array([[0.0 if a == b else min(self.dist(a, b), self.dist(b, a)) for b in nodes] for a in nodes])
+            for k in range(len(nodes)):
+                D = np.minimum(D, D[:, k:k + 1] + D[k:k + 1, :])
+            self._st_cache[key] = {(a, b): float(D[i, j]) for i, a in enumerate(nodes) for j, b in enumerate(nodes)}
+        return self._st_cache[key]
+
     def steiner(self, terminals):
         """minimum Steiner tree length of the terminals in the complete graph over the candidate sites and all
-        devices with the channel cable lengths (classic Dreyfus-Wagner rooted at the first terminal)"""
+        devices with the channel cable lengths (classic Dreyfus-Wagner rooted at the first terminal; the flow model
+        of steiner_flow above 8 terminals)"""
         key = tuple(sorted(set(terminals)))
         if key in self._st_cache:
             return self._st_cache[key]
         if len(key) <= 1:
             val = 0.0
         elif len(key) == 2:
-            val = self.dist(key[0], key[1])
+            val = self._metric(sorted(set(self.cands) | set(self.devices) | set(key)))[key[0], key[1]]
+        elif len(key) > 8:
+            val = self.steiner_flow(key)
         else:
             nodes = sorted(set(self.cands) | set(self.devices))
-            d = {(a, b): min(self.dist(a, b), self.dist(b, a)) for a in nodes for b in nodes}
+            d = self._metric(nodes)
             root, rest = key[0], key[1:]
             best = {}                                    # (frozenset of terminals, node) -> tree joining them and the node
             for c in rest:
@@ -583,7 +651,10 @@ class SolutionCheck:
                 self.err('bus_capacity', f"{bid}: device load {load} > {self.bus_umax} x {self.ct[n]['cap']}")
             st = self.steiner(list(b['units']) + list(b['devices']))
             self.checked['bus_length'] += 1
-            if not _le(st, float(b['length_m'])):   # within the solver's tolerances (binary members at 1 - IntFeasTol)
+            # the solver's cut len >= st x (sum of the members - (n - 1)) with binary members at 1 - IntFeasTol (1e-5)
+            # guarantees len >= st x (1 - n x 1e-5): that is the length the check requires
+            n_members = len(b['units']) + len(b['devices'])
+            if not _le(st * (1.0 - 1e-5 * n_members), float(b['length_m'])):
                 self.err('bus_length', f"{bid}: cable {float(b['length_m']):.3f} m shorter than the Steiner tree of its members {st:.3f} m")
             elif float(b['length_m']) > st + 1e-4:
                 self.warn('bus_length', f"{bid}: cable {float(b['length_m']):.3f} m longer than needed ({st:.3f} m)")
@@ -603,11 +674,22 @@ class SolutionCheck:
                 continue
             for line in lines:
                 b = by_id[line]
+                if self.gateways:   # gateway rule: the lane's gateway sits on the line, the software may run anywhere
+                    g = self.gateways.get(d, {}).get(line)
+                    if g is None:
+                        self.err('bus', f"{d} on {line}: no gateway unit (bus_gateways)")
+                    elif g not in b['units']:
+                        self.err('bus', f"{d} on {line}: gateway {g} is not a member of the line")
+                    continue
                 for sc, site in users.get(d, []):
                     if site not in b['units']:
                         self.err('bus', f"{d} on {b['id']} but its software {sc} runs at {site}, not a member")
                     if sc in self.pos_r and self.pos_r[sc] not in b['units']:
                         self.err('bus', f"{d} on {b['id']}: the standby of {sc} at {self.pos_r[sc]} is not a member")
+        for d, lanes in self.gateways.items():
+            for line in lanes:
+                if line not in self.bus_of.get(d, []):
+                    self.err('bus', f"{d}: gateway on {line} but the device is not on that line")
         # ports per site and interface
         bb_ports = defaultdict(int)
         for (a, b, n), cnt in self.cables.items():
@@ -641,7 +723,10 @@ class SolutionCheck:
     # ---------------------------------------------------------------------------------------------- backbone
     def build_flows(self):
         base = []
-        for dst in self.sc_order:
+        for fl in getattr(self, 'arch_flows', []):
+            if fl['volume'] > 0:
+                base.append({'type': 'SC_SC', 'src': fl['src'], 'dst': fl['dst'], 'volume': float(fl['volume']), 'kbit': float(fl['kbit'])})
+        for dst in (self.sc_order if not getattr(self, 'arch_flows', None) else []):
             for src in self.scs[dst]['receives_from']:
                 if src not in self.scs:
                     continue
@@ -662,8 +747,32 @@ class SolutionCheck:
                         continue
                     src, dst = (d, sc) if kind == 'sensor' else (sc, d)
                     base.append({'type': ftype, 'src': src, 'dst': dst, 'volume': dev['volume'], 'kbit': dev['volume'] * 1000.0 / dev['rate']})
+        if self.gateways:   # the gateway rule: a bus device's data is forwarded from the gateway of each of its lanes
+            for kind, ftype in (('sensor', 'BUS_SC'), ('actuator', 'SC_BUS')):
+                for sc in self.sc_order:
+                    for d in self.scs[sc]['devices']:
+                        dev = self.devices[d]
+                        if dev['kind'] != kind or dev['iface'] not in SHARED_BUSES or dev['volume'] <= 0:
+                            continue
+                        src, dst = (d, sc) if kind == 'sensor' else (sc, d)
+                        base.append({'type': ftype, 'src': src, 'dst': dst, 'dev': d, 'volume': dev['volume'], 'kbit': dev['volume'] * 1000.0 / dev['rate']})
+        self.variant_order = dict(VARIANT_ORDER)
+        n_lanes = max((int(v) for v in self.bus_lines.values()), default=0)
+        self.variant_order['BUS_SC'] = [(f'a{k}', inst) for inst in ('x', 'r') for k in range(n_lanes)]
+        self.variant_order['SC_BUS'] = [(inst, f'a{k}') for inst in ('x', 'r') for k in range(n_lanes)]
         self.flows = []
         for b, f in enumerate(base):
+            if f['type'] in ('BUS_SC', 'SC_BUS'):
+                # one variant per line of the device's type ('a<k>' = the gateway of line k), the lanes are alternatives
+                iface = self.devices[f['dev']]['iface']
+                nl = int(self.bus_lines.get(iface, 0))
+                crit_end = f['dst'] if f['type'] == 'BUS_SC' else f['src']
+                insts = ['x'] + (['r'] if (self.crit and crit_end in self.crit) else [])
+                for inst in insts:
+                    for k in range(nl):
+                        si, di = (f'a{k}', inst) if f['type'] == 'BUS_SC' else (inst, f'a{k}')
+                        self.flows.append({**f, 'base': b, 'si': si, 'di': di, 'lane_line': f'{iface}{k + 1}'})
+                continue
             si, di = {'SC_SC': ('x', 'x'), 'SENS_SC': ('a', 'x'), 'SC_ACT': ('x', 'a')}[f['type']]
             keys = [(si, di)]
             if self.crit:
@@ -718,12 +827,40 @@ class SolutionCheck:
         if unknown and stored is None:
             self.warn('format', f"{unknown} flows on site pairs with several cable types: their type is unknown, not checked")
 
+    def variant_keys(self, b):
+        """the variant keys of base b in the order the rules try them; for the lanes of a bus device the lanes without a
+        backbone crossing first, per instance (the lanes are redundant channels, the function uses the best one; the
+        optimiser's lane_keys / nominal_lane)"""
+        t = self.base[b]['type']
+        keys = self.variant_order[t]
+        if t not in ('BUS_SC', 'SC_BUS'):
+            return keys
+
+        def rank(k):
+            f = self.variants[b].get(k)
+            if f is None:
+                return 2
+            u, v = self.ends(f)
+            return 0 if (u is not None and u == v) else 1
+        return sorted(keys, key=lambda k: ('r' in k, rank(k)))
+
+    def nominal_variant(self, b):
+        """the flow of base b in the nominal state; for a bus device's lanes the lane whose gateway is the user's own
+        unit when there is one, else the first lane with both ends placed (the optimiser's nominal_lane)"""
+        t = self.base[b]['type']
+        if t not in ('BUS_SC', 'SC_BUS'):
+            return self.variants[b][('x', 'x') if t == 'SC_SC' else (('a', 'x') if t == 'SENS_SC' else ('x', 'a'))]
+        lanes = [self.variants[b][k] for k in self.variant_keys(b) if k in self.variants[b] and 'r' not in k]
+        return next((f for f in lanes if None not in self.ends(f)), lanes[0])
+
     def ends(self, f):
         def site(ent, inst):
             if inst == 'x':
                 return self.pos_x.get(ent)
             if inst == 'r':
                 return self.pos_r.get(ent)
+            if len(inst) > 1 and inst[0] == 'a':   # lane k of a bus device: the gateway unit of line k, if the device is on it
+                return self.gateways.get(ent, {}).get(f"{self.devices.get(ent, {}).get('iface')}{int(inst[1:]) + 1}")
             return self.attach.get(ent)
         return site(f['src'], f['si']), site(f['dst'], f['di'])
 
@@ -757,6 +894,8 @@ class SolutionCheck:
         for f in self.flows:
             u, v = self.ends(f)
             name = f"{f['type']} {f['src']} -> {f['dst']} ({f['si']}/{f['di']})"
+            if f.get('lane_line') and f['lane_line'] not in self.bus_of.get(f.get('dev'), []):
+                continue                    # a lane of a line the device is not on: no flow (gateway rule)
             if u is None or v is None:
                 self.err('route', f"{name}: an endpoint has no site")
                 continue
@@ -826,7 +965,13 @@ class SolutionCheck:
             if not _close(b.get('traffic_load', 0.0), self.line_traffic.get(b['id'], 0.0), tol=1e-3):
                 self.err('report', f"{b['id']}: reported traffic {b.get('traffic_load')}, recomputed {self.line_traffic.get(b['id'], 0.0)}")
         # reported peak load per link (both directions, nominal state)
-        rep = self.sol.get('comm_link_peak_load', {})
+        # reported keys in either spelling of the pair (before 2026-10-31 the key followed the cell index, which
+        # differs from the name order for the named cells); the larger value if both spellings occur
+        rep = {}
+        for k, v in (self.sol.get('comm_link_peak_load') or {}).items():
+            a, b, n = k.split('|')
+            ck = '|'.join(_pk(a, b) + (n,))
+            rep[ck] = max(rep.get(ck, 0.0), float(v))
         calc = defaultdict(float)
         for (a, b, n), ld in self.load.items():
             p = _pk(a, b)
@@ -845,14 +990,45 @@ class SolutionCheck:
 
     def chain_flows(self, ch):
         """base flows of a chain: sensor -> first component, consecutive components, last component -> actuator"""
-        into = {f['dst']: b for b, f in enumerate(self.base) if f['type'] == 'SENS_SC'}
+        into = {f['dst']: b for b, f in enumerate(self.base) if f['type'] in ('SENS_SC', 'BUS_SC')}
         pair = {(f['src'], f['dst']): b for b, f in enumerate(self.base) if f['type'] == 'SC_SC'}
-        out = {f['src']: b for b, f in enumerate(self.base) if f['type'] == 'SC_ACT'}
+        out = {f['src']: b for b, f in enumerate(self.base) if f['type'] in ('SC_ACT', 'SC_BUS')}
         idx = [s for s in ch.get('swcs', []) if s in self.scs]
         flows = [into[idx[0]]] if idx and idx[0] in into else []
         flows += [pair[a, b] for a, b in zip(idx, idx[1:]) if (a, b) in pair]
         flows += [out[idx[-1]]] if idx and idx[-1] in out else []
         return flows
+
+    def check_reach(self):
+        """no cable is longer than its type's reach (configs/buses.json cable_types.*.max_length_m): direct device cables
+        (primaries and the standbys of critical components), Ethernet attachments, bus lines, backbone cables"""
+        def over(n, length):
+            return not _le(length, self.ct[n]['max_len'])
+        wired = list(self.pos_x.items()) + [(sc, st) for sc, st in self.pos_r.items() if sc in self.crit]
+        for sc, site in wired:
+            for d in self.scs.get(sc, {}).get('devices', []):
+                n = self.devices[d]['iface']
+                if n == 'ETH' or n in SHARED_BUSES:
+                    continue
+                self.checked['reach'] += 1
+                if over(n, self.dist(d, site)):
+                    self.err('reach', f"{n} cable {d} -> {site} {self.dist(d, site):.2f} m longer than the reach {self.ct[n]['max_len']} m")
+        for d, site in self.attach.items():
+            if d in self.devices:
+                n = self.devices[d]['iface']
+                self.checked['reach'] += 1
+                if over(n, self.dist(d, site)):
+                    self.err('reach', f"{n} attachment {d} -> {site} {self.dist(d, site):.2f} m longer than the reach {self.ct[n]['max_len']} m")
+        for b in self.buses:
+            if b['type'] in self.ct:
+                self.checked['reach'] += 1
+                if over(b['type'], float(b['length_m'])):
+                    self.err('reach', f"{b['id']}: {float(b['length_m']):.2f} m longer than the reach {self.ct[b['type']]['max_len']} m")
+        for (a, bb, n), cnt in self.cables.items():
+            if n in self.ct and cnt > 0:
+                self.checked['reach'] += 1
+                if over(n, self.dist(a, bb)):
+                    self.err('reach', f"{n} cable {a}-{bb} {self.dist(a, bb):.2f} m longer than the reach {self.ct[n]['max_len']} m")
 
     def check_chains(self):
         reported = self.sol.get('chain_latency', {})
@@ -860,8 +1036,7 @@ class SolutionCheck:
         for ch in self.chains:
             total, unknown = 0.0, False
             for b in self.chain_flows(ch):
-                f = self.variants[b][('x', 'x') if self.base[b]['type'] == 'SC_SC' else
-                                     (('a', 'x') if self.base[b]['type'] == 'SENS_SC' else ('x', 'a'))]
+                f = self.nominal_variant(b)
                 u, v = self.ends(f)
                 if u is None or v is None or u == v:
                     continue
@@ -923,12 +1098,15 @@ class SolutionCheck:
             scen += [('switch', c) for c in sorted(self.switches)]
         if 'cable' in self.classes:
             scen += [('cable', k) for k in sorted(self.cables)]
-            scen += [('line', ln) for ln in sorted({f['line'] for f in self.flows if f.get('line') and f['path'] and self.ends(f)[0] != self.ends(f)[1]})]
+            scen += [('line', ln) for ln in sorted({f['line'] for f in self.flows if f.get('line') and f['path'] and self.ends(f)[0] != self.ends(f)[1]}
+                                                   | {f['lane_line'] for f in self.flows if f.get('lane_line') in self.bus_by_id})]
 
         def alive(f, kind, elem):
             u, v = self.ends(f)
             if u is None or v is None or (kind == 'cell' and elem in (u, v)):
                 return False
+            if kind == 'line' and f.get('lane_line') == elem:
+                return False               # the lane's own line failed
             if u == v:
                 return True
             if f['path'] is None:
@@ -970,7 +1148,7 @@ class SolutionCheck:
         non_crit = [sc for sc in self.sc_order if sc not in self.crit]
         inputs, act_out = defaultdict(list), defaultdict(list)
         for b, f in enumerate(self.base):
-            (act_out[f['src']] if f['type'] == 'SC_ACT' else inputs[f['dst']]).append(b)
+            (act_out[f['src']] if f['type'] in ('SC_ACT', 'SC_BUS') else inputs[f['dst']]).append(b)   # a bus actuator's lanes are outputs too
 
         def lost_set(kind, elem):
             dead = lambda b: not any(alive(f, kind, elem) for f in self.variants[b].values())
@@ -1012,7 +1190,7 @@ class SolutionCheck:
             # flow, its first surviving variant (the variant rule of the degraded latency)
             carried = {id(f): f for f in self.flows if not self.silent(f) and alive(f, kind, elem)}
             for b in range(len(self.base)):
-                pick = next((self.variants[b][k] for k in VARIANT_ORDER[self.base[b]['type']]
+                pick = next((self.variants[b][k] for k in self.variant_keys(b)
                              if k in self.variants[b] and alive(self.variants[b][k], kind, elem)), None)
                 if pick is not None:
                     carried.setdefault(id(pick), pick)
@@ -1021,7 +1199,7 @@ class SolutionCheck:
             for ch in self.chains:
                 total, broken = 0.0, False
                 for b in chain_flows[ch['id']]:
-                    pick = next((self.variants[b][k] for k in VARIANT_ORDER[self.base[b]['type']]
+                    pick = next((self.variants[b][k] for k in self.variant_keys(b)
                                  if k in self.variants[b] and alive(self.variants[b][k], kind, elem)), None)
                     if pick is None:
                         broken = True           # a non-critical member is lost (survival checked above)
@@ -1126,6 +1304,8 @@ class SolutionCheck:
         s = self.sol
         part_cost = sum(self.P.values()) * float(self.part.get('cost', 0))
         site_cost = len(self.active) * float(self.site_cfg.get('fixed_cost', 0) or 0)
+        # a unit that holds only a switch pays site.switch_node_cost (2026-10-30; absent = 0, as before)
+        site_cost += len(self.switches - self.active) * float(self.site_cfg.get('switch_node_cost', 0) or 0)
         hw_cost = sum(self.hw_price.get(h, 0.0) * n for (_site, h), n in self.hw_units.items())
         for (_site, h) in self.hw:
             if h not in self.hw_price:
@@ -1140,17 +1320,17 @@ class SolutionCheck:
                     continue                    # Ethernet: attachment cable; bus types: bus line
                 dl = self.dist(d, site)
                 per_len += dl
-                per_cost += dl * self.ct[n]['cost']
+                per_cost += self.dev_factor * dl * self.ct[n]['cost']
         for d, site in self.attach.items():
             if d not in self.devices:
                 continue
             dl = self.dist(d, site)
             per_len += dl
-            per_cost += dl * self.ct[self.devices[d]['iface']]['cost']
+            per_cost += self.dev_factor * dl * self.ct[self.devices[d]['iface']]['cost']
         for b in self.buses:
             if b['type'] in self.ct:
                 per_len += float(b['length_m'])
-                per_cost += float(b['length_m']) * self.ct[b['type']]['cost']
+                per_cost += self.dev_factor * float(b['length_m']) * self.ct[b['type']]['cost']
         bb_len = sum(cnt * self.dist(a, b) for (a, b, _n), cnt in self.cables.items())
         bb_cost = sum(cnt * self.dist(a, b) * self.ct[n]['cost'] for (a, b, n), cnt in self.cables.items())
         total = part_cost + site_cost + hw_cost + if_cost + per_cost + bb_cost
@@ -1181,6 +1361,7 @@ class SolutionCheck:
         self.check_peripherals()
         self.build_flows()
         self.check_backbone()
+        self.check_reach()
         self.check_chains()
         self.check_failures()
         self.check_costs()

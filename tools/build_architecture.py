@@ -136,6 +136,8 @@ AW_TOPS = {   # node -> (TOPS, source); only nodes that run a DNN on the acceler
         'CenterPoint-Pillar at 0.32 m pillars ~16 GOPs per sweep (PillarNeXt, Li et al. CVPR 2023, Table 1: Pillar-B 281 GFLOPs at '
         '0.075 m, scaled by the pillar count), 10 Hz, one inference on the concatenated cloud'),
 }
+# the CPU side and the memory of the accelerated DNN container on the target (user 2026-11-03; see the de-rate below)
+DNN_CPU_CORE_SHARE, DNN_RAM_MB = 0.3, 512
 TL_TOPS = (round((26.8 + 7.2) * 10 / TOPS_ETA / 1000, 2),
            'per traffic-light camera: fine detector YOLOX-S 640x640 26.8 GOPs (Ge et al. arXiv 2107.08430) + classifiers '
            'MobileNetV2 0.6 GOPs (Sandler et al. CVPR 2018) for up to 6 lights x car / pedestrian, 10 Hz')
@@ -216,7 +218,7 @@ def generate_non_ad(catalogue, scale, rng, devices):
                     ram = round(log_uniform(rng, *RAM_KB[asil]), 2)
                 role = 'sensor' if (k == 0 and fn['sensors']) else ('actuator' if (k == n_swc - 1 and fn['actuators']) else 'processing')
                 comps.append({'id': cid, 'domain': domain, 'function': fn['id'], 'role': role, 'asil': asil,
-                              'fail_operational': fn['id'] in FAIL_OPERATIONAL_FUNCTIONS, 'tops_req': 0.0, 'hw_required': [],
+                              'fail_operational': fn['id'] in FAIL_OPERATIONAL_FUNCTIONS, 'tops_req': 0.0, 'hw_required': list(fn.get('hw_required', [])),
                               'period_ms': period, 'runnables': runnables,
                               'cpu_dmips': round(load_share * CORE_DMIPS['AURIX_TC39x'], 3), 'cpu_dmips_worst': round(wc_share * CORE_DMIPS['AURIX_TC39x'], 3), 'ram_kb': ram, 'rom_kb': rom,
                               'sensors': fn['sensors'] if role == 'sensor' else [], 'actuators': fn['actuators'] if role == 'actuator' else [],
@@ -468,7 +470,8 @@ def build_autoware(bench, sensors, rng):
     nodes = set()
     for t, g in graph.items():
         nodes.update(g['pubs']); nodes.update(g['subs'])
-    nodes = sorted(n for n in nodes if not re.search(r'transform_listener_impl|^/launch_ros|^/_ros2cli|rosbag2|/rviz', n))
+    # traffic-light recognition runs on the front camera only (user 2026-11-03): the kit's second camera chain is dropped
+    nodes = sorted(n for n in nodes if not re.search(r'transform_listener_impl|^/launch_ros|^/_ros2cli|rosbag2|/rviz|/camera7/', n))
     comps, flows = [], []
     for n in nodes:
         dom = 'ADAS'
@@ -503,7 +506,7 @@ def build_autoware(bench, sensors, rng):
     # traffic-light DNN containers (fine detector + classifiers) of the two kit cameras: measured in the camera run
     # (Leo Drive bag), absent from the lidar-only topic graph; inserted between the map-based detector (rough ROIs) and
     # the occlusion predictor of their camera, replicated with the camera chain
-    for cam in ('camera6', 'camera7'):
+    for cam in ('camera6',):   # the front camera only (user 2026-11-03)
         base = f'/perception/traffic_light_recognition/{cam}'
         c = cpu.get(f'{base}/traffic_light_node_container')
         cid = f'AW:{base}/traffic_light_node_container'
@@ -542,14 +545,14 @@ def build_autoware(bench, sensors, rng):
 
 
 def replicate_sensor_chains(aw_comps, aw_flows, sensors):
-    """our suite has 5 lidars and 8 cameras: Autoware's per-lidar driver chain (velodyne driver, distortion corrector,
-    crop box x2, ring outlier filter) exists for top/left/right/rear in the sample kit; it is replicated for the
-    fifth lidar (front), and the traffic-light camera chain (camera6/7) for the remaining six cameras"""
+    """our suite has 5 lidars: Autoware's per-lidar driver chain (velodyne driver, distortion corrector, crop box x2,
+    ring outlier filter) exists for top/left/right/rear in the sample kit; it is replicated for the fifth lidar
+    (front). The traffic-light camera chain is not replicated: it runs on the front camera only (user 2026-11-03;
+    before, the chain of camera6 was cloned to the other six cameras of the suite, and every clone needed its own
+    partition and accelerator)"""
     lidars = [s['id'] for s in sensors if s['type'] == 'LIDAR']
-    cams = [s['id'] for s in sensors if s['type'] == 'CAMERA']
     comps, flows = list(aw_comps), list(aw_flows)
     tmpl_lidar = [c for c in aw_comps if c['id'].startswith('AW:/sensing/lidar/top/')]
-    tmpl_cam = [c for c in aw_comps if '/camera6/' in c['id']]
 
     def clone(templates, old, new, tag):
         mapping = {}
@@ -568,8 +571,6 @@ def replicate_sensor_chains(aw_comps, aw_flows, sensors):
     kit_lidars = ['top', 'left', 'right', 'rear']
     for extra in lidars[len(kit_lidars):]:
         clone(tmpl_lidar, '/sensing/lidar/top/', f'/sensing/lidar/{extra.lower()}/', extra)
-    for k, cam in enumerate(cams[2:], start=8):
-        clone(tmpl_cam, '/camera6/', f'/camera{k}/', cam)
     return comps, flows
 
 
@@ -599,6 +600,18 @@ def main():
         c['ram_kb'] = round(rss * 1024.0, 1) if rss is not None else None
         c.setdefault('rom_kb', None)
         c['memory_source'] = 'ram_kb: measured peak RSS of the node process (container nodes: share of the container); rom_kb: see rom_source'
+        if 'traffic_light_node_container' in c['id']:
+            # the measured host share (264 % of a core) is the CPU side of GPU inference on the A100 host including CUDA's
+            # spin-wait, and the measured RSS (3.2 GB) holds the CUDA context; on the target the CPU work of one 10 Hz
+            # stream is the pre- and post-processing (resize, normalise, NMS, crops for the classifiers), taken as 0.3 of
+            # a Cortex-A76 core, and the memory the weights (YOLOX-S 36 MB, MobileNetV2 14 MB) plus runtime buffers,
+            # taken as 512 MB; provisional until measured with blocking synchronisation (user 2026-11-03)
+            c['cpu_dmips'] = round(DNN_CPU_CORE_SHARE * CUR['reference_core_dmips'], 1)
+            c['cpu_dmips_source'] = ('assumption 2026-11-03: %.1f of a Cortex-A76 core per 10 Hz stream for the CPU side of an accelerated DNN '
+                                     'container (pre- / post-processing); the measured host share (264 %% of a core) includes CUDA spin-wait; provisional' % DNN_CPU_CORE_SHARE)
+            c['ram_kb'] = DNN_RAM_MB * 1024.0
+            c['memory_source'] = ('ram_kb: assumption 2026-11-03: %d MB (weights + runtime buffers; the measured 3.2 GB RSS holds the CUDA context); '
+                                  'rom_kb: see rom_source' % DNN_RAM_MB)
     # ROM of the Autoware nodes (2026-10-26, measured in the container): installed size of the node's package (lib + share)
     # plus the DNN model files it loads (autoware_data/ml_models); a package or model used by several nodes (replicated
     # sensor chains) is split among them, so the sum equals the installed size; ROS 2 and the shared Autoware libraries

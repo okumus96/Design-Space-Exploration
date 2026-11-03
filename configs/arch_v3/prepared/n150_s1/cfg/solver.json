@@ -1,0 +1,56 @@
+{
+  "_comment": "Default Gurobi parameters of every solve (main.py --gurobi_params overrides them). NoRelHeurTime=120: the no-relaxation heuristic searches integer designs for the first 120 s before branch and bound (2026-10-25).",
+  "gurobi_params": "NoRelHeurTime=120",
+  "_source": "Speed benchmark 2026-10-24 (tools/speed_bench.py, 3,600 s, 32 cores): 10 cells rho 1 gap 20.3 % -> 1.63 % after 1 h, first design 499 s -> 293 s; 10 cells rho 0.2 proven 349 s -> 657 s (same optimum); lite rho 1 gap 0.48 % -> 0.76 %.",
+  "memory": {
+    "soft_share": 0.75,
+    "hard_share": 0.9,
+    "_comment": "Memory guard of every solve (2026-11-01, after the 500 run on the corrected cells, job 3186, was killed by the OOM killer at 300 GB inside the root barrier of a polish round, 3.5 h in, its best polished design lost): Gurobi's SoftMemLimit = soft_share x the job's memory (Slurm --mem, read from SLURM_MEM_PER_NODE or the cgroup limit) less what the process holds outside Gurobi; MemLimit = hard_share x the same. The soft limit stops a solve gracefully with its incumbent (checked only between solver steps, a jump inside one step can pass it); the hard limit stops at any allocation (no design from that solve, the model is dropped and rebuilt by the next one). No limit without a job memory. A MemLimit / SoftMemLimit in gurobi_params overrides. The memory of the process is printed after every solve, build step and polish round."
+  },
+  "lns": {
+    "enabled": false,
+    "time_share": 0.5,
+    "iter_s": 120,
+    "free_share": 0.3,
+    "stop_gap": 0.01,
+    "seed": 1,
+    "_comment": "Fix-and-optimize improvement after phase 1 (2026-10-26): phase 1 gets (1 - time_share) of the time limit; then, until the time is used or the gap to the phase-1 bound is <= stop_gap, the placement of a random (1 - free_share) share of the components is fixed to the incumbent and the exact model is re-solved for iter_s seconds; improvements replace the incumbent. Random neighbourhoods only (no structural preference); every design is a feasible design of the full model (lazy constraints active). Not used by the epsilon-constraint Pareto run."
+  },
+  "portfolio": {
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "_comment": "Seed portfolio of the robustness sweep (tools/portfolio.py): one job per rho level and seed, the cheapest checked design per level is kept. Benchmark 2026-10-26 (10 cells, rho 1, 1 h): seeds 3 / 1 / 2 reached gaps 0.6 / 1.5 / 20 %; best of three meets the 1 % target."
+  },
+  "pieces": {
+    "enabled": false,
+    "max_group": 20,
+    "min_group": 10,
+    "piece_time_s": 300,
+    "piece_gap": 0.01,
+    "piece_phase2_s": 5,
+    "max_backtrack": 2,
+    "_comment": "First design by pieces (pieces.py, 2026-10-28): with enabled, main.py builds the design group by group instead of one flat solve: chains sharing a component form a group (a redundant pair stays together), groups ordered by their tightest network budget and fail-operational first, groups above max_group split chain by chain, unchained components join the group of their strongest communication partner or form groups along their messages, consecutive groups below min_group merged. Every step solves the exact model of the components placed so far plus the new group (their messages, devices and chains), the placed ones locked to their cells (optimize: fixed), for piece_time_s seconds or to piece_gap; intermediate steps run phase 2 for piece_phase2_s, the last step for the run's --phase2_time. A step without a design unlocks the previous group(s) (time x (1 + unlocked)), up to max_backtrack, then the build stops. --time_limit is not used; no bound is reported (the design is heuristic, every rule checked). lock_gap / piece_time_max_s (2026-10-28, after the 300-component run locked an 82 % gap step): a step is locked only below lock_gap (0.10: steps of the Autoware part sit at 9 % with a weak sub-model bound and are fine to lock; the failure case was 82 %); above it the step is re-solved with doubled time (its design as the start) up to piece_time_max_s, then its group is split in two halves. static_capacity (2026-10-28): every step runs with the valid cable-capacity rules upfront_paths and cell_cut_capacity of buses.json switched on (the flat model keeps them off: 2.3x larger model at 10 cells); groups ordered hard first (fail-operational count, message traffic). Fallback order (2026-10-28, after the step lab: the step the 300 run gave up on was solved standalone in 330 s): a step without a design first gets more time (doubled up to piece_time_max_s), then the previous groups are unlocked, each unlock at piece_time_max_s. polish_rounds / polish_time_s / polish_partners (2026-10-29, user): after the build, rounds with the whole car in the model and everything fixed except one group (weakest build gap first) plus its strongest communication partners, re-solved from the current design, kept if cheaper. A build report (per solve: group properties, time, gap, cost, result; polish rounds) is printed and written to dump_dir/pieces_report.txt. lock_gap 1.0 = fast build (every design accepted at piece_time_s). static_capacity off by default since 2026-10-29: the step lab showed the static cable rules make a hard step produce 5x fewer candidates (107 vs 570 in 900 s) and none accepted, while without them a design is found. 2026-10-29 (user: each group takes too long; polish by cell): intermediate steps cap the cable phase at piece_phase2_s (it used to take the rest of piece_time_s: ~40 % of the build time); step_gurobi_params are appended to the run's Gurobi parameters for steps and polish (NoRelHeurTime=20 instead of 120); resource-heavy groups (> 10 % of the car's CPU or RAM) first; polish_mode 'cell' frees one whole cell per round (every component with its primary or standby there), fewest hosted components first, cells above polish_max_free skipped. heavy_first (default true): resource-heavy groups first; false = the order before 2026-10-29 (fail-operational count, traffic, budget). Defaults = the settings of the 300 run pieces7 (2026-10-29, user: stay with them): groups <= 20, heavy-first order, 300-s steps accepted as they are (lock_gap 1.0), cable stage of intermediate steps 5 s, NoRelHeurTime 20 per step, static cable rules off, 6 cell-polish rounds of 600 s. polish_parallel (2026-10-29): cell polish with this many cells at a time, each in its own process and Gurobi session with an equal share of the run's threads; the cheapest improvement of a batch is kept (1 = one cell after another). build_parallel / build_lookahead (2026-10-29): up to build_parallel groups that exchange no message and share no chain are placed at the same time, each in its own process with an equal share of the run's threads; a group within build_lookahead is pulled forward only if it is independent of every group it overtakes; a combined solve with all their placements fixed checks that they fit together, otherwise they are placed one by one (1 = one group after another). polish_mode 'level' (2026-10-30, after the bound of the 500 design, tools/design_bound.py: 24 partitions where 19 would do by capacity, the small ASIL levels spread over many cells): each polish round frees every component of one ASIL level (primary and standby) across the whole car, the rest fixed, fewest components first, one round per level (polish_rounds caps it, levels above polish_max_free skipped); a partition belongs to one cell and one level, so this is the move that can close a level's partition on a cell. polish_passes (2026-10-30, sequential polish only): the whole list of levels or cells again after a pass that improved the design (a move changes what the others can do; in the 500 run the ASIL-0 move came last and the other levels never saw it), at most polish_passes passes, a pass without improvement ends the polish; 1 = one pass, as before. polish_stages / polish_order (ablation 2026-10-30): polish_stages = a list of polish modes run one after another, e.g. [\"cell\", \"level\"], each one pass of the sequential polish, the list again while a full round improved the design, at most polish_passes times (null = polish_mode alone); polish_order = the order of the candidates of a round: fewest components first (default), most first, or for levels waste = the level's partitions beyond what its load needs, largest first. polish_max_free for levels (2026-11-01, user): a level with more components than polish_max_free is not skipped any more but cut into ceil(n / polish_max_free) parts by cell (whole cells, parts kept even), each part its own round of the level polish (ASIL 0 at 1,000 has about 400 components: two rounds instead of none).",
+    "polish_passes": 1,
+    "lock_gap": 1.0,
+    "piece_time_max_s": 1200,
+    "static_capacity": false,
+    "polish_rounds": 6,
+    "polish_time_s": 600,
+    "polish_partners": 10,
+    "polish_mode": "cell",
+    "polish_max_free": 120,
+    "step_gurobi_params": "NoRelHeurTime=20",
+    "heavy_first": true,
+    "polish_parallel": 3,
+    "build_parallel": 1,
+    "build_lookahead": 8,
+    "final_network_s": 1800,
+    "final_network_gap": 0.0,
+    "_final_network": "final network clean-up (2026-10-30, pieces._final_network): after the polish, one solve with every primary and standby cell fixed and the network free (switches, ports, cables, bus lines), from the current design, to final_network_gap within final_network_s; kept if cheaper. Every build and polish solve ends at piece_gap of the whole cost or on its time limit, and the network is about 1 % of the cost, so its leftovers survived (500 design: four switch boxes and a switch nobody needed). 0 s = off.",
+    "polish_stages": null,
+    "polish_order": "fewest"
+  }
+}

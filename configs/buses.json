@@ -4,13 +4,16 @@
       "cost_per_meter": 1.5,
       "weight_per_meter": 50,
       "capacity": 1000.0,
-      "port_cost": 17.0,
+      "port_cost": 4.25,
       "hop_latency_ms": 0.015,
       "frame_kbit": 12.336,
       "data_source": "1000BASE-T1 (IEEE 802.3bp); longest frame 1522 B tagged + 8 B preamble + 12 B gap",
       "hop_source": "store-and-forward of one longest frame at 1 Gbit/s (12.3 us) plus 2 us switch forwarding (Rox, Ernst, Giusto, DATE 2012)",
       "cost_source": "per metre: estimate: shielded automotive Ethernet pair about 3x a CAN pair (no bulk price found); per port: PHY 1000BASE-T1 TI DP83TG720 USD 11.71 at 250 pcs (Mouser) + half a sealed connector pair (USD 8-20 per pair, supplier figures; low confidence)",
-      "weight_source": "estimate"
+      "weight_source": "estimate",
+      "port_cost_note": "2026-10-29, user decision: Ethernet port cost 17.0 USD / 4 = 4.25 USD, so that a switch (SJA1110, 22.87 USD) pays off only from about 6 Ethernet ports on one ECU, instead of from 2 ports (every ECU of the 300 design had a switch at 3-9 ports)",
+      "max_length_m": 15.0,
+      "max_length_source": "1000BASE-T1 / 100BASE-T1 link segment up to 15 m (IEEE 802.3bp / bw, automotive)"
     },
     "FLEXRAY": {
       "cost_per_meter": 0.5,
@@ -22,7 +25,9 @@
       "data_source": "FlexRay 10 Mbit/s (ISO 17458); longest frame 262 B (254 B payload), 10 bit per byte",
       "hop_source": "a static-segment message waits up to one bus cycle for its slot; cycle 5 ms assumed (design parameter, at most 16 ms by the FlexRay specification; Pop et al., Real-Time Systems 2008)",
       "cost_source": "per metre: FLRY-A 2x0.35 mm2 twisted pair EUR 24.94 per 100 m incl. VAT (Bedia-Kabel, 500 m ring), x2 for harness making (materials are 40-65 % of a harness cost, supplier figures; low confidence); per port: transceiver NXP TJA1082 USD 3.1-4.1 + half a sealed connector pair (USD 8-20 per pair, supplier figures; low confidence)",
-      "weight_source": "two FLRY 0.35 mm2 cores, 2 x 4.3 g/m (derived)"
+      "weight_source": "two FLRY 0.35 mm2 cores, 2 x 4.3 g/m (derived)",
+      "max_length_m": 24.0,
+      "max_length_source": "FlexRay electrical physical layer: up to 24 m between two nodes"
     },
     "CAN": {
       "cost_per_meter": 0.5,
@@ -34,7 +39,9 @@
       "data_source": "high-speed CAN at 500 kbit/s (ISO 11898-2); 8-byte frame 135 bit worst case (Davis et al. 2007)",
       "hop_source": "estimate (driver / arbitration / schedule slot), provisional",
       "cost_source": "per metre: FLRY-A 2x0.35 mm2 twisted pair EUR 24.94 per 100 m incl. VAT (Bedia-Kabel, 500 m ring), x2 for harness making (materials are 40-65 % of a harness cost, supplier figures; low confidence); per port: transceiver NXP TJA1042 USD 0.87-1.04 (1k) + half a sealed connector pair (USD 8-20 per pair, supplier figures; low confidence)",
-      "weight_source": "two FLRY 0.35 mm2 cores, 2 x 4.3 g/m (derived)"
+      "weight_source": "two FLRY 0.35 mm2 cores, 2 x 4.3 g/m (derived)",
+      "max_length_m": 40.0,
+      "max_length_source": "ISO 11898-2: 40 m bus length at 1 Mbit/s"
     },
     "LIN": {
       "cost_per_meter": 0.5,
@@ -46,7 +53,9 @@
       "data_source": "LIN at 19.2 kbit/s (ISO 17987); 8-byte frame 174 bit maximum",
       "hop_source": "estimate (driver / arbitration / schedule slot), provisional",
       "cost_source": "per metre: FLRY-B 0.35 mm2 single core USD 0.21-0.29/m (TME, 100-500 m reels), x2 for harness making (materials are 40-65 % of a harness cost, supplier figures; low confidence); per port: transceiver NXP TJA1021 USD 0.73-0.97 (1k) + half a sealed connector pair (USD 8-20 per pair, supplier figures; low confidence)",
-      "weight_source": "FLRY 0.35 mm2: 4.3 g/m (FLRY data sheet)"
+      "weight_source": "FLRY 0.35 mm2: 4.3 g/m (FLRY data sheet)",
+      "max_length_m": 40.0,
+      "max_length_source": "LIN specification: bus length up to 40 m"
     },
     "UART": {
       "cost_per_meter": 0.5,
@@ -58,7 +67,9 @@
       "data_source": "UART at 115.2 kbaud (typical GNSS receiver port); one 10-bit character",
       "hop_source": "estimate (driver / arbitration / schedule slot), provisional",
       "cost_source": "per metre: estimate (as a CAN pair); per port: estimate (as a LIN port)",
-      "weight_source": "estimate"
+      "weight_source": "estimate",
+      "max_length_m": 5.0,
+      "max_length_source": "115.2 kbit/s: the EIA-232 capacitance limit (2,500 pF, 50-100 pF/m cable) gives metres at this rate; 5 m assumed (low confidence)"
     },
     "SPI": {
       "cost_per_meter": 0.5,
@@ -70,7 +81,9 @@
       "data_source": "SPI at up to 9 Mbit/s (Honeywell HG1120 IMU brochure: SPI 2-9 Mbit, RS-422/CAN 1 Mbit); one 32-bit transfer",
       "hop_source": "estimate (driver / arbitration / schedule slot), provisional",
       "cost_source": "per metre: estimate (as a CAN pair); per port: estimate (as a LIN port)",
-      "weight_source": "estimate"
+      "weight_source": "estimate",
+      "max_length_m": 1.0,
+      "max_length_source": "board-level clocked bus: tens of cm at MHz clocks; 1 m is the upper end with buffered lines at a reduced clock (low confidence); the suite's SPI devices (IMU, brake actuators) sit 0.4-1.0 m from their nearest cell on the channel graph"
     }
   },
   "backbone": {
@@ -90,9 +103,16 @@
     "upfront_paths": false,
     "cell_cut_capacity": false,
     "_speed_options": "upfront_paths / cell_cut_capacity (2026-10-24): valid extra constraints (every flow's path requirement up front; per-cell cut-set link capacity). Default off: on 10 cells they make the model 2.3x larger and no design was found within 1 h; on the lite instance (4 cells) both on proved the rho 1 failure case (8,978.26) within 1 h. Use them for proofs on small instances only. A per-failure-scenario cut-set (tag cf) was removed: invalid (a flow relayed through the failed cell is lost, not rerouted, so it carries no load; the inequality counted it and cut off the proven lite optimum). benders_cuts (2026-10-26): Benders feasibility cuts from a routing LP per candidate (benders.py); default off, measured as tag b.",
-    "benders_cuts": false
+    "benders_cuts": false,
+    "bus_tree_bounds": "full",
+    "_bus_tree_bounds_comment": "Upfront bus-line length bounds from exact Steiner trees of small member sets (2026-11-01): 'full' = device groups up to 4, each alone, with every cell and with every pair of cells (the setting of every run so far; 1.2 million rows at 500 components / 30 cells, 83 % of the model, and 870 s of tree computation per fresh process); 'one_unit' = the groups alone and with one cell; 'pairs' = only the pair and Euler-tour bounds. All variants are valid (lazy cuts keep the bus lengths exact); they differ in relaxation strength and model size.",
+    "_bus_gateway_comment": "2026-11-03 (HANDOFF 16.26): true = every lane of a bus device (CAN / LIN / FlexRay) has one gateway unit on its line, which forwards the device data over the backbone to the units of its software (the zone-controller gateway); false = the units of the software sit on the line themselves. Default false; the gateway rule is an ablation row.",
+    "bus_gateway": false,
+    "_device_cable_factor_comment": "2026-11-03 (user decision): installed device connection = signal pair + power + ground cores; the factor multiplies the per-metre cost of every device-connected cable (direct device cables, Ethernet attachments, bus lines), not the backbone between units (no power). 3.0: an actuator's two 2.5 mm2 FLRY cores cost about as much again per metre as the signal pair (TME / Bedia reel prices), plus connectors and routing labour (low confidence). 1.0 = the signal-only model of the results before this date (ablation row).",
+    "device_cable_factor": 3.0
   },
   "_comment": "cable_types: cost per metre, weight per metre, capacity = bit rate (Mbit/s, same units as flow volumes), port cost, hop_latency_ms = per-hop processing/queueing bound (switch forwarding, bus arbitration). Every type may connect two control units; the optimiser picks per data flow which type carries it. Latency of a message over a link of a type = message kbit / capacity + hop_latency_ms per hop (HANDOFF 14.3).",
   "_data_comment": "capacity = bit rate (Mbit/s), frame_kbit = longest frame of the type; data pass 2026-10-21, sources in data_source; hop_latency_ms, costs and weights unchanged (provisional, HANDOFF 17)",
-  "_cost_comment": "All costs in USD (2026-10-22): cables per metre installed (wire price x harness factor), ports per end (transceiver or PHY plus half a connector pair), see cost_source; HANDOFF 17 F lists confidence."
+  "_cost_comment": "All costs in USD (2026-10-22): cables per metre installed (wire price x harness factor), ports per end (transceiver or PHY plus half a connector pair), see cost_source; HANDOFF 17 F lists confidence.",
+  "_max_length_comment": "2026-11-03 (user decision, default): reach per cable type; no cable of a type may be longer: direct device cables keep the software within reach of the device, Ethernet attachments and backbone links out of reach do not exist, candidate paths use hops within reach, a bus line is at most this long. Replaces any ban of a type as backbone: SPI between two ECUs is possible only where they are within 1 m. Channel-graph distances as everywhere in the model."
 }

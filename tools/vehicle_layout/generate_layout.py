@@ -15,6 +15,7 @@ Outputs (configs/, overwritten):
 Usage:  python tools/vehicle_layout/generate_layout.py [--config_dir configs] [--quiet]
 """
 import argparse
+import itertools
 import json
 import math
 import os
@@ -253,9 +254,20 @@ def make_sites(vehicle, thermal):
     for z in zones_cfg['zones']:
         pts = grid_points(z['bbox'], spacing, int(z.get('max_sites', 1)))
         for k, p in enumerate(pts):
-            sites.append({'id': z['id'] if len(pts) == 1 else f"{z['id']}_{k + 1}", 'zone': z['id'],
-                          'thermal_class': z['thermal_class'], 'derating': float(thermal[z['thermal_class']]['derating']),
-                          'position': {'x': round(p[0], 3), 'y': round(p[1], 3), 'z': round(p[2], 3)}, 'source': z.get('source', '')})
+            site = {'id': z['id'] if len(pts) == 1 else f"{z['id']}_{k + 1}", 'zone': z['id'], 'name': z.get('name', z['id']),
+                    'thermal_class': z['thermal_class'], 'derating': float(thermal[z['thermal_class']]['derating']),
+                    'position': {'x': round(p[0], 3), 'y': round(p[1], 3), 'z': round(p[2], 3)}, 'orient': z.get('orient', 'flat'), 'source': z.get('source', '')}
+            if len(pts) == 1:   # the zone box is the slot of one control unit: kept for the drawings
+                site['bbox'] = z['bbox']
+                for b in vehicle.get('fixed_blocks', []):   # a slot may not enter a solid unit (hollow volumes and pillars are fine)
+                    if b.get('kind') in ('battery', 'motor', 'seat', 'wheel', 'aux') and all(
+                            z['bbox'][k][0] < b['bbox'][k][1] - 1e-9 and b['bbox'][k][0] < z['bbox'][k][1] - 1e-9 for k in 'xyz'):
+                        print(f"[layout] WARNING: cell {z['id']} overlaps the fixed block {b['id']} ({b.get('kind')}); move the zone in vehicle.json")
+            sites.append(site)
+    boxed = [s for s in sites if s.get('bbox')]
+    for a, b in itertools.combinations(boxed, 2):   # two slot boxes may not overlap (2 cm margin)
+        if max(max(b['bbox'][k][0] - a['bbox'][k][1], a['bbox'][k][0] - b['bbox'][k][1]) for k in 'xyz') < 0.02:
+            print(f"[layout] WARNING: cells {a['id']} and {b['id']} overlap or are closer than 2 cm; move a zone in vehicle.json")
     return sites, spacing
 
 
@@ -264,7 +276,7 @@ def main_voxel(args, cfg_dir, vehicle, sensors, actuators, thermal, npz_path):
     g, pos, node_kinds, main, ncomp, vs = build_voxel_graph(npz_path)
     n_main = int(main.sum())
     d = np.load(npz_path, allow_pickle=False)
-    if 'sites' in d.files:   # candidate sites scanned from the ECU space of the reference model
+    if 'sites' in d.files and not vehicle.get('ecu_zones', {}).get('enabled', False):   # candidate sites scanned from the ECU space of the reference model (vehicle.json ecu_zones.enabled = false)
         scanned = json.loads(str(d['sites']))
         params = json.loads(str(d['params']))
         spacing = params['ecu_spacing']

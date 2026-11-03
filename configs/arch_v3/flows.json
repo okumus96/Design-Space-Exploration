@@ -4,9 +4,9 @@
   "seed": 1,
   "scale": 25.0,
   "counts": {
-   "autoware_components": 159,
+   "autoware_components": 138,
    "non_ad_components": 5725,
-   "flows": 14542,
+   "flows": 14484,
    "chains": 386
   },
   "sources": {
@@ -1259,16 +1259,6 @@
   },
   {
    "src": "AW:/map/lanelet2_map_loader",
-   "dst": "AW:/perception/traffic_light_recognition/camera7/classification/traffic_light_occlusion_predictor",
-   "topic": "/map/vector_map",
-   "type": "autoware_map_msgs/msg/LaneletMapBin",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/map/lanelet2_map_loader",
    "dst": "AW:/perception/traffic_light_recognition/camera6/classification/traffic_light_occlusion_predictor",
    "topic": "/map/vector_map",
    "type": "autoware_map_msgs/msg/LaneletMapBin",
@@ -1460,16 +1450,6 @@
   {
    "src": "AW:/map/lanelet2_map_loader",
    "dst": "AW:/planning/scenario_planning/lane_driving/motion_planning/motion_velocity_planner",
-   "topic": "/map/vector_map",
-   "type": "autoware_map_msgs/msg/LaneletMapBin",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/map/lanelet2_map_loader",
-   "dst": "AW:/perception/traffic_light_recognition/camera7/detection/traffic_light_map_based_detector",
    "topic": "/map/vector_map",
    "type": "autoware_map_msgs/msg/LaneletMapBin",
    "rate_hz": null,
@@ -1818,16 +1798,6 @@
    "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
   },
   {
-   "src": "AW:/perception/traffic_light_recognition/camera7/classification/traffic_light_occlusion_predictor",
-   "dst": "AW:/perception/traffic_light_recognition/traffic_light_multi_camera_fusion",
-   "topic": "/perception/traffic_light_recognition/camera7/classification/traffic_signals",
-   "type": "tier4_perception_msgs/msg/TrafficLightArray",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
    "src": "AW:/perception/traffic_light_recognition/traffic_light_multi_camera_fusion",
    "dst": "AW:/perception/traffic_light_recognition/traffic_light_arbiter",
    "topic": "/perception/traffic_light_recognition/internal/traffic_signals",
@@ -2060,16 +2030,6 @@
   {
    "src": "AW:/planning/mission_planning/mission_planner",
    "dst": "AW:/planning/scenario_planning/lane_driving/motion_planning/motion_velocity_planner",
-   "topic": "/planning/mission_planning/route",
-   "type": "autoware_planning_msgs/msg/LaneletRoute",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/planning/mission_planning/mission_planner",
-   "dst": "AW:/perception/traffic_light_recognition/camera7/detection/traffic_light_map_based_detector",
    "topic": "/planning/mission_planning/route",
    "type": "autoware_planning_msgs/msg/LaneletRoute",
    "rate_hz": null,
@@ -3319,26 +3279,6 @@
   },
   {
    "src": "AW:/sensing/lidar/top/velodyne_ros_wrapper_node",
-   "dst": "AW:/perception/traffic_light_recognition/camera7/classification/traffic_light_occlusion_predictor",
-   "topic": "/sensing/lidar/top/pointcloud_raw_ex",
-   "type": "sensor_msgs/msg/PointCloud2",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/sensing/lidar/top/velodyne_ros_wrapper_node",
-   "dst": "AW:/perception/traffic_light_recognition/camera7/classification/traffic_light_occlusion_predictor",
-   "topic": "/sensing/lidar/top/pointcloud_raw_ex",
-   "type": "sensor_msgs/msg/PointCloud2",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/sensing/lidar/top/velodyne_ros_wrapper_node",
    "dst": "AW:/perception/traffic_light_recognition/camera6/classification/traffic_light_occlusion_predictor",
    "topic": "/sensing/lidar/top/pointcloud_raw_ex",
    "type": "sensor_msgs/msg/PointCloud2",
@@ -3768,26 +3708,6 @@
    "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
   },
   {
-   "src": "AW:/perception/traffic_light_recognition/camera7/detection/traffic_light_map_based_detector",
-   "dst": "AW:/perception/traffic_light_recognition/camera7/traffic_light_node_container",
-   "topic": null,
-   "type": null,
-   "rate_hz": 10.0,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
-  },
-  {
-   "src": "AW:/perception/traffic_light_recognition/camera7/traffic_light_node_container",
-   "dst": "AW:/perception/traffic_light_recognition/camera7/classification/traffic_light_occlusion_predictor",
-   "topic": null,
-   "type": null,
-   "rate_hz": 10.0,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
-  },
-  {
    "src": "AW:/sensing/imu/imu_corrector",
    "dst": "AW:/sensing/lidar/lidar_top/distortion_corrector_node",
    "topic": "/sensing/imu/imu_data",
@@ -3811,26 +3731,6 @@
    "src": "AW:/sensing/lidar/lidar_top/ring_outlier_filter",
    "dst": "AW:/sensing/lidar/concatenate_data",
    "topic": "/sensing/lidar/top/pointcloud_before_sync",
-   "type": "sensor_msgs/msg/PointCloud2",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/sensing/lidar/lidar_top/velodyne_ros_wrapper_node",
-   "dst": "AW:/perception/traffic_light_recognition/camera7/classification/traffic_light_occlusion_predictor",
-   "topic": "/sensing/lidar/top/pointcloud_raw_ex",
-   "type": "sensor_msgs/msg/PointCloud2",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/sensing/lidar/lidar_top/velodyne_ros_wrapper_node",
-   "dst": "AW:/perception/traffic_light_recognition/camera7/classification/traffic_light_occlusion_predictor",
-   "topic": "/sensing/lidar/top/pointcloud_raw_ex",
    "type": "sensor_msgs/msg/PointCloud2",
    "rate_hz": null,
    "bytes": null,
@@ -3896,486 +3796,6 @@
    "bytes": null,
    "kind": "ros2_topic",
    "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/map/lanelet2_map_loader",
-   "dst": "AW:/perception/traffic_light_recognition/camera8/classification/traffic_light_occlusion_predictor",
-   "topic": "/map/vector_map",
-   "type": "autoware_map_msgs/msg/LaneletMapBin",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/map/lanelet2_map_loader",
-   "dst": "AW:/perception/traffic_light_recognition/camera8/detection/traffic_light_map_based_detector",
-   "topic": "/map/vector_map",
-   "type": "autoware_map_msgs/msg/LaneletMapBin",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/perception/traffic_light_recognition/camera8/classification/traffic_light_occlusion_predictor",
-   "dst": "AW:/perception/traffic_light_recognition/traffic_light_multi_camera_fusion",
-   "topic": "/perception/traffic_light_recognition/camera6/classification/traffic_signals",
-   "type": "tier4_perception_msgs/msg/TrafficLightArray",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/planning/mission_planning/mission_planner",
-   "dst": "AW:/perception/traffic_light_recognition/camera8/detection/traffic_light_map_based_detector",
-   "topic": "/planning/mission_planning/route",
-   "type": "autoware_planning_msgs/msg/LaneletRoute",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/sensing/lidar/top/velodyne_ros_wrapper_node",
-   "dst": "AW:/perception/traffic_light_recognition/camera8/classification/traffic_light_occlusion_predictor",
-   "topic": "/sensing/lidar/top/pointcloud_raw_ex",
-   "type": "sensor_msgs/msg/PointCloud2",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/sensing/lidar/top/velodyne_ros_wrapper_node",
-   "dst": "AW:/perception/traffic_light_recognition/camera8/classification/traffic_light_occlusion_predictor",
-   "topic": "/sensing/lidar/top/pointcloud_raw_ex",
-   "type": "sensor_msgs/msg/PointCloud2",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/perception/traffic_light_recognition/camera8/detection/traffic_light_map_based_detector",
-   "dst": "AW:/perception/traffic_light_recognition/camera8/traffic_light_node_container",
-   "topic": null,
-   "type": null,
-   "rate_hz": 10.0,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
-  },
-  {
-   "src": "AW:/perception/traffic_light_recognition/camera8/traffic_light_node_container",
-   "dst": "AW:/perception/traffic_light_recognition/camera8/classification/traffic_light_occlusion_predictor",
-   "topic": null,
-   "type": null,
-   "rate_hz": 10.0,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
-  },
-  {
-   "src": "AW:/map/lanelet2_map_loader",
-   "dst": "AW:/perception/traffic_light_recognition/camera9/classification/traffic_light_occlusion_predictor",
-   "topic": "/map/vector_map",
-   "type": "autoware_map_msgs/msg/LaneletMapBin",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/map/lanelet2_map_loader",
-   "dst": "AW:/perception/traffic_light_recognition/camera9/detection/traffic_light_map_based_detector",
-   "topic": "/map/vector_map",
-   "type": "autoware_map_msgs/msg/LaneletMapBin",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/perception/traffic_light_recognition/camera9/classification/traffic_light_occlusion_predictor",
-   "dst": "AW:/perception/traffic_light_recognition/traffic_light_multi_camera_fusion",
-   "topic": "/perception/traffic_light_recognition/camera6/classification/traffic_signals",
-   "type": "tier4_perception_msgs/msg/TrafficLightArray",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/planning/mission_planning/mission_planner",
-   "dst": "AW:/perception/traffic_light_recognition/camera9/detection/traffic_light_map_based_detector",
-   "topic": "/planning/mission_planning/route",
-   "type": "autoware_planning_msgs/msg/LaneletRoute",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/sensing/lidar/top/velodyne_ros_wrapper_node",
-   "dst": "AW:/perception/traffic_light_recognition/camera9/classification/traffic_light_occlusion_predictor",
-   "topic": "/sensing/lidar/top/pointcloud_raw_ex",
-   "type": "sensor_msgs/msg/PointCloud2",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/sensing/lidar/top/velodyne_ros_wrapper_node",
-   "dst": "AW:/perception/traffic_light_recognition/camera9/classification/traffic_light_occlusion_predictor",
-   "topic": "/sensing/lidar/top/pointcloud_raw_ex",
-   "type": "sensor_msgs/msg/PointCloud2",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/perception/traffic_light_recognition/camera9/detection/traffic_light_map_based_detector",
-   "dst": "AW:/perception/traffic_light_recognition/camera9/traffic_light_node_container",
-   "topic": null,
-   "type": null,
-   "rate_hz": 10.0,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
-  },
-  {
-   "src": "AW:/perception/traffic_light_recognition/camera9/traffic_light_node_container",
-   "dst": "AW:/perception/traffic_light_recognition/camera9/classification/traffic_light_occlusion_predictor",
-   "topic": null,
-   "type": null,
-   "rate_hz": 10.0,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
-  },
-  {
-   "src": "AW:/map/lanelet2_map_loader",
-   "dst": "AW:/perception/traffic_light_recognition/camera10/classification/traffic_light_occlusion_predictor",
-   "topic": "/map/vector_map",
-   "type": "autoware_map_msgs/msg/LaneletMapBin",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/map/lanelet2_map_loader",
-   "dst": "AW:/perception/traffic_light_recognition/camera10/detection/traffic_light_map_based_detector",
-   "topic": "/map/vector_map",
-   "type": "autoware_map_msgs/msg/LaneletMapBin",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/perception/traffic_light_recognition/camera10/classification/traffic_light_occlusion_predictor",
-   "dst": "AW:/perception/traffic_light_recognition/traffic_light_multi_camera_fusion",
-   "topic": "/perception/traffic_light_recognition/camera6/classification/traffic_signals",
-   "type": "tier4_perception_msgs/msg/TrafficLightArray",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/planning/mission_planning/mission_planner",
-   "dst": "AW:/perception/traffic_light_recognition/camera10/detection/traffic_light_map_based_detector",
-   "topic": "/planning/mission_planning/route",
-   "type": "autoware_planning_msgs/msg/LaneletRoute",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/sensing/lidar/top/velodyne_ros_wrapper_node",
-   "dst": "AW:/perception/traffic_light_recognition/camera10/classification/traffic_light_occlusion_predictor",
-   "topic": "/sensing/lidar/top/pointcloud_raw_ex",
-   "type": "sensor_msgs/msg/PointCloud2",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/sensing/lidar/top/velodyne_ros_wrapper_node",
-   "dst": "AW:/perception/traffic_light_recognition/camera10/classification/traffic_light_occlusion_predictor",
-   "topic": "/sensing/lidar/top/pointcloud_raw_ex",
-   "type": "sensor_msgs/msg/PointCloud2",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/perception/traffic_light_recognition/camera10/detection/traffic_light_map_based_detector",
-   "dst": "AW:/perception/traffic_light_recognition/camera10/traffic_light_node_container",
-   "topic": null,
-   "type": null,
-   "rate_hz": 10.0,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
-  },
-  {
-   "src": "AW:/perception/traffic_light_recognition/camera10/traffic_light_node_container",
-   "dst": "AW:/perception/traffic_light_recognition/camera10/classification/traffic_light_occlusion_predictor",
-   "topic": null,
-   "type": null,
-   "rate_hz": 10.0,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
-  },
-  {
-   "src": "AW:/map/lanelet2_map_loader",
-   "dst": "AW:/perception/traffic_light_recognition/camera11/classification/traffic_light_occlusion_predictor",
-   "topic": "/map/vector_map",
-   "type": "autoware_map_msgs/msg/LaneletMapBin",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/map/lanelet2_map_loader",
-   "dst": "AW:/perception/traffic_light_recognition/camera11/detection/traffic_light_map_based_detector",
-   "topic": "/map/vector_map",
-   "type": "autoware_map_msgs/msg/LaneletMapBin",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/perception/traffic_light_recognition/camera11/classification/traffic_light_occlusion_predictor",
-   "dst": "AW:/perception/traffic_light_recognition/traffic_light_multi_camera_fusion",
-   "topic": "/perception/traffic_light_recognition/camera6/classification/traffic_signals",
-   "type": "tier4_perception_msgs/msg/TrafficLightArray",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/planning/mission_planning/mission_planner",
-   "dst": "AW:/perception/traffic_light_recognition/camera11/detection/traffic_light_map_based_detector",
-   "topic": "/planning/mission_planning/route",
-   "type": "autoware_planning_msgs/msg/LaneletRoute",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/sensing/lidar/top/velodyne_ros_wrapper_node",
-   "dst": "AW:/perception/traffic_light_recognition/camera11/classification/traffic_light_occlusion_predictor",
-   "topic": "/sensing/lidar/top/pointcloud_raw_ex",
-   "type": "sensor_msgs/msg/PointCloud2",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/sensing/lidar/top/velodyne_ros_wrapper_node",
-   "dst": "AW:/perception/traffic_light_recognition/camera11/classification/traffic_light_occlusion_predictor",
-   "topic": "/sensing/lidar/top/pointcloud_raw_ex",
-   "type": "sensor_msgs/msg/PointCloud2",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/perception/traffic_light_recognition/camera11/detection/traffic_light_map_based_detector",
-   "dst": "AW:/perception/traffic_light_recognition/camera11/traffic_light_node_container",
-   "topic": null,
-   "type": null,
-   "rate_hz": 10.0,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
-  },
-  {
-   "src": "AW:/perception/traffic_light_recognition/camera11/traffic_light_node_container",
-   "dst": "AW:/perception/traffic_light_recognition/camera11/classification/traffic_light_occlusion_predictor",
-   "topic": null,
-   "type": null,
-   "rate_hz": 10.0,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
-  },
-  {
-   "src": "AW:/map/lanelet2_map_loader",
-   "dst": "AW:/perception/traffic_light_recognition/camera12/classification/traffic_light_occlusion_predictor",
-   "topic": "/map/vector_map",
-   "type": "autoware_map_msgs/msg/LaneletMapBin",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/map/lanelet2_map_loader",
-   "dst": "AW:/perception/traffic_light_recognition/camera12/detection/traffic_light_map_based_detector",
-   "topic": "/map/vector_map",
-   "type": "autoware_map_msgs/msg/LaneletMapBin",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/perception/traffic_light_recognition/camera12/classification/traffic_light_occlusion_predictor",
-   "dst": "AW:/perception/traffic_light_recognition/traffic_light_multi_camera_fusion",
-   "topic": "/perception/traffic_light_recognition/camera6/classification/traffic_signals",
-   "type": "tier4_perception_msgs/msg/TrafficLightArray",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/planning/mission_planning/mission_planner",
-   "dst": "AW:/perception/traffic_light_recognition/camera12/detection/traffic_light_map_based_detector",
-   "topic": "/planning/mission_planning/route",
-   "type": "autoware_planning_msgs/msg/LaneletRoute",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/sensing/lidar/top/velodyne_ros_wrapper_node",
-   "dst": "AW:/perception/traffic_light_recognition/camera12/classification/traffic_light_occlusion_predictor",
-   "topic": "/sensing/lidar/top/pointcloud_raw_ex",
-   "type": "sensor_msgs/msg/PointCloud2",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/sensing/lidar/top/velodyne_ros_wrapper_node",
-   "dst": "AW:/perception/traffic_light_recognition/camera12/classification/traffic_light_occlusion_predictor",
-   "topic": "/sensing/lidar/top/pointcloud_raw_ex",
-   "type": "sensor_msgs/msg/PointCloud2",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/perception/traffic_light_recognition/camera12/detection/traffic_light_map_based_detector",
-   "dst": "AW:/perception/traffic_light_recognition/camera12/traffic_light_node_container",
-   "topic": null,
-   "type": null,
-   "rate_hz": 10.0,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
-  },
-  {
-   "src": "AW:/perception/traffic_light_recognition/camera12/traffic_light_node_container",
-   "dst": "AW:/perception/traffic_light_recognition/camera12/classification/traffic_light_occlusion_predictor",
-   "topic": null,
-   "type": null,
-   "rate_hz": 10.0,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
-  },
-  {
-   "src": "AW:/map/lanelet2_map_loader",
-   "dst": "AW:/perception/traffic_light_recognition/camera13/classification/traffic_light_occlusion_predictor",
-   "topic": "/map/vector_map",
-   "type": "autoware_map_msgs/msg/LaneletMapBin",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/map/lanelet2_map_loader",
-   "dst": "AW:/perception/traffic_light_recognition/camera13/detection/traffic_light_map_based_detector",
-   "topic": "/map/vector_map",
-   "type": "autoware_map_msgs/msg/LaneletMapBin",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/perception/traffic_light_recognition/camera13/classification/traffic_light_occlusion_predictor",
-   "dst": "AW:/perception/traffic_light_recognition/traffic_light_multi_camera_fusion",
-   "topic": "/perception/traffic_light_recognition/camera6/classification/traffic_signals",
-   "type": "tier4_perception_msgs/msg/TrafficLightArray",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/planning/mission_planning/mission_planner",
-   "dst": "AW:/perception/traffic_light_recognition/camera13/detection/traffic_light_map_based_detector",
-   "topic": "/planning/mission_planning/route",
-   "type": "autoware_planning_msgs/msg/LaneletRoute",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/sensing/lidar/top/velodyne_ros_wrapper_node",
-   "dst": "AW:/perception/traffic_light_recognition/camera13/classification/traffic_light_occlusion_predictor",
-   "topic": "/sensing/lidar/top/pointcloud_raw_ex",
-   "type": "sensor_msgs/msg/PointCloud2",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/sensing/lidar/top/velodyne_ros_wrapper_node",
-   "dst": "AW:/perception/traffic_light_recognition/camera13/classification/traffic_light_occlusion_predictor",
-   "topic": "/sensing/lidar/top/pointcloud_raw_ex",
-   "type": "sensor_msgs/msg/PointCloud2",
-   "rate_hz": null,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "measured: topic graph (ros2 topic info -v); rate/size: ros2 topic hz/bw where measured"
-  },
-  {
-   "src": "AW:/perception/traffic_light_recognition/camera13/detection/traffic_light_map_based_detector",
-   "dst": "AW:/perception/traffic_light_recognition/camera13/traffic_light_node_container",
-   "topic": null,
-   "type": null,
-   "rate_hz": 10.0,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
-  },
-  {
-   "src": "AW:/perception/traffic_light_recognition/camera13/traffic_light_node_container",
-   "dst": "AW:/perception/traffic_light_recognition/camera13/classification/traffic_light_occlusion_predictor",
-   "topic": null,
-   "type": null,
-   "rate_hz": 10.0,
-   "bytes": null,
-   "kind": "ros2_topic",
-   "source": "Autoware traffic-light pipeline order (rough ROI -> fine detector -> classifier -> occlusion predictor); size not measured"
   },
   {
    "src": "BodyComfort_WiperWasher_000",

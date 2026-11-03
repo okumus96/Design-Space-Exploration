@@ -35,7 +35,7 @@ REPO = os.path.abspath(os.path.join(HERE, '..', '..'))
 # Linear RGB (Blender). Marker colours are prescribed by the styling direction; channel kinds get distinct saturated hues.
 MARKER = {
     'site': (0.05, 0.80, 0.15), 'CAMERA': (0.08, 0.38, 0.98), 'LIDAR': (1.00, 0.45, 0.02), 'IMU': (0.00, 0.80, 0.80),
-    'GPS': (0.00, 0.80, 0.80), 'actuator': (0.90, 0.06, 0.10), 'battery': (0.10, 0.45, 0.90), 'motor': (0.85, 0.30, 0.04), 'aux': (0.40, 0.58, 0.36),
+    'GPS': (0.00, 0.80, 0.80), 'actuator': (0.90, 0.06, 0.10), 'battery': (0.10, 0.45, 0.90), 'motor': (0.85, 0.30, 0.04), 'aux': (0.62, 0.55, 0.42),
     'attach': (0.30, 0.30, 0.33),
 }
 # Cables are coloured by their interface type only (configs/buses.json). Edges without a type (the example harness
@@ -47,8 +47,15 @@ CABLE_NAMES = {'backbone': 'harness backbone (example route, no type yet)'}
 CODE_PREFIX = {'CAMERA': 'C', 'LIDAR': 'L', 'IMU': 'I', 'GPS': 'G'}
 # Shape coding: ECU site = sphere, camera = clearly smaller sphere, IMU/GPS = small sphere, lidar = flat puck, actuator = outlined cube.
 SITE_R, ACT_HALF, LIDAR_H = 0.07, 0.055, 0.05
+# Routed cables (--solution): thin tubes; where several share a piece of channel they lie side by side in a flat band,
+# tilted towards BUNDLE_TILT so the band stays open in the top, side and 3/4 views.
+CABLE_R, CABLE_PITCH, BUNDLE_TILT = 0.005, 0.014, (1.0, 1.0, 1.0)
 SHOW_DROPS = False   # set from --show_drops; drops are hidden by default
 SHOW_SITES = False   # set from --show_sites; the ECU space is a region, not points
+SPACE_ONLY = False   # set from --space_only: only the car, the installation space and the cells (boxes of ECU size)
+CURATED = False      # set from sites.json: every cell carries its slot box (vehicle.json ecu_zones.enabled), so the scanned ECU region is not drawn
+# installation space colours: (cable-space rgb, cable alpha, ECU-region rgb, ECU-region alpha); the space view uses vivid ones
+SPACE_STYLE = {'default': ((0.50, 0.50, 0.55), 0.12, MARKER['site'], 0.35), 'space': ((0.20, 0.45, 0.95), 0.30, (0.45, 0.90, 0.35), 0.35)}
 SENSOR_R = {'CAMERA': 0.045, 'LIDAR': 0.07, 'IMU': 0.04, 'GPS': 0.04}
 EDGE_RGB, BLOCK_ALPHA = (0.06, 0.06, 0.07), 0.35
 LABEL_SIZE = {'site': 0.080, 'sensor': 0.072, 'actuator': 0.072}
@@ -75,6 +82,7 @@ def parse_args():
     ap.add_argument('--band', action='store_true', help='draw the permissible cable-routing space (configs/routing_space.npz)')
     ap.add_argument('--show_drops', action='store_true', help='draw the short drops from devices to their channel node (hidden by default)')
     ap.add_argument('--show_sites', action='store_true', help='draw every ECU-space cell as a numbered sphere (default: the ECU space is drawn as a translucent region)')
+    ap.add_argument('--space_only', action='store_true', help='draw only the car and the installation space: blue where a cable bundle fits, light green where a control unit fits, every candidate cell as a labelled green box of ECU size (implies --band --show_sites; no sensors, actuators, blocks or cables)')
     ap.add_argument('--python', default=os.path.join(REPO, 'dse', 'bin', 'python'), help='python with PIL for compositing')
     ap.add_argument('--compose', action='store_true', help='(internal) composite labels + legend; needs PIL')
     ap.add_argument('--solution', default=None, help='optimisation result (solution_<i>.json); draws its ECUs and routed cables (<solution>_cables.json from solution_paths.py) instead of the example backbone')
@@ -87,7 +95,7 @@ def parse_args():
 
 def load_configs(config_dir, solution=None):
     cfg = lambda f: json.load(open(os.path.join(config_dir, f)))
-    C = {'vehicle': cfg('vehicle.json'), 'sites': cfg('sites.json')['sites'], 'channels': cfg('channels.json'),
+    C = {'vehicle': cfg('vehicle.json'), 'sites': cfg('sites.json')['sites'], 'grid_spacing': float(cfg('sites.json').get('grid_spacing', 0.12)), 'channels': cfg('channels.json'),
          'sensors': cfg('sensors.json')['sensors'], 'actuators': cfg('actuators.json')['actuators'], 'solution': None, 'cables': None}
     if solution:
         C['solution'] = json.load(open(solution))
@@ -288,6 +296,43 @@ def add_curve(name, polylines, radius, mat, col, caps=True, resolution=4):
     return o
 
 
+def bundle(cables):
+    """Point lists of the routed cables, shifted so that cables sharing a piece of channel lie side by side instead of on
+    top of each other (the optimiser routes each cable on its own shortest path; the band exists only in the picture).
+    Every piece lists its cables in one fixed order (interface, then end points), so a cable keeps its place along a
+    shared run. A cable holds its place in the band over the middle half of each piece and moves between places only
+    near the points where pieces meet (to the mean of its two places there); both ends stay at the unit / device."""
+    rank = {k: i for i, k in enumerate(sorted(range(len(cables)), key=lambda k: (
+        CABLE_TYPE_ORDER.index(cable_type(cables[k])) if cable_type(cables[k]) in CABLE_TYPE_ORDER else len(CABLE_TYPE_ORDER),
+        cables[k]['src'], cables[k]['dst'], k)))}
+    piece = lambda a, b: frozenset((tuple(a), tuple(b)))
+    members = {}
+    for k, c in enumerate(cables):
+        for a, b in zip(c['points'], c['points'][1:]):
+            members.setdefault(piece(a, b), set()).add(k)
+    tilt = Vector(BUNDLE_TILT).normalized()
+    out = []
+    for k, c in enumerate(cables):
+        pts = [Vector(p) for p in c['points']]
+        shift = []
+        for a, b, raw in zip(pts, pts[1:], zip(c['points'], c['points'][1:])):
+            t = b - a
+            if t.length < 1e-9:
+                shift.append(Vector((0.0, 0.0, 0.0)))
+                continue
+            t.normalize()
+            d = tilt - tilt.dot(t) * t          # across the run, the same for both running directions
+            d = d if d.length > 1e-3 else Vector((1.0, 0.0, 0.0)) - t.x * t
+            band = sorted(members[piece(*raw)], key=rank.get)
+            shift.append(d.normalized() * (band.index(k) - (len(band) - 1) / 2) * CABLE_PITCH)
+        joint = [Vector((0.0, 0.0, 0.0))] + [(shift[j - 1] + shift[j]) / 2 for j in range(1, len(pts) - 1)] + [Vector((0.0, 0.0, 0.0))]
+        line = [pts[0]]
+        for j, (a, b) in enumerate(zip(pts, pts[1:])):
+            line += [a + (b - a) * 0.25 + shift[j], a + (b - a) * 0.75 + shift[j], b + joint[j + 1]]
+        out.append(line)
+    return out
+
+
 def add_anchor(ident, label, kind, p, r):
     ANCHORS.append({'id': ident, 'label': label, 'kind': kind, 'pos': tuple(p), 'r': r})
 
@@ -413,34 +458,56 @@ def build_layout(C, labels_mode):
     col_sen, col_act = collection('Sensors'), collection('Actuators')
 
     for b in vehicle['fixed_blocks']:   # translucent so markers behind them stay visible; dark edges keep the outline
-        if b['kind'] in ('battery', 'motor', 'aux') and b.get('draw', True):
+        if b['kind'] in ('battery', 'motor', 'aux') and b.get('draw', True) and not SPACE_ONLY:
             o = add_box(b['id'], b['bbox'], mat_principled(f"blk_{b['kind']}", MARKER[b['kind']], alpha=BLOCK_ALPHA, rough=0.5, emit=0.25), col_blocks)
             o.visible_shadow = False
             add_edges(o, 0.012, col_blocks)
 
-    if SHOW_SITES:   # individual cells only on request; by default the ECU space is drawn as a region (build_ecu_space)
+    if SHOW_SITES:   # individual cells only on request; by default the ECU space is drawn as a region (build_installation_space)
         m_site = mat_principled('site', MARKER['site'], rough=0.4, emit=0.35)
+        h = C['grid_spacing'] / 2   # scanned cells: one lattice cell of the scanned ECU space (sites.json grid_spacing)
         for i, s in enumerate(sites, 1):
             p = xyz(s['position'])
-            add_sphere(f"site_{s['id']}", p, SITE_R, m_site, col_sites)
+            if SPACE_ONLY:   # the cell as its slot box (curated zones) or its lattice cube (scanned cells), dark edges
+                bb = s.get('bbox') or {'x': [p[0] - h, p[0] + h], 'y': [p[1] - h, p[1] + h], 'z': [p[2] - h, p[2] + h]}
+                o = add_box(f"site_{s['id']}", bb, m_site, col_sites)
+                add_edges(o, 0.006, col_sites)
+            else:
+                add_sphere(f"site_{s['id']}", p, SITE_R, m_site, col_sites)
             add_anchor(s['id'], str(i), 'site', p, SITE_R)
+        if SPACE_ONLY:
+            add_name_labels(labels_mode)
+            return
 
     nodes = channels['nodes']
     if C.get('cables'):   # optimisation result: routed cables coloured by interface, ECU boxes at the used cells
         ecu = sorted(float(v) for v in vehicle['installation_space']['ecu_size'])
         hx, hy, hz = ecu[2] / 2, ecu[1] / 2, ecu[0] / 2   # longest side across the car, shortest side vertical
         pos_site = {s['id']: s['position'] for s in sites}
+        box_site = {s['id']: s.get('bbox') for s in sites}   # curated zones: the slot box of the cell
         col_ecu = collection('ECUs')
+        # the label of an ECU names its cell and its hardware features (switch, accelerator, ...) from the solution
+        hw_names = {'SWITCH': 'switch', 'HW_ACC': 'accelerator', 'DSP': 'DSP', 'HSM': 'HSM'}
+        hw_at = {}
+        for item in (C.get('solution') or {}).get('hw_features', []):
+            h, _, site = str(item).partition('@')
+            hw_at.setdefault(site, []).append(hw_names.get(h, h))
+        sol_ = C.get('solution') or {}
+        hosting = set((sol_.get('assignment') or {}).values()) | {v.get('cell') for v in (sol_.get('standby') or {}).values()}
         for n, sid in enumerate(C['cables']['used_sites'], 1):
             p = pos_site[sid]
-            o = add_box(f"ecu_{sid}", {'x': [p['x'] - hx, p['x'] + hx], 'y': [p['y'] - hy, p['y'] + hy], 'z': [p['z'] - hz, p['z'] + hz]},
-                        mat_principled('ecu', MARKER['site'], alpha=0.9, rough=0.5, emit=0.2), col_ecu)
+            has_switch = 'switch' in hw_at.get(sid, [])
+            if sid not in hosting:   # a cell without software is a pure network node (only a switch), not an ECU
+                hw_at[sid] = ['switch node (no ECU)']
+            o = add_box(f"ecu_{sid}", box_site.get(sid) or {'x': [p['x'] - hx, p['x'] + hx], 'y': [p['y'] - hy, p['y'] + hy], 'z': [p['z'] - hz, p['z'] + hz]},
+                        mat_principled('ecu_switch' if has_switch else 'ecu', (0.10, 0.25, 0.65) if has_switch else MARKER['site'],
+                                       alpha=0.9, rough=0.5, emit=0.2), col_ecu)
             add_edges(o, 0.008, col_ecu)
-            add_anchor(sid, f"E{n}", 'site', xyz(p), SITE_R)
-        for c in C['cables']['cables']:
+            add_anchor(f"{sid}: {', '.join(sorted(hw_at[sid]))}" if hw_at.get(sid) else sid, f"E{n}", 'site', xyz(p), SITE_R)
+        for c, pts in zip(C['cables']['cables'], bundle(C['cables']['cables'])):
             kind = cable_type(c)
             m = mat_principled(f'ch_{kind}', channel_colour(kind), rough=0.45, emit=0.3)
-            add_curve(f"cable_{c['src']}__{c['dst']}", [[tuple(a), tuple(b)] for a, b in zip(c['points'], c['points'][1:])], 0.014, m, col_ch)
+            add_curve(f"cable_{c['src']}__{c['dst']}", [[tuple(a), tuple(b)] for a, b in zip(pts, pts[1:])], CABLE_R, m, col_ch)
         channels = {'nodes': nodes, 'edges': [], 'attachments': channels['attachments']}
     by_channel, node_kind = {}, {}
     for e in channels['edges']:
@@ -477,6 +544,10 @@ def build_layout(C, labels_mode):
         add_edges(o, 0.008, col_act)
         add_anchor(it['id'], codes[it['id']], 'actuator', p, h * 1.4)
 
+    add_name_labels(labels_mode)
+
+
+def add_name_labels(labels_mode):
     if labels_mode == 'names':
         col_lab, m_label = collection('Labels'), mat_flat('label_black', (0.0, 0.0, 0.0))
         for a in ANCHORS:
@@ -485,9 +556,10 @@ def build_layout(C, labels_mode):
 
 
 # -------------------------------------------------------------------------------------------------------- cable space
-def voxel_surface(occ, origin, spacing):
+def voxel_surface(occ, origin, spacing, solid=None):
     """Outer faces of the union of cubes (edge = spacing) centred on the True voxels of `occ`: (verts, quads).
-    Faces between two occupied voxels are dropped, so a translucent material shows one shell per region, not every cube."""
+    Faces between two occupied voxels are dropped, so a translucent material shows one shell per region, not every cube;
+    `solid` (default `occ`) also drops the faces towards a neighbouring region that draws the shared face itself."""
     import numpy as np
     vid, verts, faces = {}, [], []
 
@@ -498,7 +570,7 @@ def voxel_surface(occ, origin, spacing):
             verts.append(tuple(origin[a] + (key[a] - 0.5) * spacing for a in range(3)))
         return vid[key]
 
-    pad = np.pad(occ, 1)
+    pad = np.pad(occ if solid is None else solid, 1)
     for a in range(3):
         b, c = (a + 1) % 3, (a + 2) % 3
         for s in (1, -1):
@@ -517,7 +589,7 @@ def voxel_surface(occ, origin, spacing):
     return verts, faces
 
 
-def build_installation_space(path):
+def build_installation_space(path, ecu_region=True):
     """The one installation space (routing_space.npz): every mountable voxel, coloured by what fits there.
     grey = a cable bundle fits (clearance >= cable radius); green = a control unit fits as well (clearance >= ECU fit radius).
     One collection, one data set; the colours are two thresholds on the same clearance map."""
@@ -528,12 +600,15 @@ def build_installation_space(path):
     free = d['free']
     ecu = d['ecu_clear'] > 0 if 'ecu_clear' in d.files else np.zeros_like(free)
     col = collection('Installation space')
-    classes = [('space_cable', free & ~ecu, (0.50, 0.50, 0.55), 0.12, 'cable bundle fits'),
-               ('space_ecu', ecu, MARKER['site'], 0.35, 'control unit fits')]
-    for name, occ, rgb, alpha, label in classes:
-        if not occ.any():
+    # the grey shell leaves out the faces it shares with the green one: two surfaces in the same place render as one
+    # of them (mostly the grey), which hid the green under the grey cable band, e.g. below every used trunk cell
+    c_rgb, c_a, e_rgb, e_a = SPACE_STYLE['space' if SPACE_ONLY else 'default']
+    classes = [('space_cable', free & ~ecu, free, c_rgb, c_a, 'cable bundle fits'),
+               ('space_ecu', ecu, ecu, e_rgb, e_a, 'control unit fits')]
+    for name, occ, solid, rgb, alpha, label in classes:
+        if not occ.any() or (name == 'space_ecu' and not ecu_region):
             continue
-        verts, faces = voxel_surface(occ, origin, spacing)
+        verts, faces = voxel_surface(occ, origin, spacing, solid)
         bm = bmesh.new()
         bv = [bm.verts.new(v) for v in verts]
         for f in faces:
@@ -599,8 +674,22 @@ def build_env(scene, vehicle, args):
     cam.location, cam.rotation_euler = (10.0, 0.0, 0.90), (math.radians(90), 0, math.radians(90))
     cam.data.type, cam.data.ortho_scale = 'ORTHO', L + 0.85
     cams['side'] = cam
-    for cam in cams.values():
-        cam.data.clip_end = 100
+    # rear / front: orthographic section views zoomed to the car's width; the camera's clip range cuts the car at
+    # y = -1.0 m (rear: trunk cells, looking forward, image right = right side of the car) and y = +0.8 m (front: engine
+    # bay and dashboard cells, looking backward, image right = left side of the car)
+    cam = bpy.data.objects.new('cam_rear', bpy.data.cameras.new('cam_rear'))
+    cam.location, cam.rotation_euler = (0.0, -10.0, 0.75), (math.radians(90), 0, 0)
+    cam.data.type, cam.data.ortho_scale = 'ORTHO', 2.6
+    cam['label_scale'] = 0.4   # labels and their spacing shrink with the zoom (place_labels)
+    cams['rear'] = cam
+    cam = bpy.data.objects.new('cam_front', bpy.data.cameras.new('cam_front'))
+    cam.location, cam.rotation_euler = (0.0, 10.0, 0.75), (math.radians(90), 0, math.radians(180))
+    cam.data.type, cam.data.ortho_scale = 'ORTHO', 2.6
+    cam['label_scale'] = 0.4
+    cams['front'] = cam
+    clips = {'rear': (1.0, 9.0), 'front': (1.0, 9.2)}
+    for name, cam in cams.items():
+        cam.data.clip_start, cam.data.clip_end = clips.get(name, (0.1, 100))
         col.objects.link(cam)
     scene.camera = cams['iso']
 
@@ -650,30 +739,36 @@ def place_labels(scene, cam):
     def outside(a):
         return max(0.0, 0.01 - a[0]) + max(0.0, a[1] - 0.99) + max(0.0, 0.12 - a[2]) + max(0.0, a[3] - 0.99)
 
-    for L in LABELS:
+    f = float(cam.get('label_scale', 1.0))   # zoomed views: smaller labels, tighter rings
+    for L in LABELS:   # a label whose marker lies outside the camera's clip range (section views) is left out of this view
         L['obj'].rotation_euler = rot
+        L['obj'].scale = (f, f, f)
+        depth = world_to_camera_view(scene, cam, L['anchor']).z
+        L['obj'].hide_render = not (cam.data.clip_start <= depth <= cam.data.clip_end)
     bpy.context.view_layer.update()
+    active = [i for i, L in enumerate(LABELS) if not L['obj'].hide_render]
     markers = [rect(L['anchor'], 2 * L['r'], 2 * L['r']) for L in LABELS]
     placed, leaders = [], []
-    order = sorted(range(len(LABELS)), key=lambda i: -(world_to_camera_view(scene, cam, LABELS[i]['anchor']).z))  # far first
+    order = sorted(active, key=lambda i: -(world_to_camera_view(scene, cam, LABELS[i]['anchor']).z))  # far first
     for i in order:
         L = LABELS[i]
         o, A, r = L['obj'], L['anchor'], L['r']
         w, h = o.dimensions.x, o.dimensions.y
-        gap = 0.03
-        ux, uy = r + gap + w / 2, r + gap + h / 2
+        gap = 0.03 * f
+        ux, uy = r * f + gap + w / 2, r * f + gap + h / 2
         own = rect(A, w, h)
         own_area = max(1e-9, (own[1] - own[0]) * (own[3] - own[2]))   # overlaps are scored as a fraction of the label's own area
         ring_pen = 0.02                                                 # a 2 % overlap is preferred to moving one ring further out
         best, best_score = None, None
         for k in range(5):
-            ring = [(0, uy + k * (h + 0.03)), (0, -(uy + k * (h + 0.03))), (ux + k * 0.16, 0), (-(ux + k * 0.16), 0),
-                    (ux * 0.7 + k * 0.16, uy + k * (h + 0.03)), (-(ux * 0.7 + k * 0.16), uy + k * (h + 0.03)),
-                    (ux * 0.7 + k * 0.16, -(uy + k * (h + 0.03))), (-(ux * 0.7 + k * 0.16), -(uy + k * (h + 0.03)))]
+            sx, sy = 0.16 * f, h + 0.03 * f
+            ring = [(0, uy + k * sy), (0, -(uy + k * sy)), (ux + k * sx, 0), (-(ux + k * sx), 0),
+                    (ux * 0.7 + k * sx, uy + k * sy), (-(ux * 0.7 + k * sx), uy + k * sy),
+                    (ux * 0.7 + k * sx, -(uy + k * sy)), (-(ux * 0.7 + k * sx), -(uy + k * sy))]
             for dx, dy in ring:
                 C = A + right * dx + up * dy
                 rc = rect(C, w, h)
-                score = (sum(overlap(rc, p) for p in placed) + 2.0 * sum(overlap(rc, m) for j, m in enumerate(markers) if j != i)) / own_area
+                score = (sum(overlap(rc, p) for p in placed) + 2.0 * sum(overlap(rc, markers[j]) for j in active if j != i)) / own_area
                 score += outside(rc) * 50.0 + ring_pen * k
                 if best_score is None or score < best_score:
                     best, best_score = (C, rc, dx, dy, k), score
@@ -693,7 +788,7 @@ def place_labels(scene, cam):
         bpy.data.objects.remove(old)
         bpy.data.curves.remove(cu)
     if leaders:
-        add_curve('leaders', leaders, 0.005, mat_flat('leader_grey', (0.12, 0.12, 0.12)), bpy.data.collections['Labels'], resolution=1)
+        add_curve('leaders', leaders, 0.005 * f, mat_flat('leader_grey', (0.12, 0.12, 0.12)), bpy.data.collections['Labels'], resolution=1)
 
 
 def project_anchors(scene, cam, length):
@@ -754,20 +849,24 @@ def render_views(scene, cams, args, outdir, length):
 
 
 def build(args):
-    bad = [v for v in args.views if v not in ('iso', 'top', 'side')]
+    bad = [v for v in args.views if v not in ('iso', 'top', 'side', 'rear', 'front')]
     if bad:
-        raise SystemExit(f'unknown views {bad}; choose from iso, top, side')
+        raise SystemExit(f'unknown views {bad}; choose from iso, top, side, rear, front')
     C = load_configs(args.config_dir, args.solution)
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
     scene.unit_settings.system = 'METRIC'
     import_car(args.car, collection('Car'), C['vehicle']['axles'])
-    global SHOW_DROPS, SHOW_SITES
+    global SHOW_DROPS, SHOW_SITES, SPACE_ONLY, CURATED
+    SPACE_ONLY = args.space_only
+    CURATED = all(s.get('bbox') for s in C['sites'])
+    if SPACE_ONLY:
+        args.band = args.show_sites = True
     SHOW_DROPS, SHOW_SITES = args.show_drops, args.show_sites
     build_layout(C, args.labels)
     band_path = os.path.join(args.config_dir, 'routing_space.npz')
     if os.path.exists(band_path):
-        build_installation_space(band_path)   # always in the .blend; rendered only with --band
+        build_installation_space(band_path, ecu_region=not CURATED)   # always in the .blend; rendered only with --band; curated cells: no scanned ECU region
         band_col = bpy.data.collections.get('Installation space')
         if band_col is not None and not args.band:
             band_col.hide_render = True
@@ -787,7 +886,7 @@ def build(args):
         render_views(scene, cams, args, args.outdir, C['vehicle']['dimensions']['length'])
         cmd = [args.python, os.path.abspath(__file__), '--compose', '--outdir', args.outdir, '--views', ','.join(args.views),
                *(['--solution', args.solution] if args.solution else []),
-               '--config_dir', args.config_dir, '--labels', args.labels] + (['--band'] if args.band else [])
+               '--config_dir', args.config_dir, '--labels', args.labels] + (['--band'] if args.band else []) + (['--space_only'] if args.space_only else [])
         print('compose:', ' '.join(cmd))
         r = subprocess.run(cmd)
         if r.returncode != 0:
@@ -805,7 +904,9 @@ def hex_colour(c):
 
 TITLES = {'iso': 'IONIQ 5 N E/E layout - perspective from front-left, above',
           'top': 'Top view - FRONT OF THE CAR ON THE LEFT (roof + glass transparent)',
-          'side': 'Side view from the right (+x) - front on the right (shell transparent)'}
+          'side': 'Side view from the right (+x) - front on the right (shell transparent)',
+          'rear': 'Rear section view - the car cut 1.0 m behind its middle, looking forward: trunk cells (image right = right side of the car)',
+          'front': 'Front section view - cut 0.8 m ahead of the middle, looking backward: engine bay and dashboard cells (image right = left side of the car)'}
 DARK, GREY_OUTLINE = (20, 20, 20), (40, 40, 40)
 
 
@@ -823,13 +924,30 @@ def fonts(size):
 def marker_entries(codes, labels_mode, n_sites, band, compact):
     """Colour-key rows (swatch kind, linear rgb, text) for the markers and blocks; swatch shapes follow the 3D shape coding."""
     numbered = labels_mode == 'numbers'
+    if SPACE_ONLY:
+        c_rgb, _, e_rgb, _ = SPACE_STYLE['space']
+        if CURATED:
+            cell = (f'candidate cell ({n_sites}; box = one control-unit slot 300 x 200 x 60 mm, label = cell id)' if compact else
+                    f'candidate cell ({n_sites} handed to the optimiser; box = the slot of one control unit, 300 x 200 x 60 mm, at a real mounting place, label = cell id)')
+            return [('block', MARKER['site'], cell), ('block', c_rgb, 'space: cable bundle fits' if compact else 'installation space, blue where a cable bundle fits (body scan)'),
+                    ('ghost', None, 'car body / interior' if compact else 'IONIQ 5 N body / interior (transparent)')]
+        if compact:
+            return [('block', MARKER['site'], f'candidate cell ({n_sites}; cube = one 120 mm lattice cell, label = cell id)'), ('block', e_rgb, 'space: control unit fits'),
+                    ('block', c_rgb, 'space: cable bundle fits'), ('ghost', None, 'car body / interior')]
+        return [('block', MARKER['site'], f'candidate cell ({n_sites} handed to the optimiser; cube = one lattice cell of the ECU space, 120 mm; a unit of 300 x 200 x 60 mm is centred there; label = cell id)'),
+                ('block', e_rgb, 'installation space, light green where a control unit fits (clearance >= ECU fit radius)'),
+                ('block', c_rgb, 'installation space, blue where a cable bundle fits (same clearance map, lower threshold)'),
+                ('ghost', None, 'IONIQ 5 N body / interior (transparent)')]
     if compact:
-        site = ('ECU site (No. = legend)' if numbered else 'ECU site (label = id)' if labels_mode == 'names' else 'ECU site') if SHOW_SITES else 'installation space: green = ECU fits'
+        site = ('ECU site (No. = legend)' if numbered else 'ECU site (label = id)' if labels_mode == 'names' else 'ECU site') if SHOW_SITES else \
+            'ECU (green box; blue = with switch)' if CURATED else 'installation space: green = ECU fits'
         cam, lid, imu, act = ('camera (C#)', 'lidar (L#)', 'IMU (I) / GPS (G)', 'actuator (A#)') if numbered else ('camera', 'lidar', 'IMU / GPS', 'actuator')
         bat, mot, car, space = 'battery', 'e-motor', 'car body / interior', 'installation space: grey = cable fits'
         aux = 'aux. unit'
     else:
-        site = (f'candidate ECU site ({n_sites}; ' + ('badge = No. below)' if numbered else 'label = site id)' if labels_mode == 'names' else 'unlabelled)')) if SHOW_SITES else f'installation space, green where a control unit fits ({n_sites} cells handed to the optimiser)'
+        site = (f'candidate ECU site ({n_sites}; ' + ('badge = No. below)' if numbered else 'label = site id)' if labels_mode == 'names' else 'unlabelled)')) if SHOW_SITES else \
+            f'control unit (green box at its cell, blue when it also carries the network switch; label = cell: hardware; {n_sites} candidate cells)' if CURATED else \
+            f'installation space, green where a control unit fits ({n_sites} cells handed to the optimiser)'
         cam, lid, imu, act = 'camera (small sphere)', 'lidar (puck)', 'IMU / GPS (small sphere)', 'actuator (outlined cube)'
         if numbered:
             cam, lid = f"camera (small sphere, {code_range(codes, 'C')})", f"lidar (puck, {code_range(codes, 'L')})"
@@ -1038,8 +1156,9 @@ def write_legend(args, C, codes, present, outdir):
     from PIL import Image, ImageDraw
     sites, sensors, actuators = C['sites'], C['sensors'], C['actuators']
     key = marker_entries(codes, args.labels, len(sites), args.band, compact=False)
-    key += [('line', channel_colour(k), CABLE_NAMES.get(k, f'cable: {k}')) for k in present]
-    site_rows = [(str(i), s['id'], s['zone'], f"{s['thermal_class']} ({s.get('derating', 1.0):.2f})") for i, s in enumerate(sites, 1)]
+    if not SPACE_ONLY:
+        key += [('line', channel_colour(k), CABLE_NAMES.get(k, f'cable: {k}')) for k in present]
+    site_rows = [(str(i), s['id'], s.get('name', s['zone']), f"{s['thermal_class']} ({s.get('derating', 1.0):.2f})") for i, s in enumerate(sites, 1)]
     per_rows = [(codes[it['id']], it['id'], it['type']) for it in sensors + actuators]
     per_kinds = [it['type'] for it in sensors] + ['actuator'] * len(actuators)
 
@@ -1083,22 +1202,37 @@ def write_legend(args, C, codes, present, outdir):
 
 def compose(args):
     from PIL import Image, ImageDraw, ImageFilter
+    global SPACE_ONLY, SHOW_SITES, CURATED
+    SPACE_ONLY = args.space_only
+    SHOW_SITES = args.show_sites or SPACE_ONLY
     outdir = args.outdir
     C = load_configs(args.config_dir, args.solution)
+    CURATED = all(s.get('bbox') for s in C['sites'])
     codes = peripheral_codes(C['sensors'], C['actuators'])
     present = kinds_present(C['channels']) if C['cables'] is None else kinds_present({'edges': C['cables']['cables']})
     font, font_t, font_s = fonts(19)[0], fonts(16)[1], fonts(13)[0]
     ch = C['channels']
     if C['cables'] is not None:
         sol = C['solution']
-        subtitle = (f"optimisation result: {len(C['cables']['used_sites'])} ECUs on {C['cables'].get('num_candidate_sites', len(C['sites']))} candidate cells  |  "
+        subtitle = (f"optimisation result: {len(set((sol.get('assignment') or {}).values()))} ECUs + {len(set(C['cables']['used_sites']) - set((sol.get('assignment') or {}).values()))} switch nodes on {C['cables'].get('num_candidate_sites', len(C['sites']))} candidate cells  |  "
                     f"{len(C['cables']['cables'])} cables, {C['cables']['total_routed_length_m']} m routed  |  "
                     f"total cost {sol.get('total_cost', 0):.0f}  |  {len(present)} cable types")
+    elif SPACE_ONLY:
+        import numpy as np
+        d = np.load(os.path.join(args.config_dir, 'routing_space.npz'))
+        n_free, n_ecu = int(d['free'].sum()), int((d['ecu_clear'] > 0).sum()) if 'ecu_clear' in d.files else 0
+        if CURATED:
+            subtitle = (f"cable space from the body scan ({1000 * float(d['spacing']):.0f} mm grid): {n_free} voxels where a cable bundle fits (blue)  |  "
+                        f"{len(C['sites'])} candidate cells = control-unit slots (300 x 200 x 60 mm) at real mounting places, symmetric left / right (green boxes, label = cell id)")
+        else:
+            subtitle = (f"installation space from the body scan ({1000 * float(d['spacing']):.0f} mm grid): {n_free} voxels where a cable bundle fits (blue), "
+                        f"{n_ecu} of them where a control unit fits (light green)  |  {len(C['sites'])} candidate cells ({1000 * C['grid_spacing']:.0f} mm lattice, green cubes, label = cell id)")
     else:
         subtitle = (f"{len(C['sites'])} candidate ECU sites  |  {len(C['sensors'])} sensors  |  {len(C['actuators'])} actuators  |  "
                     f"harness backbone: {len(ch['nodes'])} nodes, {len(ch['edges'])} edges, {len(present)} cable types")
-    entries = marker_entries(codes, args.labels, len(C['sites']), args.band, compact=True) + [('text', None, 'cables:')]
-    entries += [('line', channel_colour(k), CABLE_NAMES.get(k, k)) for k in present]
+    entries = marker_entries(codes, args.labels, len(C['sites']), args.band, compact=True)
+    if not SPACE_ONLY:
+        entries += [('text', None, 'cables:')] + [('line', channel_colour(k), CABLE_NAMES.get(k, k)) for k in present]
     for view in args.views:
         img = Image.open(os.path.join(outdir, f'{view}_raw.png')).convert('RGBA')
         W, H = img.size
@@ -1113,10 +1247,11 @@ def compose(args):
         draw = ImageDraw.Draw(img, 'RGBA')
         rows = band_rows(draw, entries, font, W)
         band_h = len(rows) * 30 + 2 * 14
-        title = TITLES.get(view, view)
+        title = TITLES.get(view, view).replace('E/E layout', 'installation space') if SPACE_ONLY else TITLES.get(view, view)
         keep_out = [(10, H - band_h - 10, W - 10, H - 10), title_box(draw, title, subtitle, font_t, font_s)]
         proj = json.load(open(os.path.join(outdir, f'{view}_anchors.json')))
-        draw_front(img, proj['front'], scale)
+        if view not in ('rear', 'front'):   # the FRONT arrow points along the view axis in the section views
+            draw_front(img, proj['front'], scale)
         if args.labels == 'numbers':
             draw_badges(img, proj['anchors'], scale, keep_out)
         draw_legend_band(img, rows, font)

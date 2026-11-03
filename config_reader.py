@@ -65,6 +65,8 @@ class ConfigReader:
         """
         cable_types = {}
         for name, specs in self.bus_config['cable_types'].items():
+            if not isinstance(specs, dict):
+                continue   # a comment entry
             cable_types[name] = Interface(
                 name=name,
                 cost_per_meter=specs['cost_per_meter'],
@@ -73,7 +75,8 @@ class ConfigReader:
                 capacity=specs.get('capacity', float('inf')),
                 port_cost = specs.get('port_cost', 0),
                 hop_latency_ms=float(specs.get('hop_latency_ms', 0.0)),
-                frame_kbit=float(specs.get('frame_kbit', float('inf')))
+                frame_kbit=float(specs.get('frame_kbit', float('inf'))),
+                max_length_m=float(specs.get('max_length_m', float('inf')) or float('inf'))
             )
         return cable_types
     
@@ -115,6 +118,7 @@ class ConfigReader:
             'site_ram_cap': site.get('ram_cap'),
             'site_rom_cap': site.get('rom_cap'),
             'site_fixed_cost': site.get('fixed_cost', 0),
+            'switch_node_cost': site.get('switch_node_cost', 0),   # a unit with only a switch (2026-10-30)
         }
     
     def get_uncertainty_config(self):

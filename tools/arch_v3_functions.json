@@ -186,7 +186,11 @@
     "bus": "CAN",
     "asil": 0,
     "period_ms": 100,
-    "source": "AI_BODY 4.11"
+    "source": "AI_BODY 4.11",
+    "hw_required": [
+     "HSM"
+    ],
+    "hw_source": "key authentication from secure key storage (HIS SHE / EVITA medium HSM)"
    },
    {
     "id": "SeatClimatization",
@@ -214,7 +218,11 @@
     "bus": "CAN",
     "asil": 0,
     "period_ms": 50,
-    "source": "AI_BODY 4.13"
+    "source": "AI_BODY 4.13",
+    "hw_required": [
+     "HSM"
+    ],
+    "hw_source": "key authentication from secure key storage (HIS SHE / EVITA medium HSM)"
    },
    {
     "id": "RemoteKeylessEntry",
@@ -226,7 +234,11 @@
     "bus": "CAN",
     "asil": 0,
     "period_ms": 50,
-    "source": "AI_BODY 4.14"
+    "source": "AI_BODY 4.14",
+    "hw_required": [
+     "HSM"
+    ],
+    "hw_source": "key authentication from secure key storage (HIS SHE / EVITA medium HSM)"
    },
    {
     "id": "BodySensors",
@@ -657,7 +669,11 @@
     "bus": "FLEXRAY",
     "asil": 4,
     "period_ms": 1,
-    "source": "INFINEON_INV (current loop 50 us inside the component, torque command 1-5 ms)"
+    "source": "INFINEON_INV (current loop 50 us inside the component, torque command 1-5 ms)",
+    "hw_required": [
+     "DSP"
+    ],
+    "hw_source": "field-oriented inverter control on DSP-class real-time controllers (TI C2000 in the SiC traction inverter reference design TIDUF23)"
    },
    {
     "id": "BatteryManagement",
@@ -690,7 +706,11 @@
     "bus": "CAN",
     "asil": 2,
     "period_ms": 100,
-    "source": "est (on-board charger / charge communication; AI_PT has no charging cluster)"
+    "source": "est (on-board charger / charge communication; AI_PT has no charging cluster)",
+    "hw_required": [
+     "HSM"
+    ],
+    "hw_source": "ISO 15118 Plug & Charge credentials: the EVCC holds its contract private key in an HSM (Fraunhofer SIT TR-2019-04, security guideline for ISO 15118)"
    },
    {
     "id": "ThermalManagement",
@@ -827,7 +847,11 @@
      "platform": "posix",
      "scope": "function total, shared by its components",
      "source": "one media application + audio service; RAM: Android 15 CDD 3.7 minimum application memory for large/xlarge screens (80-144 MB at 160-280 dpi, 128-192 MB at 320 dpi, up to 384 MB at 480 dpi) lower rows; ROM: est."
-    }
+    },
+    "hw_required": [
+     "DSP"
+    ],
+    "hw_source": "automotive audio DSP: equalisation, crossover, noise cancellation, spatial audio (TI audio DSP SoCs; ADI automotive audio DSPs)"
    },
    {
     "id": "NavigationUI",
@@ -875,7 +899,11 @@
      "platform": "posix",
      "scope": "function total, shared by its components",
      "source": "ROM: on-device ASR models 153-891 MB (Parakeet Android SDK), \"a couple hundred MB\" per model (Google Speech On-Device, built for cars); RAM: 232 MB peak (same SDK), est. range"
-    }
+    },
+    "hw_required": [
+     "DSP"
+    ],
+    "hw_source": "hands-free speech and noise reduction on fixed-point automotive DSPs (ADI automotive audio DSPs)"
    },
    {
     "id": "HeadUpDisplay",
@@ -976,7 +1004,11 @@
      "platform": "posix",
      "scope": "function total, shared by its components",
      "source": "all TCU services: the whole TCU software incl. OS fits 512 MB RAM / 8 GB eMMC (iWave iW-RainboW-G26 TCU, Linux 5.15); OS share excluded, est. split"
-    }
+    },
+    "hw_required": [
+     "HSM"
+    ],
+    "hw_source": "EVITA full HSM for protecting external communication (Henniger, EVITA 2010, evita-project.org/Publications/Hen10.pdf); GlobalPlatform HSM evolution 2025: gateways, V2X, TLS / SecOC on the full class"
    },
    {
     "id": "ECall",
@@ -999,7 +1031,11 @@
      "platform": "posix",
      "scope": "function total, shared by its components",
      "source": "est. small Linux service on the TCU"
-    }
+    },
+    "hw_required": [
+     "HSM"
+    ],
+    "hw_source": "EVITA full HSM for protecting external communication (Henniger, EVITA 2010, evita-project.org/Publications/Hen10.pdf); GlobalPlatform HSM evolution 2025: gateways, V2X, TLS / SecOC on the full class"
    },
    {
     "id": "V2xGateway",
@@ -1024,7 +1060,11 @@
      "platform": "posix",
      "scope": "function total, shared by its components",
      "source": "full ETSI ITS-G5 / C-V2X stack: OBU with 256 MB DDR3 / 512 MB NAND (Unex OBU-352); stack share est."
-    }
+    },
+    "hw_required": [
+     "HSM"
+    ],
+    "hw_source": "EVITA full HSM for protecting external communication (Henniger, EVITA 2010, evita-project.org/Publications/Hen10.pdf); GlobalPlatform HSM evolution 2025: gateways, V2X, TLS / SecOC on the full class"
    },
    {
     "id": "OtaUpdateManager",
@@ -1047,7 +1087,11 @@
      "platform": "posix",
      "scope": "function total, shared by its components",
      "source": "aktualizr OTA client: binary 2-5 MB, ~20 MB RAM; primary ECU min 64 MB RAM / 128 MB storage, recommended 256 MB / 512 MB for large updates (HERE OTA Connect developer guide 2020.7)"
-    }
+    },
+    "hw_required": [
+     "HSM"
+    ],
+    "hw_source": "EVITA full HSM for protecting external communication (Henniger, EVITA 2010, evita-project.org/Publications/Hen10.pdf); GlobalPlatform HSM evolution 2025: gateways, V2X, TLS / SecOC on the full class"
    },
    {
     "id": "CentralGateway",
@@ -1057,7 +1101,11 @@
     "bus": "ETH",
     "asil": 3,
     "period_ms": 1,
-    "source": "GATEWAY"
+    "source": "GATEWAY",
+    "hw_required": [
+     "HSM"
+    ],
+    "hw_source": "EVITA full HSM for protecting external communication (Henniger, EVITA 2010, evita-project.org/Publications/Hen10.pdf); GlobalPlatform HSM evolution 2025: gateways, V2X, TLS / SecOC on the full class"
    },
    {
     "id": "IntrusionDetection",
@@ -1090,7 +1138,11 @@
      "platform": "posix",
      "scope": "function total, shared by its components",
      "source": "est. Linux / Adaptive service process"
-    }
+    },
+    "hw_required": [
+     "HSM"
+    ],
+    "hw_source": "EVITA full HSM for protecting external communication (Henniger, EVITA 2010, evita-project.org/Publications/Hen10.pdf); GlobalPlatform HSM evolution 2025: gateways, V2X, TLS / SecOC on the full class"
    },
    {
     "id": "WifiBluetooth",
@@ -1113,7 +1165,11 @@
      "platform": "posix",
      "scope": "function total, shared by its components",
      "source": "est. (stacks + radio firmware)"
-    }
+    },
+    "hw_required": [
+     "HSM"
+    ],
+    "hw_source": "EVITA full HSM for protecting external communication (Henniger, EVITA 2010, evita-project.org/Publications/Hen10.pdf); GlobalPlatform HSM evolution 2025: gateways, V2X, TLS / SecOC on the full class"
    }
   ]
  }
