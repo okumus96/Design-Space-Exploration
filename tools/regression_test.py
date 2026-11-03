@@ -77,6 +77,9 @@ def run_case(name, flags, levels):
     shutil.rmtree(cfg, ignore_errors=True)
     shutil.rmtree(out, ignore_errors=True)
     over = [('uncertainty.json', lambda d: d['rho'].__setitem__('levels', levels))] if levels is not None else []
+    # the lite instance's 4 cells are all farther than SPI's 1 m reach from the roof IMU (2026-11-03): the test cases relax
+    # the SPI reach to 3 m; the reach rule itself is verified on the 30-cell instances
+    over.append(('buses.json', lambda d: d['cable_types']['SPI'].__setitem__('max_length_m', 3.0)))
     if name in CASE_BACKBONE:   # valid extra constraints for this case only (configs/buses.json defaults stay off)
         over.append(('buses.json', lambda d: d['backbone'].update(CASE_BACKBONE[name])))
     copy_configs(cfg, over)

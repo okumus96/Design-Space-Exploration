@@ -136,8 +136,12 @@ AW_TOPS = {   # node -> (TOPS, source); only nodes that run a DNN on the acceler
         'CenterPoint-Pillar at 0.32 m pillars ~16 GOPs per sweep (PillarNeXt, Li et al. CVPR 2023, Table 1: Pillar-B 281 GFLOPs at '
         '0.075 m, scaled by the pillar count), 10 Hz, one inference on the concatenated cloud'),
 }
-# the CPU side and the memory of the accelerated DNN container on the target (user 2026-11-03; see the de-rate below)
-DNN_CPU_CORE_SHARE, DNN_RAM_MB = 0.3, 512
+# the CPU side and the memory of the accelerated DNN container on the target (2026-11-03). CPU: measured per thread in the
+# camera run (autoware_bench/out_cam2, job 3614): the container's work thread 59.5 % and its CUDA event thread 5.5 % of a host
+# core at 15.8 Hz; the other 270 threads (0.7 % each, 190 % together) are the multi-threaded executor's polling on a 256-CPU
+# host, not work of the function; per 10 Hz stream 41 % of a host core x 2.56 x 12,250 DMIPS = 12,860 DMIPS (an upper bound: the
+# work thread's wait for the GPU is inside it). RAM: assumption 512 MB (the 3.2 GB RSS holds the CUDA context, not separable).
+DNN_CPU_DMIPS, DNN_RAM_MB = 12860.0, 512
 TL_TOPS = (round((26.8 + 7.2) * 10 / TOPS_ETA / 1000, 2),
            'per traffic-light camera: fine detector YOLOX-S 640x640 26.8 GOPs (Ge et al. arXiv 2107.08430) + classifiers '
            'MobileNetV2 0.6 GOPs (Sandler et al. CVPR 2018) for up to 6 lights x car / pedestrian, 10 Hz')
@@ -606,9 +610,10 @@ def main():
             # stream is the pre- and post-processing (resize, normalise, NMS, crops for the classifiers), taken as 0.3 of
             # a Cortex-A76 core, and the memory the weights (YOLOX-S 36 MB, MobileNetV2 14 MB) plus runtime buffers,
             # taken as 512 MB; provisional until measured with blocking synchronisation (user 2026-11-03)
-            c['cpu_dmips'] = round(DNN_CPU_CORE_SHARE * CUR['reference_core_dmips'], 1)
-            c['cpu_dmips_source'] = ('assumption 2026-11-03: %.1f of a Cortex-A76 core per 10 Hz stream for the CPU side of an accelerated DNN '
-                                     'container (pre- / post-processing); the measured host share (264 %% of a core) includes CUDA spin-wait; provisional' % DNN_CPU_CORE_SHARE)
+            c['cpu_dmips'] = DNN_CPU_DMIPS
+            c['cpu_dmips_source'] = ('measured per thread 2026-11-03 (camera run, autoware_bench/out_cam2): work thread 59.5 %% + CUDA event thread 5.5 %% of a host '
+                                     'core at 15.8 Hz, scaled to 10 Hz, x 2.56 x 12,250 DMIPS; the 270 executor polling threads of the 256-CPU host (190 %%) excluded; '
+                                     'upper bound (the GPU wait sits inside the work thread)')
             c['ram_kb'] = DNN_RAM_MB * 1024.0
             c['memory_source'] = ('ram_kb: assumption 2026-11-03: %d MB (weights + runtime buffers; the measured 3.2 GB RSS holds the CUDA context); '
                                   'rom_kb: see rom_source' % DNN_RAM_MB)
