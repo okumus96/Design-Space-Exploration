@@ -52,6 +52,10 @@ from architecture_loader import load_architecture_from_json   # noqa: E402
 COMPUTE_CPU, IO_LOCAL, DOMAIN_SHARE = 0.40, 4, 0.50
 DOMAIN_GROUP = {'ADAS': 'automated driving', 'Sensing': 'automated driving', 'Platform': None}
 TYPES = ['central compute', 'domain controller', 'zone controller + compute', 'zone controller', 'edge ECU']
+# ECU colours (user 2026-11-06: the roles are taken out of the figure; every ECU its own colour, its endpoints in the
+# same colour): the reference categorical hues in their fixed order, blue last (blue = the partitions and ETH);
+# ECUs beyond eight are grey; every ECU and endpoint also carries its E-label
+ECU_COLOURS = ['#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#7b3f00', '#6250d6', '#e34948', '#2a78d6']   # 2026-11-06: slot 5 dark brown, the green was too close to the aqua (user)
 TYPE_COLOUR = {'central compute': '#eb6834', 'domain controller': '#6250d6', 'zone controller + compute': '#1baf7a',
                'zone controller': '#eda100', 'edge ECU': '#e87ba4'}
 # ASIL = an ordinal level -> one hue, light to dark (dataviz palette, blue ramp steps 150 .. 550)
@@ -62,16 +66,92 @@ CABLE_COLOUR = {'ETH': '#1461fa', 'CAN': '#0db333', 'LIN': '#f2cc14', 'FLEXRAY':
 INK, INK2, MUTED, GRID = '#0b0b0b', '#52514e', '#8a8984', '#dedcd6'
 # hardware features on a unit: small tabs on the ECU box in panel A (user 2026-11-03: tabs, not symbols)
 HW_ORDER = ['HW_ACC', 'SWITCH', 'DSP', 'HSM']
-HW_COLOUR = {'HW_ACC': '#0b0b0b', 'SWITCH': '#8a8984', 'DSP': '#dedcd6', 'HSM': '#ffffff'}
+HW_COLOUR = {'HW_ACC': '#0b0b0b', 'SWITCH': '#1461fa', 'DSP': '#7d3c98', 'HSM': '#ffd166'}   # 2026-11-04: DSP violet, HSM gold (grey / white were not told apart); 2026-11-06: switch in the ETH blue (the GPU modules use the grey ramp)
 HW_NAME = {'HW_ACC': 'accelerator (GPU)', 'SWITCH': 'Ethernet switch', 'DSP': 'DSP', 'HSM': 'security module'}
 BAR_FILL = '#52514e'
+# partition types and GPU modules (user 2026-11-06, second version: 'like a heatmap, darker as it grows'): one
+# single-hue ramp each, light = small, dark = large, ordered by the catalogue (partition types by CPU, GPU modules by
+# TOPS), so the colour of a type is the same in every figure of the same catalogue; partitions on the blue ramp (steps
+# 150 .. 700), GPU modules on a grey ramp ending in black; neighbouring steps >= 14 OKLab x100 for normal vision and
+# under protan / deutan / tritan simulation, the GPU greys >= 16 / 8 from the other hardware squares; the type name is
+# written on every partition box, the legend lists the types small to large with their capacity
+PART_RAMP = ['#b7d3f6', '#86b6ef', '#5598e7', '#2a78d6', '#1c5cab', '#104281', '#0d366b']
+GPU_RAMP = ['#b5b4ae', '#6b6a65', '#0b0b0b']
+
+
+def _ramp(ids, ramp):
+    """the ids (small to large) spread evenly over the ramp, the first id on its lightest step and the last on its darkest"""
+    n = len(ids)
+    return {k: ramp[round(i * (len(ramp) - 1) / (n - 1))] if n > 1 else ramp[-1] for i, k in enumerate(ids)}
+
+
+def _text_on(fill):
+    """ink or white text on a fill, by its relative luminance"""
+    r, g, b = (int(fill[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    return '#0b0b0b' if 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.5 else '#ffffff'
+
+
+def ptype_order(c):
+    """the catalogue's partition types, smallest CPU first ([] without partition types)"""
+    return sorted(c.types or {}, key=lambda k: (float(c.types[k].get('cpu', 0) or 0), k)) if c.types else []
+
+
+def gpu_order(c):
+    """the catalogue's GPU module types as (id, TOPS), smallest first ([] without GPU module types)"""
+    tys = (getattr(c, 'hw_cap', {}).get('HW_ACC') or {}).get('types') or []
+    return sorted(((str(t['id']), float(t['tops'])) for t in tys), key=lambda q: (q[1], q[0]))
+
+
+def part_colours(c, p):
+    """(fill, text colour) of a partition box: its partition type's ramp step, else (single-partition model) its ASIL level's"""
+    if p.get('ptype'):
+        fill = _ramp(ptype_order(c), PART_RAMP).get(p['ptype'], MUTED)
+        return fill, _text_on(fill)
+    return ASIL_FILL[p['asil']], ASIL_TEXT[p['asil']]
+
+
+def gpu_modules(c, site):
+    """the GPU modules of a cell as a list of type ids, largest first ([] without GPU module types)"""
+    mix = getattr(c, 'hw_types', {}).get((site, 'HW_ACC'), {}) or {}
+    rank = {k: i for i, (k, _t) in enumerate(gpu_order(c))}
+    return [k for k in sorted(mix, key=lambda k: (-rank.get(k, -1), k)) for _ in range(int(mix[k]))]
+
+
+def hw_glyphs(c, site, feats):
+    """the squares of a unit's hardware, in HW_ORDER: the GPU as one square per module in its type's ramp step when the
+    modules have types, else one square per feature"""
+    fill = _ramp([k for k, _t in gpu_order(c)], GPU_RAMP)
+    out = []
+    for f in [f for f in HW_ORDER if f in feats] + sorted(f for f in feats if f not in HW_ORDER):
+        mods = gpu_modules(c, site) if f == 'HW_ACC' else []
+        out += [fill.get(m, HW_COLOUR['HW_ACC']) for m in mods] if mods else [HW_COLOUR.get(f, MUTED)]
+    return out
+
+
+def ptype_handles(c, ecus, suffix=' partition'):
+    """legend entries of every partition type of the catalogue, smallest CPU first, with their CPU, unused ones
+    marked; [] without partition types"""
+    used = {p['ptype'] for parts in ecus.values() for p in parts if p.get('ptype')}
+    fill = _ramp(ptype_order(c), PART_RAMP)
+    return [Rectangle((0, 0), 1, 1, facecolor=fill.get(k, MUTED), edgecolor='none',
+                      label=f"{k}{suffix}, {float(c.types[k].get('cpu', 0) or 0):,.0f} DMIPS" + ('' if k in used else ' (not used)'))
+            for k in ptype_order(c)]
 
 
 def read(solution, config_dir, architecture):
     c = SolutionCheck(solution, config_dir, architecture)
     c.load()
     c.parse()
+    # partition types (2026-11-05): the type of every opened partition, as the checker's partition rule reads it
+    c.ptype = dict(c.sol.get('partition_types') or {}) if c.types else {}
     return c
+
+
+def cap_of(c, p, r, site):
+    """capacity of partition p in resource r after derating (CPU and TOPS by the cell's thermal class): its partition
+    type's capacity with partition types, else the single partition's; 0 when not given"""
+    cap = c.part_cap(p, r) if c.types else float(c.part.get(f'{r}_cap', 0) or 0)
+    return float(cap or 0.0) * (c.derate(site) if r in ('cpu', 'tops') else 1.0)
 
 
 def partition_table(c):
@@ -92,11 +172,12 @@ def partition_table(c):
         hot = [sc for sc, inst in mem if inst == 'r' and sc not in c.cold]
         cold = [sc for sc, inst in mem if inst == 'r' and sc in c.cold]
         util = {}
-        for r in RES:
-            cap = float(c.part.get(f'{r}_cap', 0) or 0)
+        for r in c.res:
+            cap = cap_of(c, p, r, site)
             if cap > 0:
-                util[r] = sum(c.demand(sc, r) for sc in prim + hot) / (cap * (h if r == 'cpu' else 1.0))
-        ecus[site].append({'name': p, 'asil': asil, 'prim': prim, 'hot': hot, 'cold': cold, 'util': util})
+                util[r] = sum(c.demand(sc, r) for sc in prim + hot) / cap
+        ecus[site].append({'name': p, 'asil': asil, 'prim': prim, 'hot': hot, 'cold': cold, 'util': util,
+                           'ptype': c.ptype.get(p)})
     for site in ecus:
         ecus[site].sort(key=lambda q: (q['asil'], q['name']))
     return ecus
@@ -150,11 +231,19 @@ def local_devices(c, sol, ecus, cells, dev):
 
 def ecu_types(c, ecus, sol, local):
     """the emergent type of every used ECU (rule in the module docstring) and the measures behind it"""
-    site_cpu = float(c.site_cfg.get('cpu_cap', 0) or 0) or 4 * float(c.part.get('cpu_cap', 1))
+    n_max = int(c.site_cfg.get('max_partitions', 4) or 4)
+    if c.types:   # partition types: no cell cap; the role measure's cap = the cell full of the largest partition type
+        site_cpu = n_max * max(t['cpu'] for t in c.types.values())
+    else:
+        site_cpu = float(c.site_cfg.get('cpu_cap', 0) or 0) or n_max * float(c.part.get('cpu_cap', 1))
     feats = defaultdict(set)
     for f in sol.get('hw_features', []):
         name, site = f.split('@')
         feats[site].add(name)
+    if c.types and c.tops_feature:   # the accelerator is inside a partition type with TOPS (TDA4VH, ORIN)
+        for site, parts in ecus.items():
+            if any(c.types.get(p.get('ptype'), {}).get('tops', 0) > 0 for p in parts):
+                feats[site].add(c.tops_feature)
     buses = defaultdict(int)
     for b in sol.get('buses', []):
         for u in b['units']:
@@ -167,6 +256,14 @@ def ecu_types(c, ecus, sol, local):
     out = {}
     for site, parts in ecus.items():
         cpu = sum(c.demand(sc, 'cpu') for p in parts for sc in p['prim'] + p['hot']) / (site_cpu * c.derate(site))
+        # utilisation of what is installed (user 2026-11-04): a partition is one compute block, so the unit's installed
+        # capacity is its partitions times the block, not the cell's 4-block cap (the role rule keeps the cap measure)
+        n_blocks = max(1, len(parts))
+        inst = {r: sum(cap_of(c, p['name'], r, site) for p in parts) for r in ('cpu', 'ram', 'tops')}   # installed, derated
+        load = {r: sum(c.demand(sc, r) for p in parts for sc in p['prim'] + p['hot']) for r in ('cpu', 'ram', 'tops')}
+        cpu_inst = load['cpu'] / inst['cpu'] if inst['cpu'] > 0 else 0.0
+        ram_inst = load['ram'] / inst['ram'] if inst['ram'] > 0 else 0.0
+        tops_inst = load['tops'] / inst['tops'] if inst['tops'] > 0 else None   # partition types only
         doms = defaultdict(int)
         for p in parts:
             for sc in p['prim']:
@@ -180,7 +277,7 @@ def ecu_types(c, ecus, sol, local):
         domain = share >= DOMAIN_SHARE
         t = ('domain controller' if compute and domain else 'zone controller + compute' if compute and io
              else 'central compute' if compute else 'zone controller' if io else 'edge ECU')
-        out[site] = {'type': t, 'cpu': cpu, 'devices': devices.get(site, {'sensor': 0, 'actuator': 0}), 'buses': buses[site],
+        out[site] = {'type': t, 'cpu': cpu, 'cpu_inst': cpu_inst, 'ram_inst': ram_inst, 'tops_inst': tops_inst, 'blocks': n_blocks, 'devices': devices.get(site, {'sensor': 0, 'actuator': 0}), 'buses': buses[site],
                      'feats': feats[site], 'zone': local[site]['zone'], 'served': local[site]['served'], 'hosted': local[site]['hosted'],
                      'comp': sum(len(p['prim']) for p in parts), 'top_domain': top_dom, 'domain_share': share}
     return out
@@ -274,9 +371,11 @@ def draw_panel_a(ax, render_dir, c, sol, types, labels, A, cells, dev, cables, t
     for d, xy in dev.items():
         kind = c.devices.get(d, {}).get('kind', 'sensor')
         x, y = px(xy)
-        ax.plot([x], [y], marker=('o' if kind == 'sensor' else 's'), ms=13.0, mfc='white', mec=INK, mew=1.1, zorder=3)
+        fill = types[host[d]]['colour'] if host.get(d) in types else 'white'   # 2026-11-06: the colour of its ECU
+        ax.plot([x], [y], marker=('o' if kind == 'sensor' else 's'), ms=13.0, mfc=fill, mec=INK, mew=1.1, zorder=3)
         if host.get(d) in labels:
-            ax.text(x, y, labels[host[d]], fontsize=5.2, fontweight='bold', color=INK, ha='center', va='center', zorder=4)
+            ax.text(x, y, labels[host[d]], fontsize=5.2, fontweight='bold', color=_text_on(fill) if fill != 'white' else INK,
+                    ha='center', va='center', zorder=4)
     big = max(1, max(q['comp'] for q in types.values()))
     boxes = {}
     for site, t in types.items():
@@ -309,7 +408,7 @@ def draw_panel_a(ax, render_dir, c, sol, types, labels, A, cells, dev, cables, t
             ax.plot([tx, x], [ty, y], color=INK, lw=1.0, zorder=3.5)
             ax.plot([tx], [ty], marker='o', ms=4, mfc=INK, mec=INK, zorder=3.5)
         ax.add_patch(FancyBboxPatch((x - sz / 2, y - sz / 3), sz, 2 * sz / 3, boxstyle='round,pad=0,rounding_size=7',
-                                    facecolor=TYPE_COLOUR[t['type']], edgecolor=INK, lw=1.0, zorder=4))
+                                    facecolor=t['colour'], edgecolor=INK, lw=1.0, zorder=4))
         # ports: circles in the cable colour hanging outward from the bottom edge, at most 6 per row; hardware: small
         # squares inside the box, top-left (user 2026-11-03: ports outward, hardware inward, different shapes)
         pp = (ports or {}).get(site, {})
@@ -323,12 +422,12 @@ def draw_panel_a(ax, render_dir, c, sol, types, labels, A, cells, dev, cables, t
             cy = y + sz / 3 + d * (0.35 + 1.05 * ri)
             for k, ptype in enumerate(row):
                 ax.add_patch(Circle((cx0 + k * step, cy), d / 2, facecolor=CABLE_COLOUR.get(ptype, MUTED), edgecolor=INK, lw=0.6, zorder=5))
-        feats = [f for f in HW_ORDER if f in t['feats']] + sorted(f for f in t['feats'] if f not in HW_ORDER)
-        hs = 0.17 * sz
-        for k, f in enumerate(feats):
+        glyphs = hw_glyphs(c, site, t['feats'])   # GPU modules: one square per module in its type's colour
+        hs = min(0.17 * sz, 0.88 * sz / max(1, len(glyphs)) - 0.04 * sz)
+        for k, colour in enumerate(glyphs):
             ax.add_patch(Rectangle((x - sz / 2 + 0.06 * sz + k * (hs + 0.04 * sz), y - sz / 3 + 0.05 * sz), hs, hs,
-                                   facecolor=HW_COLOUR.get(f, MUTED), edgecolor=INK, lw=0.6, zorder=6))
-        ax.text(x, y, labels[site], fontsize=9, color=INK, ha='center', va='center', zorder=7, fontweight='bold')
+                                   facecolor=colour, edgecolor=INK, lw=0.6, zorder=6))
+        ax.text(x, y, labels[site], fontsize=9, color=_text_on(t['colour']), ha='center', va='center', zorder=7, fontweight='bold')
     for site in switch_nodes_of(sol, types):   # switch-only relay nodes: a small grey box with the switch square
         x, y = px(cells[site])
         sz = 0.046 * W * 0.55
@@ -340,16 +439,25 @@ def draw_panel_a(ax, render_dir, c, sol, types, labels, A, cells, dev, cables, t
     if titled:
         ax.set_title('A  Placement (top view)', loc='left', fontsize=9, color=INK)
     ax.set_anchor('N')
-    handles = [Rectangle((0, 0), 1, 1, facecolor=TYPE_COLOUR[t], edgecolor=INK, lw=0.6, label=t) for t in TYPES
-               if any(q['type'] == t for q in types.values())]
+    handles = []   # 2026-11-06: no role entries; the ECU colours are named by the E-labels on the boxes
     seen = sorted({f for q in types.values() for f in q['feats']}, key=lambda f: (HW_ORDER.index(f) if f in HW_ORDER else 9, f))
     if switch_nodes_of(sol, types):
         handles.append(Rectangle((0, 0), 1, 1, facecolor='#e9e8e4', edgecolor=INK, lw=0.8, label='switch node, no software'))
-    handles += [Rectangle((0, 0), 1, 1, facecolor=HW_COLOUR.get(f, MUTED), edgecolor=INK, lw=0.8, label=HW_NAME.get(f, f) + ' (inside the box)') for f in seen]
-    handles += [plt.Line2D([0], [0], color=CABLE_COLOUR[t], lw=2.0, label=t) for t in ('ETH', 'CAN', 'LIN', 'UART', 'SPI')]
-    handles += [plt.Line2D([0], [0], marker='o', color='none', mfc=MUTED, mec=INK, markersize=6, label='port, one circle per port in the cable colour')]
-    handles += [plt.Line2D([0], [0], marker='o', color='none', mfc='white', mec=INK, markersize=9, label='sensor (label = where its cable ends)'),
-                plt.Line2D([0], [0], marker='s', color='none', mfc='white', mec=INK, markersize=9, label='actuator (label = where its cable ends)')]
+    gpu_used = {m for s_ in types for m in gpu_modules(c, s_)}   # GPU module types (2026-11-06): one entry per type
+    for f in seen:
+        if f == 'HW_ACC' and gpu_used:   # every GPU type of the catalogue, smallest first (user 2026-11-06: HAILO8 was missing)
+            gfill = _ramp([k for k, _t in gpu_order(c)], GPU_RAMP)
+            handles += [Rectangle((0, 0), 1, 1, facecolor=gfill.get(m, INK), edgecolor=INK, lw=0.8,
+                                  label=f"GPU module {m}, {tp:,.0f} TOPS" + ('' if m in gpu_used else ' (not used)'))
+                        for m, tp in gpu_order(c)]
+        else:
+            handles.append(Rectangle((0, 0), 1, 1, facecolor=HW_COLOUR.get(f, MUTED), edgecolor=INK, lw=0.8, label=HW_NAME.get(f, f)))
+    used_types = {cb.get('iface') for cb in cables} | {b['type'] for b in sol.get('buses', [])}   # 2026-11-05: FlexRay was missing
+    handles += [plt.Line2D([0], [0], color=CABLE_COLOUR[t], lw=2.0, label=t) for t in ('ETH', 'CAN', 'LIN', 'FLEXRAY', 'UART', 'SPI')
+                if t in used_types or t in ('ETH', 'CAN', 'LIN', 'UART', 'SPI')]
+    handles += [plt.Line2D([0], [0], marker='o', color='none', mfc=MUTED, mec=INK, markersize=6, label='port (circle, cable colour)')]
+    handles += [plt.Line2D([0], [0], marker='o', color='none', mfc='white', mec=INK, markersize=9, label='sensor (colour + label = its ECU)'),
+                plt.Line2D([0], [0], marker='s', color='none', mfc='white', mec=INK, markersize=9, label='actuator (colour + label = its ECU)')]
     if not legend:
         return handles
     ax.legend(handles=handles, loc='upper left', fontsize=7, ncol=4, frameon=False, bbox_to_anchor=(0.0, -0.01),
@@ -357,7 +465,7 @@ def draw_panel_a(ax, render_dir, c, sol, types, labels, A, cells, dev, cables, t
 
 
 def ecu_order(ecus, types):
-    return sorted(ecus, key=lambda s: (TYPES.index(types[s]['type']), -types[s]['comp'], s))
+    return sorted(ecus, key=lambda s: (-types[s]['comp'], s))   # 2026-11-06: most SWCs first (roles no longer used)
 
 
 def draw_panel_b(ax, c, sol, ecus, ports, types, labels):
@@ -385,7 +493,7 @@ def draw_panel_b(ax, c, sol, ecus, ports, types, labels):
     for s in sites:
         x, t = x_of[s], types[s]
         ax.add_patch(FancyBboxPatch((x, -hdr + 0.03), col_w, hdr - 0.06, boxstyle='round,pad=0.0,rounding_size=0.06',
-                                    facecolor=TYPE_COLOUR[t['type']], edgecolor=INK, lw=0.8))
+                                    facecolor=t['colour'], edgecolor=INK, lw=0.8))
         ax.text(x + 0.07, -hdr / 2, labels[s], fontsize=8.5, fontweight='bold', color=INK, va='center', ha='left')
         gx, gy = x + col_w - 0.05, -hdr / 2
         if 'SWITCH' in t['feats']:
@@ -400,9 +508,10 @@ def draw_panel_b(ax, c, sol, ecus, ports, types, labels):
         y = y_base
         for p in ecus[s]:
             h = bar_h * len(p['prim']) / big
-            ax.add_patch(Rectangle((x + 0.1, y), col_w - 0.2, max(0.0, h - 0.02), facecolor=ASIL_FILL[p['asil']], edgecolor='none'))
+            fill, tc = part_colours(c, p)
+            ax.add_patch(Rectangle((x + 0.1, y), col_w - 0.2, max(0.0, h - 0.02), facecolor=fill, edgecolor='none'))
             if h >= 0.17:
-                ax.text(x + col_w / 2, y + h / 2, str(len(p['prim'])), fontsize=5.8, color=ASIL_TEXT[p['asil']],
+                ax.text(x + col_w / 2, y + h / 2, str(len(p['prim'])), fontsize=5.8, color=tc,
                         ha='center', va='center')
             y += h
         ax.text(x + col_w / 2, y + 0.06, f"{t['comp']} · {len(ecus[s])} partitions", fontsize=5.8, color=INK, ha='center', va='bottom')
@@ -427,7 +536,8 @@ def draw_panel_b(ax, c, sol, ecus, ports, types, labels):
     ax.set_ylim(y_min - 0.4, 0.08)
     ax.axis('off')
     ax.set_title('B  Deployment per ECU', loc='left', fontsize=9, color=INK)
-    handles = [Rectangle((0, 0), 1, 1, facecolor=ASIL_FILL[a], edgecolor='none', label=f'ASIL {a}') for a in sorted(ASIL_FILL)]
+    handles = ptype_handles(c, ecus, suffix='') or [Rectangle((0, 0), 1, 1, facecolor=ASIL_FILL[a], edgecolor='none', label=f'ASIL {a}')
+                                                    for a in sorted(ASIL_FILL)]
     handles += [plt.Line2D([0], [0], marker='^', color='none', markerfacecolor=INK, markersize=7, label='accelerator (GPU)'),
                 plt.Line2D([0], [0], marker='D', color='none', markerfacecolor=INK, markersize=6, label='Ethernet switch'),
                 plt.Line2D([0], [0], color=INK2, lw=0.7, ls=(0, (1.5, 1.5)), label='threshold of the role rule')]
@@ -441,47 +551,62 @@ def strip_units(ecus, types):
 
 
 def mini_bar(ax, x0, yc, w, frac, label, colour):
-    """a small utilisation bar with its number: track in translucent white, fill in the text colour"""
-    ax.add_patch(Rectangle((x0, yc - 0.24), w, 0.48, facecolor='white', alpha=0.35, edgecolor='none'))
-    ax.add_patch(Rectangle((x0, yc - 0.24), w * max(0.0, min(1.0, frac)), 0.48, facecolor=colour, edgecolor='none'))
+    """a small utilisation bar with its number: light track, fill always black (user 2026-11-04: white and black fills
+    were confusing), the number in the text colour of its box"""
+    ax.add_patch(Rectangle((x0, yc - 0.24), w, 0.48, facecolor='white', alpha=0.75, edgecolor='none'))
+    ax.add_patch(Rectangle((x0, yc - 0.24), w * max(0.0, min(1.0, frac)), 0.48, facecolor=INK, edgecolor='none'))
     ax.text(x0 + w + 0.02, yc, label, fontsize=4.8, color=colour, ha='left', va='center')
 
 
 def draw_partition_strip(ax, c, ecus, types, labels, tops_per_module, ports):
-    """under the car (user 2026-11-03): one block per ECU, header in the role colour with the unit's utilisation as bars
-    (CPU, RAM, GPU of the whole unit) and its I/O (hosted devices, bus lines), then one box per partition in its ASIL
-    colour with the component count and its CPU / RAM use as bars; nothing else"""
+    """under the car (user 2026-11-03): one block per ECU, header in the role colour with its label, SWC count and I/O
+    (2026-11-06: devices connected directly / via bus; no unit utilisation any more), then one box per partition in its
+    ASIL colour (partition types: its type's ramp step, 2026-11-06) with the component count and its CPU / RAM use as bars"""
     sites = ecu_order(ecus, types)
     n = len(sites)
     ax.set_xlim(0, n)
-    ax.set_ylim(-strip_units(ecus, types) - 0.3, 0.9)
+    ax.set_ylim(-strip_units(ecus, types) - 0.3, 1.5)   # room above the headers for the port circles
     ax.axis('off')
-    n_part = int(c.site_cfg.get('max_partitions', 4) or 4)
+    end, buses = cable_end(c, c.sol), c.sol.get('buses', [])
+    on_bus = {d for b in buses for d in b['devices']}
+    direct = {s: {d for d, u in end.items() if u == s and d not in on_bus} for s in sites}
+    via_bus = {s: {d for b in buses if s in b['units'] for d in b['devices']} for s in sites}
+    # I/O (user 2026-11-06, replaces the unit's CPU / RAM / GPU bars): the sensors and actuators connected to the ECU,
+    # directly (their own cable or Ethernet link ends here) or over a bus line the ECU sits on; a device counts once
+    io_label = {s: f"I/O: {len(direct[s] | via_bus[s])} ({len(direct[s])} direct, {len(via_bus[s])} via bus)" for s in sites}
+    head_fs = min(6.5, 5.6 * 31 / max(len(v) for v in io_label.values()))   # one size for every header, fits the longest
     for i, s in enumerate(sites):
         t, x = types[s], i + 0.03
-        hot = [sc for p in ecus[s] for sc in p['prim'] + p['hot']]
-        ram_unit = sum(c.demand(sc, 'ram') for sc in hot) / (n_part * float(c.part.get('ram_cap', 1) or 1))
         ax.add_patch(FancyBboxPatch((x, -2.5), 0.94, 3.1, boxstyle='round,pad=0,rounding_size=0.08',
-                                    facecolor=TYPE_COLOUR[t['type']], edgecolor=INK, lw=0.6))
-        ax.text(x + 0.05, 0.15, f"{labels[s]}  {t['comp']} comp. · {len(ecus[s])} part.", fontsize=6.0, fontweight='bold',
-                color=INK, ha='left', va='center')
-        bars = [('CPU', t['cpu']), ('RAM', ram_unit)]
-        if 'HW_ACC' in t['feats']:
-            modules = int(c.hw_units.get((s, 'HW_ACC'), 1) or 1)
-            demand = sum(float(c.scs[sc].get('tops') or 0.0) for sc in hot)
-            bars.append(('GPU', demand / (modules * tops_per_module)))
-        slot = 0.9 / len(bars)
-        for k, (name, frac) in enumerate(bars):
-            bx = x + 0.03 + k * slot
-            ax.text(bx, -0.85, name, fontsize=4.8, color=INK, ha='left', va='center')
-            mini_bar(ax, bx + 0.105, -0.85, slot - 0.22, frac, f"{100 * frac:.0f}", INK)
-        ax.text(x + 0.05, -1.85, f"I/O {t['hosted']} dev. · {t['buses']} bus lines", fontsize=5.5, color=INK, ha='left', va='center')
+                                    facecolor=t['colour'], edgecolor=INK, lw=0.6))
+        # header text (user 2026-11-06): the ECU label top left, then the SWC count, then the I/O, one bold font for all
+        for yy, txt in ((0.15, labels[s]), (-0.85, f"{t['comp']} SWC"), (-1.85, io_label[s])):
+            ax.text(x + 0.05, yy, txt, fontsize=head_fs, fontweight='bold', color=_text_on(t['colour']), ha='left', va='center')
+        # the same symbols as on the car (user 2026-11-04): hardware as squares inside the header (right end of the title
+        # line), ports as circles in the cable colour hanging outward from the header's top edge (on the car they hang
+        # from the bottom edge; here the partitions are below); markers in points, so they stay round in this axis
+        glyphs = hw_glyphs(c, s, t['feats'])   # GPU modules: one square per module in its type's colour
+        for k, colour in enumerate(glyphs):
+            ax.plot([x + 0.94 - 0.05 - (len(glyphs) - 1 - k) * 0.07], [0.15], marker='s', ms=5.2, mfc=colour,
+                    mec=INK, mew=0.6, ls='none', zorder=6, clip_on=False)
+        pp = (ports or {}).get(s, {})
+        plist = [k for k in ('ETH', 'CAN', 'LIN', 'FLEXRAY', 'UART', 'SPI') for _ in range(int(pp.get(k, 0)))]
+        if plist:
+            step = min(0.07, 0.86 / len(plist))
+            cx0 = x + 0.47 - (len(plist) - 1) * step / 2
+            for k, ptype in enumerate(plist):
+                ax.plot([cx0 + k * step], [0.6 + 0.3], marker='o', ms=5.0, mfc=CABLE_COLOUR.get(ptype, MUTED), mec=INK, mew=0.6,
+                        ls='none', zorder=5, clip_on=False)
         y = -2.75
         for p in sorted(ecus[s], key=lambda q: -q['asil']):
-            u, tc = p['util'], ASIL_TEXT[p['asil']]
-            ax.add_patch(Rectangle((x, y - 1.75), 0.94, 1.7, facecolor=ASIL_FILL[p['asil']], edgecolor='white', lw=0.6))
+            fill, tc = part_colours(c, p)   # partition type colour (2026-11-06), else the ASIL level's
+            u = p['util']
+            ax.add_patch(Rectangle((x, y - 1.75), 0.94, 1.7, facecolor=fill, edgecolor='white', lw=0.6))
             sb = (f" +{len(p['hot'])} hot" if p['hot'] else '') + (f" +{len(p['cold'])} cold" if p['cold'] else '')
-            ax.text(x + 0.05, y - 0.5, f"ASIL {p['asil']} · {len(p['prim'])} comp.{sb}", fontsize=(5.8 if not sb else 5.4), color=tc, ha='left', va='center')
+            pt = f" {p['ptype']}" if p.get('ptype') else ''   # partition types: the type next to the level
+            label = f"ASIL {p['asil']}{pt} · {len(p['prim'])} comp.{sb}"
+            # font by length (2026-11-06): 31 characters fit the box at 5.0 pt, longer labels ran into the next ECU
+            ax.text(x + 0.05, y - 0.5, label, fontsize=min(5.8, 5.0 * 31 / max(1, len(label))), color=tc, ha='left', va='center')
             for k, name in enumerate(('cpu', 'ram')):
                 bx = x + 0.04 + k * 0.45
                 ax.text(bx, y - 1.3, name.upper(), fontsize=4.8, color=tc, ha='left', va='center')
@@ -502,13 +627,17 @@ def print_ecu_table(c, sol, ecus, types, labels):
             links[u].append(load / cap if cap > 0 else 0.0)
     tot = len(c.scs)
     print('\nTable: deployment per ECU')
-    print('| ECU | role | hardware | components | partitions (ASIL) | standbys hot / cold | unit CPU | max partition CPU / RAM | hosted devices (I/O) | bus lines | backbone links (max load) | largest domain |')
+    print('| ECU | role | hardware | components | partitions (ASIL) | standbys hot / cold | unit CPU / RAM (of the installed blocks) | max partition CPU / RAM | hosted devices (I/O) | bus lines | backbone links (max load) | largest domain |')
     print('|---|---|---|---|---|---|---|---|---|---|---|---|')
     for s_ in sites:
         t, parts = types[s_], ecus[s_]
         hw = ', '.join(HW_NAME.get(f, f) for f in sorted(t['feats'], key=lambda f: HW_ORDER.index(f) if f in HW_ORDER else 9)) or '-'
-        cnt = Counter(p['asil'] for p in parts)
-        asil = ', '.join(f"ASIL {a}" + (f" x{n}" if n > 1 else '') for a, n in sorted(cnt.items(), reverse=True))
+        gmix = getattr(c, 'hw_types', {}).get((s_, 'HW_ACC'), {})
+        if gmix:
+            hw += ' (' + ', '.join(f"{n}x {k}" for k, n in sorted(gmix.items())) + ')'
+        cnt = Counter((p['asil'], p.get('ptype') or '') for p in parts)
+        asil = ', '.join(f"ASIL {a}" + (f" {pt}" if pt else '') + (f" x{n}" if n > 1 else '')
+                         for (a, pt), n in sorted(cnt.items(), reverse=True))
         hot, cold = sum(len(p['hot']) for p in parts), sum(len(p['cold']) for p in parts)
         mcpu = max((p['util'].get('cpu', 0.0) for p in parts), default=0.0)
         mram = max((p['util'].get('ram', 0.0) for p in parts), default=0.0)
@@ -516,7 +645,7 @@ def print_ecu_table(c, sol, ecus, types, labels):
         dom = re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', t['top_domain']).lower()
         links_txt = f"{len(lk)} ({100 * max(lk):.0f} %)" if lk else '0'
         print(f"| {labels[s_]} | {t['type']} | {hw} | {t['comp']} ({100 * t['comp'] / tot:.0f} %) | {len(parts)} ({asil}) | {hot} / {cold} | "
-              f"{100 * t['cpu']:.0f} % | {100 * mcpu:.0f} % / {100 * mram:.0f} % | {t['hosted']} | {t['buses']} | {links_txt}", end='')
+              f"{100 * t['cpu_inst']:.0f} % / {100 * t['ram_inst']:.0f} % | {100 * mcpu:.0f} % / {100 * mram:.0f} % | {t['hosted']} | {t['buses']} | {links_txt}", end='')
         print(f" | {dom} {100 * t['domain_share']:.0f} % |")
     pc = sol.get('partition_counts') or {}
     by_asil = defaultdict(int)
@@ -530,7 +659,11 @@ def print_ecu_table(c, sol, ecus, types, labels):
     sw_nodes = switch_nodes_of(sol, ecus)
     print(f"| ECUs | {sol['num_ecus_used']} of {c.num_locs} candidate cells" + (f", plus {len(sw_nodes)} switch-only node{'s' if len(sw_nodes) > 1 else ''} ({', '.join(sw_nodes)})" if sw_nodes else '') + " |")
     print(f"| partitions | {sol['num_partitions']} ({', '.join(f'ASIL {a}: {n}' for a, n in sorted(by_asil.items(), reverse=True))}) |")
-    print(f"| accelerators / switches | {sum('HW_ACC' in f for f in feats)} / {sum('SWITCH' in f for f in feats)} |")
+    n_acc = sum('HW_ACC' in t['feats'] for t in types.values())   # with partition types: units with a TOPS partition type
+    print(f"| accelerators / switches | {n_acc} / {sum('SWITCH' in f for f in feats)} |")
+    if c.types:
+        tc = Counter(t for t in c.ptype.values())
+        print(f"| partition types | {', '.join(f'{k} {tc[k]}' for k in c.types if tc.get(k))} |")
     print(f"| cable length (devices / backbone) | {sol['cable_length']:.1f} m ({float(sol.get('peripheral_cable_length', 0)):.1f} / {float(sol.get('backbone_length', 0)):.1f}) |")
     print(f"| backbone links / shared bus lines | {len(sol.get('comm_links', []))} / {len(sol.get('buses', []))} |")
     lf = sol.get('lost_functions') or {}
@@ -579,10 +712,12 @@ def main():
                                          arch_copy if os.path.exists(arch_copy) else a.architecture, sol)
     types = ecu_types(c, ecus, sol, local_devices(c, sol, ecus, cells, dev))
     labels = {s: f'E{i + 1}' for i, s in enumerate(ecu_order(ecus, types))}
+    for i, s in enumerate(ecu_order(ecus, types)):   # 2026-11-06: one colour per ECU (roles out of the figure)
+        types[s]['colour'] = ECU_COLOURS[i] if i < len(ECU_COLOURS) else MUTED
     labels.update({s: f'S{i + 1}' for i, s in enumerate(switch_nodes_of(sol, ecus))})   # switch-only relay nodes
     for s_ in ecu_order(ecus, types):
         t = types[s_]
-        print(f"{labels[s_]} = {s_}: {t['type']}; {t['comp']} components, CPU {100 * t['cpu']:.0f} % of the unit, "
+        print(f"{labels[s_]} = {s_}: {t['type']}; {t['comp']} components, CPU {100 * t['cpu_inst']:.0f} % of its {t['blocks']} installed block(s) ({100 * t['cpu']:.0f} % of the cell's cap, the role measure), "
               f"{', '.join(sorted(t['feats'])) or 'no hardware'}, connected to {t['served']} of the {t['zone']} nearby devices, "
               f"hosts the software of {t['hosted']} devices ({t['devices']['sensor']} sensors + {t['devices']['actuator']} actuators), "
               f"{t['buses']} bus lines, largest domain {t['top_domain']} {100 * t['domain_share']:.0f} %")
@@ -606,9 +741,20 @@ def main():
                              float(hw_cfg.get('HW_ACC', {}).get('tops', 26.0) or 26.0), ports)
     handles = draw_panel_a(ax_a, a.render_dir, c, sol, types, labels, A, cells, dev, cables, titled=a.panel_b, legend=a.panel_b, ports=ports)
     if not a.panel_b:   # one legend for the car and the strip, centred at the bottom
-        handles += [Rectangle((0, 0), 1, 1, facecolor=ASIL_FILL[k], edgecolor='none', label=f'ASIL {k} partition') for k in sorted(ASIL_FILL)]
-        fig.legend(handles=handles, loc='lower center', ncol=6, fontsize=7, frameon=False, bbox_to_anchor=(0.5, 0.005),
-                   handlelength=1.6, columnspacing=1.3)
+        parts = ptype_handles(c, ecus) or [Rectangle((0, 0), 1, 1, facecolor=ASIL_FILL[k], edgecolor='none', label=f'ASIL {k} partition')
+                                           for k in sorted(ASIL_FILL)]
+        # grouped legend (2026-11-06): hardware, cables, devices, partitions, each group in whole columns of `rows`
+        groups = [[h for h in handles if isinstance(h, Rectangle)],
+                  [h for h in handles if isinstance(h, plt.Line2D) and h.get_marker() in (None, 'None', '')],
+                  [h for h in handles if isinstance(h, plt.Line2D) and h.get_marker() not in (None, 'None', '')], parts]
+        rows = max(4, math.ceil(len(parts) / 2))
+        blank = lambda: Rectangle((0, 0), 1, 1, alpha=0.0, label=' ')
+        handles = [h for g in groups if g for h in g + [blank() for _ in range(-len(g) % rows)]]
+        fig.legend(handles=handles, loc='lower center', ncol=len(handles) // rows, fontsize=6.8, frameon=False,
+                   bbox_to_anchor=(0.5, 0.02), handlelength=1.5, columnspacing=1.0)
+        fig.text(0.5, 0.004, "partition bars: load with the rho 1 margins (primaries + hot standbys) over the partition's capacity, "
+                 "CPU derated by the cell's thermal class; I/O: sensors and actuators connected directly or over a bus line of the ECU",
+                 fontsize=6.2, color=INK, ha='center', va='bottom')
     print_ecu_table(c, sol, ecus, types, labels)
     print_tables(c, sol, ecu_order(ecus, types), labels, ports)
     title = a.title or f"{len(c.scs)} components, {c.num_locs} candidate cells, rho {c.rho:g}: {os.path.basename(run_dir)}"

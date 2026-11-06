@@ -17,12 +17,15 @@ from optimizer_utils import (get_distance, build_sensor_lookup, build_actuator_l
 # Uncertainty-aware constraint blocks, each switched on by its own CLI flag (parameters in configs/uncertainty.json)
 UNCERTAINTY_BLOCKS = ('sw_margin', 'derating', 'redundancy', 'ai_contention', 'robust_latency', 'growth', 'failures')
 
-# Packing check of the pooled (site, ASIL) capacity constraint: cuts added before giving up (see optimize())
-MAX_PACKING_CUTS = 40
+# Packing check of the pooled (site, ASIL) capacity constraint: cuts added before giving up (see optimize()).
+# 40 -> 5 (user 2026-11-05): a cut forbids only one exact member set, so more cuts rarely help (car_s4 step 27: 47 cuts,
+# 96 solves, 4.8 h, no design); after 5 the solve gives no design and the build unlocks the previous piece
+MAX_PACKING_CUTS = 5
 
 
 _GW_DEBUG = os.environ.get('DSE_GW_DEBUG', '') == '1'
 _CB_VERIFY = os.environ.get('DSE_CB_VERIFY') == '1'   # fix B self-check (test runs only): re-scan every memoised value at the end of a callback call
+_CHAIN_DEBUG = os.environ.get('DSE_CHAIN_DEBUG') == '1'   # diagnosis: print every chain the callback finds over its budget
 
 
 def job_memory_gb():
@@ -149,8 +152,10 @@ class AssignmentOptimizer:
         model.update()
 
         partitions = partitions or {}
-        # Partitions of one ASIL at one site (configs/partitions.json: partition.max_per_asil_per_site)
-        max_p_per_asil = int(partitions.get('max_per_asil_per_site', 3))
+        # Partitions of one ASIL at one site (configs/partitions.json: partition.max_per_asil_per_site; null = no limit
+        # of its own, the unit's max_partitions bounds it)
+        _mpa, _smp = partitions.get('max_per_asil_per_site', 3), partitions.get('site_max_partitions')
+        max_p_per_asil = int(_mpa) if _mpa is not None else (int(_smp) if _smp is not None else 10 ** 6)
 
         # x[i,j] = SC i hosted at site j. No partition slot index: which partition an SC lands in is not a
         # decision (slots are interchangeable), so every design has exactly one representation.
@@ -189,11 +194,18 @@ class AssignmentOptimizer:
 
         # P[j,a] = number of partitions of ASIL a at site j (bounded by the SCs of that ASIL that may be hosted there)
         P = {}
+        Q = {}   # partition types (2026-11-04): Q[j,a,t] = partitions of ASIL a at site j that are blocks of type t
+        types = partitions.get('types') or None
         for j in range(n_locs):
             for a in unique_asils:
                 n_sc_a = sum(1 for i in feasible_scs_per_loc[j] if scs[i].asil_req == a)
-                P[j, a] = model.addVar(vtype=GRB.INTEGER, lb=0, ub=min(max_p_per_asil, n_sc_a),
-                                       name=f"P_{locations[j].id}_asil{a}")
+                ub = min(max_p_per_asil, n_sc_a)
+                P[j, a] = model.addVar(vtype=GRB.INTEGER, lb=0, ub=ub, name=f"P_{locations[j].id}_asil{a}")
+                if types:
+                    for t, ty in enumerate(types):
+                        Q[j, a, t] = model.addVar(vtype=GRB.INTEGER, lb=0, ub=ub, name=f"Q_{locations[j].id}_asil{a}_{ty['id']}")
+                    model.addConstr(P[j, a] == gp.quicksum(Q[j, a, t] for t in range(len(types))),
+                                    name=f"partition_types_{locations[j].id}_asil{a}")
 
         # y[j] = site j hosts a control unit with at least one partition
         y = {j: model.addVar(vtype=GRB.BINARY, name=f"y_{locations[j].id}") for j in range(n_locs)}
@@ -233,6 +245,18 @@ class AssignmentOptimizer:
                     hw_use[j, h] = model.addVar(vtype=GRB.INTEGER, lb=0, ub=int(hw_cap[h].get('max_units', 1)), name=f"hw_{locations[j].id}_{h}")
                 else:
                     hw_use[j, h] = model.addVar(vtype=GRB.BINARY, name=f"hw_{locations[j].id}_{h}")
+        # GPU types (2026-11-05, hardwares.json HW_ACC 'types'): hw_t[j,h,t] modules of type t at j, any mix of up to
+        # max_units in total (hw_use[j,h] = their sum); TOPS and cost per type
+        hw_t = {}
+        for j in range(n_locs):
+            for h in all_hw:
+                for t, ty in enumerate((hw_cap.get(h) or {}).get('types') or []):
+                    hw_t[j, h, t] = model.addVar(vtype=GRB.INTEGER, lb=0, ub=int(hw_cap[h].get('max_units', 1)),
+                                                 name=f"hwt_{locations[j].id}_{h}_{ty['id']}")
+        for (j, h) in hw_use:
+            ts = [v for (jj, hh, _t), v in hw_t.items() if jj == j and hh == h]
+            if ts:
+                model.addConstr(hw_use[j, h] == gp.quicksum(ts), name=f"hw_types_{locations[j].id}_{h}")
         
         # if_use[j,i_name] = Number of Interface i_name ports at location j (integer)
         if_use = {}
@@ -290,6 +314,7 @@ class AssignmentOptimizer:
                 bus['inst'].append(b)
                 bus['act'][b] = model.addVar(vtype=GRB.BINARY, name=f"bus_{w_if}{k + 1}")
                 bus['len'][b] = model.addVar(vtype=GRB.CONTINUOUS, lb=0.0, ub=max_len.get(w_if, float('inf')), name=f"busLen_{w_if}{k + 1}")
+                bus.setdefault('len_ub', {})[b] = max_len.get(w_if, float('inf'))   # the reach, read by the repair (no attribute queries in callbacks)
                 bus['high'][b] = model.addVar(vtype=GRB.BINARY, name=f"busHigh_{w_if}{k + 1}")
                 for j in range(n_locs):
                     bus['unit'][b, j] = model.addVar(vtype=GRB.BINARY, name=f"busUnit_{w_if}{k + 1}_{locations[j].id}")
@@ -518,7 +543,8 @@ class AssignmentOptimizer:
                     paths[u, v, w_if] = direct + relay
                 for p in range(len(paths[u, v, w_if])):
                     sel[u, v, w_if, p] = model.addVar(vtype=GRB.BINARY, name=f"sel_{locations[u].id}_{locations[v].id}_{w_if}_p{p}")
-        net = {'paths': paths, 'sel': sel, 'flow_ends': flow_ends, 'bus': bus,
+        net = {'Q': Q, 'types': types, 'hw_t': hw_t,
+               'paths': paths, 'sel': sel, 'flow_ends': flow_ends, 'bus': bus,
                'bb_ifaces': bb_ifaces, 'cap_of': cap_of, 'w': w, 'flow_elig': flow_elig,
                'r': r, 'hot': hot, 'hr': hr, 'critical': critical, 'fail_cfg': fail_cfg,
                'x_vars': x, 'y_vars': y, 'switch_vars': {j: hw_use.get((j, 'SWITCH')) for j in range(n_locs)},
@@ -541,7 +567,7 @@ class AssignmentOptimizer:
 
         var_stats = {
             'x': len(x),
-            'P': len(P),
+            'P': len(P) + len(Q),
             'y': len(y),
             'hw_use': len(hw_use),
             'if_use': len(if_use),
@@ -620,8 +646,40 @@ class AssignmentOptimizer:
             print(f"  Robustness level rho = {float(unc.get('rho', 1.0)):.2f} (growth profiles {unc.get('params', {}).get('growth', {}).get('profiles')})")
 
         # SW-based uncertainty (selective static margin, configs/uncertainty.json: sw_margin)
-        def get_sw_multiplier(sc):
-            return sw_multiplier(sc, unc)
+        def get_sw_multiplier(sc, res='cpu'):
+            return sw_multiplier(sc, unc, res)
+
+        # Partition types (building blocks, 2026-11-04, configs/partitions.json partition.types): the capacity of the
+        # partitions of ASIL a at site j is the sum over their blocks; TOPS is a block resource like CPU, RAM and ROM
+        # (the add-on accelerator goes); the site derating applies to processing (CPU and TOPS). Without types: the
+        # single partition of the v1 model (P x cap), unchanged.
+        types = net.get('types')
+        Q = net.get('Q') or {}
+        # TOPS is a partition resource only when some partition type has TOPS (2026-11-04); with the GPU as per-cell
+        # modules (2026-11-05, hw_catalogue) the partition types have none and TOPS is checked per cell (constraint 6)
+        res_m = ('cpu', 'ram', 'rom', 'tops') if types and any(ty.get('tops_cap', 0) > 0 for ty in types) else ('cpu', 'ram', 'rom')
+
+        def der(res, H):
+            return H if res in ('cpu', 'tops') else 1.0
+
+        def cap_expr(j, a, res):
+            if types:
+                return gp.quicksum(Q[j, a, t] * ty[f'{res}_cap'] for t, ty in enumerate(types) if ty[f'{res}_cap'] > 0)
+            return P[j, a] * partitions.get(f'{res}_cap', float('inf'))
+
+        def req(i, res):
+            return float(getattr(scs[i], f'{res}_req', 0) or 0) * get_sw_multiplier(scs[i], res)
+
+        def hosts(i, j):
+            """partition-count expression of the blocks at site j that can hold SC i alone (every resource within the
+            block's capacity times the derating); P[j,a] when every type can (and without types)"""
+            if not types:
+                return P[j, scs[i].asil_req]
+            H = site_derating(locations[j], unc)
+            fit = [t for t, ty in enumerate(types) if all(req(i, r) <= ty[f'{r}_cap'] * der(r, H) + 1e-9 for r in res_m)]
+            if len(fit) == len(types):
+                return P[j, scs[i].asil_req]
+            return gp.quicksum(Q[j, scs[i].asil_req, t] for t in fit)
 
         # Data-derived bounds (replace arbitrary Big-M values)
         # comm_ub: a backbone link never carries more than the total traffic volume, and extra parallel links only
@@ -672,9 +730,9 @@ class AssignmentOptimizer:
                 )
                 cstats['c1c_partitions_le_scs'] += 1
 
-        # Constraint 1e: a hosted SC needs a partition of its ASIL at its site
+        # Constraint 1e: a hosted SC needs a partition of its ASIL at its site (with types: a block that can hold it)
         for (i, j), xv in x.items():
-            model.addConstr(xv <= P[j, scs[i].asil_req], name=f"x_le_P_{scs[i].id}_{locations[j].id}")
+            model.addConstr(xv <= hosts(i, j), name=f"x_le_P_{scs[i].id}_{locations[j].id}")
             cstats['c1e_x_le_P'] += 1
 
         # Constraint 1d: per-site caps of the control unit (configs/partitions.json: site.max_partitions and
@@ -692,9 +750,9 @@ class AssignmentOptimizer:
                 if site_cap is None:
                     continue
                 demand = gp.quicksum(
-                    x[i, j] * getattr(scs[i], f'{res}_req') * get_sw_multiplier(scs[i]) for i in feasible_scs_per_loc[j]
+                    x[i, j] * getattr(scs[i], f'{res}_req') * get_sw_multiplier(scs[i], res) for i in feasible_scs_per_loc[j]
                 ) + gp.quicksum(
-                    net['hr'][i, j] * getattr(scs[i], f'{res}_req') * get_sw_multiplier(scs[i])
+                    net['hr'][i, j] * getattr(scs[i], f'{res}_req') * get_sw_multiplier(scs[i], res)
                     for i in feasible_scs_per_loc[j] if (i, j) in net['hr']
                 )
                 model.addConstr(demand <= float(site_cap) * (H_j if res == 'cpu' else 1.0) * y[j], name=f"site_{res}_cap_{locations[j].id}")
@@ -707,29 +765,76 @@ class AssignmentOptimizer:
             H_j = site_derating(locations[j], unc)
             for a in unique_asils:
                 scs_ja = [i for i in feasible_scs_per_loc[j] if scs[i].asil_req == a]
-                for res in ('cpu', 'ram', 'rom'):
+                for res in res_m:
+                    users = [i for i in scs_ja if req(i, res) > 0] if res == 'tops' else scs_ja
+                    if not users:
+                        continue
                     demand = gp.quicksum(
-                        x[i, j] * getattr(scs[i], f'{res}_req') * get_sw_multiplier(scs[i]) for i in scs_ja
+                        x[i, j] * getattr(scs[i], f'{res}_req') * get_sw_multiplier(scs[i], res) for i in users
                     ) + gp.quicksum(
-                        net['hr'][i, j] * getattr(scs[i], f'{res}_req') * get_sw_multiplier(scs[i])
-                        for i in scs_ja if (i, j) in net['hr']   # hot standbys consume their resources permanently
+                        net['hr'][i, j] * getattr(scs[i], f'{res}_req') * get_sw_multiplier(scs[i], res)
+                        for i in users if (i, j) in net['hr']   # hot standbys consume their resources permanently
                     )
                     model.addConstr(
-                        demand <= P[j, a] * partitions.get(f'{res}_cap', float('inf')) * (H_j if res == 'cpu' else 1.0),
+                        demand <= cap_expr(j, a, res) * der(res, H_j),
                         name=f"{res}_capacity_{locations[j].id}_asil{a}"
                     )
                     cstats['c2_capacity'] += 1
                 # big items (2026-11-03): a component or hot standby whose demand exceeds half a partition cap in some
                 # resource can share no partition, so the group needs at least one partition per big item; a valid
-                # strengthening of the pooled bound (the packing check after the solve stays the exact rule)
+                # strengthening of the pooled bound (the packing check after the solve stays the exact rule). With
+                # types: half the largest block's cap (two such items fit in no block together)
+                big_cap = ({r: max(ty[f'{r}_cap'] for ty in types) for r in res_m} if types
+                           else {r: float(partitions.get(f'{r}_cap', float('inf'))) for r in res_m})
+
                 def _big(i):
-                    return any(getattr(scs[i], f'{res}_req') * get_sw_multiplier(scs[i]) > 0.5 * float(partitions.get(f'{res}_cap', float('inf'))) * (H_j if res == 'cpu' else 1.0)
-                               for res in ('cpu', 'ram', 'rom'))
+                    return any(req(i, res) > 0.5 * big_cap[res] * der(res, H_j) for res in res_m if big_cap[res] > 0)
+                # size classes (partition types, 2026-11-05, car_s4 step 27: pooled capacity fitted, packing failed 40
+                # times): a component that does not fit block type s cannot use the capacity of s nor of any type s
+                # dominates (no larger capacity in any resource), so the components that do not fit s must be covered
+                # by the other types alone; valid for every design, it keeps small blocks from counting towards the
+                # load of components too large for them
+                if types:
+                    for s_t, ty_s in enumerate(types):
+                        under = {t for t, ty in enumerate(types) if all(ty[f'{r}_cap'] <= ty_s[f'{r}_cap'] for r in res_m)}
+                        others = [t for t in range(len(types)) if t not in under]
+                        if not others:
+                            continue
+                        nofit = [i for i in scs_ja if any(req(i, r) > ty_s[f'{r}_cap'] * der(r, H_j) + 1e-9 for r in res_m)]
+                        if not nofit:
+                            continue
+                        for res in res_m:
+                            users = [i for i in nofit if req(i, res) > 0]
+                            if not users:
+                                continue
+                            demand = gp.quicksum(x[i, j] * req(i, res) for i in users) + gp.quicksum(
+                                net['hr'][i, j] * req(i, res) for i in users if (i, j) in net['hr'])
+                            model.addConstr(demand <= gp.quicksum(Q[j, a, t] * types[t][f'{res}_cap'] for t in others if types[t][f'{res}_cap'] > 0) * der(res, H_j),
+                                            name=f"size_class_{res}_{locations[j].id}_asil{a}_{ty_s['id']}")
+                            cstats['c2_capacity'] += 1
                 big = [i for i in scs_ja if _big(i)]
                 if big:
                     model.addConstr(P[j, a] >= gp.quicksum(x[i, j] for i in big) + gp.quicksum(net['hr'][i, j] for i in big if (i, j) in net['hr']),
                                     name=f"big_items_{locations[j].id}_asil{a}")
                     cstats['c2_capacity'] += 1
+                # big items per partition type (user 2026-11-05, car_s4_gpu step 37: the pooled CPU let 3 camera networks
+                # of 40,645 DMIPS into 2 TDA4VH of 64,000; the packing failed): a component that needs more than half of
+                # resource r in every partition type that can hold it shares no partition with another such component,
+                # so each one needs its own partition of one of those types; valid for every design (bin packing: items
+                # larger than half a bin, Martello & Toth 1990)
+                if types:
+                    for res in res_m:
+                        fits_of = {}
+                        for i in scs_ja:
+                            fit = [t for t, ty in enumerate(types) if all(req(i, r) <= ty[f'{r}_cap'] * der(r, H_j) + 1e-9 for r in res_m)]
+                            if fit and all(req(i, res) > 0.5 * types[t][f'{res}_cap'] * der(res, H_j) for t in fit):
+                                fits_of[i] = fit
+                        if fits_of:
+                            union = sorted({t for f in fits_of.values() for t in f})
+                            model.addConstr(gp.quicksum(Q[j, a, t] for t in union) >= gp.quicksum(x[i, j] for i in fits_of)
+                                            + gp.quicksum(net['hr'][i, j] for i in fits_of if (i, j) in net['hr']),
+                                            name=f"big_items_{res}_{locations[j].id}_asil{a}")
+                            cstats['c2_capacity'] += 1
 
         # Constraint 1g (failures): one standby per critical SC on another cell, with a partition of its ASIL and its
         # hardware there; hr = r AND hot for the SCs that may use a cold standby
@@ -739,7 +844,7 @@ class AssignmentOptimizer:
                 rv = net['r'][i, j]
                 model.addConstr(rv + x[i, j] <= 1, name=f"standby_other_cell_{scs[i].id}_{locations[j].id}")
                 model.addConstr(rv <= y[j], name=f"standby_site_{scs[i].id}_{locations[j].id}")
-                model.addConstr(rv <= P[j, scs[i].asil_req], name=f"standby_partition_{scs[i].id}_{locations[j].id}")
+                model.addConstr(rv <= hosts(i, j), name=f"standby_partition_{scs[i].id}_{locations[j].id}")
                 for h in (scs[i].hw_required or []):
                     model.addConstr(rv <= hw_use[j, h], name=f"standby_hw_{scs[i].id}_{h}_{locations[j].id}")
                 if net['hot'][i] is not None:
@@ -767,8 +872,10 @@ class AssignmentOptimizer:
         if act:
             for j in range(n_locs):
                 H_j = site_derating(locations[j], unc)
-                for res in ('cpu', 'ram', 'rom'):
-                    dem = {i: getattr(scs[i], f'{res}_req') * get_sw_multiplier(scs[i]) for i in feasible_scs_per_loc[j]}
+                for res in res_m:
+                    dem = {i: getattr(scs[i], f'{res}_req') * get_sw_multiplier(scs[i], res) for i in feasible_scs_per_loc[j]}
+                    if res == 'tops' and not any(dem[i] > 0 for i in cold if i in dem):
+                        continue
                     hosted = {}
                     for a in unique_asils:
                         hosted[a] = model.addVar(lb=0.0, name=f"hosted_{res}_{locations[j].id}_asil{a}")
@@ -783,9 +890,9 @@ class AssignmentOptimizer:
                         if not woken:
                             continue
                         for a in unique_asils:
-                            terms = [dem[i] * v for i, v in woken if scs[i].asil_req == a]
-                            if terms and part_cap < float('inf'):
-                                model.addConstr(hosted[a] + gp.quicksum(terms) <= P[j, a] * part_cap * (H_j if res == 'cpu' else 1.0),
+                            terms = [dem[i] * v for i, v in woken if scs[i].asil_req == a and (dem[i] > 0 or not types)]
+                            if terms and (types or part_cap < float('inf')):
+                                model.addConstr(hosted[a] + gp.quicksum(terms) <= cap_expr(j, a, res) * der(res, H_j),
                                                 name=f"cold_{res}_capacity_{locations[c].id}_{locations[j].id}_asil{a}")
                                 cstats['c1h_cold_capacity'] += 1
                         if site_cap is not None:
@@ -793,6 +900,13 @@ class AssignmentOptimizer:
                                             <= float(site_cap) * (H_j if res == 'cpu' else 1.0) * y[j],
                                             name=f"cold_site_{res}_cap_{locations[c].id}_{locations[j].id}")
                             cstats['c1h_cold_capacity'] += 1
+
+        # installed TOPS of feature h at cell j before derating: units x TOPS per unit, or with GPU types (2026-11-05)
+        # the sum over the types of modules x their TOPS
+        def tops_of(j, h, capd):
+            if capd.get('types'):
+                return gp.quicksum(ty['tops'] * net['hw_t'][j, h, t] for t, ty in enumerate(capd['types']) if (j, h, t) in net['hw_t'])
+            return float(capd.get('tops', 0) or 0) * hw_use[j, h]
 
         # Constraint 1h for the accelerator: cold standbys woken by the failure of cell c need TOPS at their cell
         hw_cap_all = (partitions or {}).get('hw_capacity', {}) or {}
@@ -808,13 +922,13 @@ class AssignmentOptimizer:
                     if not here:
                         continue
                     H_j = site_derating(locations[j], unc)
-                    base = gp.quicksum(x[i, j] * scs[i].tops_req * get_sw_multiplier(scs[i]) for i in here) + gp.quicksum(
-                        net['hr'][i, j] * scs[i].tops_req * get_sw_multiplier(scs[i]) for i in here if (i, j) in net['hr'])
+                    base = gp.quicksum(x[i, j] * scs[i].tops_req * get_sw_multiplier(scs[i], 'tops') for i in here) + gp.quicksum(
+                        net['hr'][i, j] * scs[i].tops_req * get_sw_multiplier(scs[i], 'tops') for i in here if (i, j) in net['hr'])
                     for c in range(n_locs):
                         woken = [(i, act[i, c, j]) for i in here if (i, c, j) in act]
                         if woken:
-                            model.addConstr(base + gp.quicksum(scs[i].tops_req * get_sw_multiplier(scs[i]) * v for i, v in woken)
-                                            <= tops_unit * H_j * hw_use[j, h], name=f"cold_tops_{locations[c].id}_{locations[j].id}_{h}")
+                            model.addConstr(base + gp.quicksum(scs[i].tops_req * get_sw_multiplier(scs[i], 'tops') * v for i, v in woken)
+                                            <= H_j * tops_of(j, h, capd), name=f"cold_tops_{locations[c].id}_{locations[j].id}_{h}")
                             cstats['c1h_cold_capacity'] += 1
 
         # Constraint 3: HW feature required
@@ -939,9 +1053,9 @@ class AssignmentOptimizer:
                 if not here or (j, h) not in hw_use:
                     continue
                 H_j = site_derating(locations[j], unc)
-                dem = gp.quicksum(x[i, j] * scs[i].tops_req * get_sw_multiplier(scs[i]) for i in here) + gp.quicksum(
-                    net['hr'][i, j] * scs[i].tops_req * get_sw_multiplier(scs[i]) for i in here if (i, j) in net['hr'])
-                model.addConstr(dem <= tops_unit * H_j * hw_use[j, h], name=f"tops_capacity_{locations[j].id}_{h}")
+                dem = gp.quicksum(x[i, j] * scs[i].tops_req * get_sw_multiplier(scs[i], 'tops') for i in here) + gp.quicksum(
+                    net['hr'][i, j] * scs[i].tops_req * get_sw_multiplier(scs[i], 'tops') for i in here if (i, j) in net['hr'])
+                model.addConstr(dem <= H_j * tops_of(j, h, capd), name=f"tops_capacity_{locations[j].id}_{h}")
                 cstats['c6_ai_contention'] += 1
         
         # Constraint 9a: ECU-to-ECU Communication - Endpoint Activation (Big-M)
@@ -1298,7 +1412,8 @@ class AssignmentOptimizer:
                                   cable_types, comm_matrix, partitions, hardwares, interfaces,
                                   n_locs, unique_asils, all_hw, all_interfaces,
                                   feasible_locs_per_sc, attach_s=None, attach_a=None, bus=None,
-                                  minimize_cable_length=False, cable_length_limit=None, cost_limit=None, standby=None):
+                                  minimize_cable_length=False, cable_length_limit=None, cost_limit=None, standby=None, part_types=None,
+                                  hw_types=None):
         """
         Build and set the objective function for the optimization model
         
@@ -1308,8 +1423,12 @@ class AssignmentOptimizer:
         """
         print(f"Building objective function...")
         
-        # Partition cost
-        partition_cost_expr = gp.quicksum(partitions.get('cost', 0) * P[j, a] for j in range(n_locs) for a in unique_asils)
+        # Partition cost; with partition types (2026-11-04) the price of each block
+        Q, types = part_types or ({}, None)
+        if types:
+            partition_cost_expr = gp.quicksum(types[t]['cost'] * v for (_j, _a, t), v in Q.items())
+        else:
+            partition_cost_expr = gp.quicksum(partitions.get('cost', 0) * P[j, a] for j in range(n_locs) for a in unique_asils)
 
         # Fixed activation cost of a site (configs/partitions.json: site.fixed_cost; 0 = free, as in v1)
         site_fixed_cost = float(partitions.get('site_fixed_cost', 0) or 0)
@@ -1331,6 +1450,10 @@ class AssignmentOptimizer:
             for j in range(n_locs)
             for h in all_hw
         )
+        # GPU types (2026-11-05): every module costs its type's price
+        hw_t, hw_capd = hw_types or ({}, {})
+        if hw_t:
+            hw_cost_expr += gp.quicksum(hw_capd[h]['types'][t]['cost'] * v for (j, h, t), v in hw_t.items())
         
         # Interface port cost
         if_cost_expr = gp.quicksum(
@@ -1370,7 +1493,7 @@ class AssignmentOptimizer:
 
         return model, objectives
 
-    def optimize(self, scs, locations, sensors, actuators, cable_types, comm_matrix, partitions=None, hardwares=None, interfaces=None, enable_comm_bw_constraints=True, comm_bw_big_m=10000, minimize_cable_length=False, cable_length_limit=None, cost_limit=None, time_limit=None, mip_gap=None, lp_path=None, uncertainty=None, backbone=None, phase2_time=600, gurobi_params=None, chains=None, start=None, lns=None, fixed=None, phase2_cap=None, reuse=False, resume=False):
+    def optimize(self, scs, locations, sensors, actuators, cable_types, comm_matrix, partitions=None, hardwares=None, interfaces=None, enable_comm_bw_constraints=True, comm_bw_big_m=10000, minimize_cable_length=False, cable_length_limit=None, cost_limit=None, time_limit=None, mip_gap=None, lp_path=None, uncertainty=None, backbone=None, phase2_time=600, gurobi_params=None, chains=None, start=None, lns=None, fixed=None, phase2_cap=None, reuse=False, resume=False, relax_network=False):
         """
         Dynamic selection of partitions + HW + interfaces + cables.
         
@@ -1406,6 +1529,20 @@ class AssignmentOptimizer:
         unique_asils = sorted(list(set(sc.asil_req for sc in scs)))
         all_hw = list(hardwares.keys()) if hardwares else []
         all_interfaces = list(interfaces.keys()) if interfaces else list(cable_types.keys())
+        # partition types (2026-11-04): the accelerator requirement (partitions.json partition.tops_feature, HW_ACC) is
+        # served by the TOPS of the component's block, not by an add-on unit at the cell
+        tops_feature = partitions.get('tops_feature') if partitions.get('types') else None
+        if tops_feature:
+            n_tf = 0
+            for sc in scs:
+                if tops_feature in (sc.hw_required or []):
+                    sc.hw_required = [h for h in sc.hw_required if h != tops_feature]
+                    n_tf += 1
+            if n_tf:
+                print(f"  Partition types: the {tops_feature} requirement of {n_tf} SCs is served by their block's TOPS")
+            types_ = partitions['types']
+            print("  Partition types: " + "; ".join(f"{t['id']} cpu {t['cpu_cap']:g} ram {t['ram_cap']:g} rom {t['rom_cap']:g} "
+                                                     f"tops {t['tops_cap']:g} cost {t['cost']:g}" for t in types_))
         
         print(f"\nProblem size:")
         print(f"  SCs: {n_sc}, Locations: {n_locs}")
@@ -1426,7 +1563,9 @@ class AssignmentOptimizer:
         # at 1,000) is skipped, only the fixed placements, the start solution and the solver settings of this call are
         # applied. The placement bounds changed by an earlier `fixed` / `allow` are restored first; the cuts of earlier
         # solves (Steiner trees of bus lines, packing cuts) stay, they are valid for every design.
-        key = (tuple(sc.id for sc in scs), tuple(loc.id for loc in locations))
+        # the gateway flag is part of the instance (2026-11-04, pieces.gateway_in_build: the build's gateway-off model
+        # must not be reused by the polish with the gateway on)
+        key = (tuple(sc.id for sc in scs), tuple(loc.id for loc in locations), bool((backbone or {}).get('bus_gateway', False)))
         session = self._session if (reuse and self._session is not None and self._session['key'] == key) else None
         resuming = bool(resume) and session is not None and bool(self._resumable)
         self._resumable = False
@@ -1479,7 +1618,8 @@ class AssignmentOptimizer:
                 n_locs, unique_asils, all_hw, all_interfaces,
                 feasible_locs_per_sc, attach_s=attach_s, attach_a=attach_a, bus=bus,
                 minimize_cable_length=minimize_cable_length, cable_length_limit=cable_length_limit,
-                cost_limit=cost_limit, standby=net['r']
+                cost_limit=cost_limit, standby=net['r'], part_types=(net['Q'], net['types']),
+                hw_types=(net['hw_t'], (partitions or {}).get('hw_capacity', {}) or {})
             )
 
             # Lazy traffic constraints: every integer solution is checked (also every start solution and repair);
@@ -1718,12 +1858,46 @@ class AssignmentOptimizer:
 
         tl = float(time_limit) if (time_limit is not None and float(time_limit) > 0) else None
 
+        if relax_network:
+            # Placement-only relaxation bound (2026-11-04, tools/relaxation_bound.py): the model as built (placements,
+            # partitions per ASIL and cell, capacities, hardware, standbys at other cells, cold-standby capacity after a
+            # failure, reach, device cables, the static chain and bus rules) solved without the lazy callback, so without
+            # the routing, capacity, latency, survival, bus-length and packing cuts. Every design of the full model is
+            # feasible here with the same or a higher cost, so the solver's best bound is a lower bound on the full cost.
+            if tl is not None:
+                model.setParam('TimeLimit', tl)
+            model.setObjective(primary_expr, GRB.MINIMIZE)
+            print(f"\n[Relaxation] placement-only bound: {model.NumVars} variables, {model.NumConstrs} constraints, no lazy rules", flush=True)
+            model.optimize()
+            has_sol = model.SolCount > 0
+            info = {'status': self._phase_info(model, primary_name)['status'], 'bound': float(model.ObjBound) if has_sol or model.status == GRB.TIME_LIMIT else None,
+                    'objective': float(model.ObjVal) if has_sol else None, 'mip_gap': float(model.MIPGap) if has_sol else None,
+                    'runtime_s': float(model.Runtime), 'node_count': float(model.NodeCount)}
+            if has_sol:
+                info['partitions'] = {f"{locations[j].id}_asil{a}": int(round(v.X)) for (j, a), v in P.items() if v.X > 0.5}
+                info['units'] = [locations[j].id for j, v in y.items() if v.X > 0.5]
+                info['hardware'] = [f"{h}@{locations[j].id}" for (j, h), v in hw_use.items() if v.X > 0.5]
+                info['n_partitions'] = int(round(sum(v.X for v in P.values())))
+                if net.get('types'):
+                    info['partition_types'] = {}
+                    for (j, a, t), v in net['Q'].items():
+                        if v.X > 0.5:
+                            info['partition_types'].setdefault(f"{locations[j].id}_asil{a}", {})[net['types'][t]['id']] = int(round(v.X))
+                info['assignment'] = {scs[i].id: locations[j].id for (i, j), v in x.items() if v.X > 0.5}
+            print(f"[Relaxation] {info['status']}: bound {info['bound']}, incumbent {info['objective']}, gap {info['mip_gap']}, {info['runtime_s']:.0f} s", flush=True)
+            self.last_status = 'RELAXATION'
+            self._session = None
+            model.dispose()
+            gc.collect()
+            return info
+
         model.setParam('LazyConstraints', 1)
         watched = []
         for t, (src, dst) in net['flow_ends'].items():
             watched += list(src.values()) + list(dst.values())
         watched += list(net['sel'].values()) + list(net['w'].values())
-        watched += list(x.values()) + list(y.values()) + list(hw_use.values()) + list(P.values())
+        watched += list(x.values()) + list(y.values()) + list(hw_use.values()) + list(P.values()) + list((net.get('Q') or {}).values()) \
+            + list((net.get('hw_t') or {}).values())
         watched += list(net['r'].values()) + [v for v in net['hot'].values() if v is not None] + list(net['hr'].values())
         watched += list(attach_s.values()) + list(attach_a.values()) + list(bus['gw'].values())
         watched += list(bus['act'].values()) + list(bus['len'].values()) + list(bus['unit'].values()) + list(bus['dev'].values())
@@ -2042,6 +2216,12 @@ class AssignmentOptimizer:
                     picks.append((t, indicator(t, *rt)))
                 total, _ = chain_terms(ch, picks, nom_msgs, nominal_term, False, routes)
                 if total > ch['budget'] + 1e-6:
+                    if _CHAIN_DEBUG:
+                        print(f"[chain debug] {ch.get('id')}: {total:.3f} ms > budget {ch['budget']:.3f} (const {ch['const']:.3f}); "
+                              + "; ".join(f"flow {t} {routes[t][2]} {locations[routes[t][0]].id if isinstance(routes[t][0], int) else routes[t][0]}->"
+                                          f"{locations[routes[t][1]].id if isinstance(routes[t][1], int) else routes[t][1]} "
+                                          f"{crossing_ms(net, t, routes[t], nom_msgs):.3f} ms" for t, _i in picks)
+                              + f"; devices {ch['dev_ends']}", flush=True)
                     _t, terms = chain_terms(ch, picks, nom_msgs, nominal_term, True, routes)
                     m.cbLazy(gp.quicksum(terms) <= ch['budget'] - ch['const'])
                     m._lazy_cuts += 1
@@ -2334,14 +2514,23 @@ class AssignmentOptimizer:
                         groups.setdefault((pos_r[i], scs[i].asil_req), []).append(i)
                     for (j, a), act in groups.items():
                         H = site_derating(locations[j], uncertainty)
-                        for res in ('cpu', 'ram', 'rom'):
-                            cap = float(partitions.get(f'{res}_cap', 0) or 0)
-                            if cap <= 0:
+                        _types = net.get('types')
+                        for res in (('cpu', 'ram', 'rom', 'tops') if _types and any(ty.get('tops_cap', 0) > 0 for ty in _types) else ('cpu', 'ram', 'rom')):
+                            hr_ = H if res in ('cpu', 'tops') else 1.0
+                            if _types:   # partition types (2026-11-04): capacity of the blocks opened for ASIL a at j
+                                cap_now = sum(getv(net['Q'][j, a, t]) * ty[f'{res}_cap'] for t, ty in enumerate(_types))
+                                cap_cut = gp.quicksum(net['Q'][j, a, t] * ty[f'{res}_cap'] for t, ty in enumerate(_types) if ty[f'{res}_cap'] > 0)
+                            else:
+                                cap = float(partitions.get(f'{res}_cap', 0) or 0)
+                                if cap <= 0:
+                                    continue
+                                cap_now, cap_cut = getv(P[j, a]) * cap, P[j, a] * cap
+                            dem = lambda i, res=res: getattr(scs[i], f'{res}_req') * sw_multiplier(scs[i], uncertainty, res)
+                            if res == 'tops' and not any(dem(i) > 0 for i in act):
                                 continue
-                            dem = lambda i, res=res: getattr(scs[i], f'{res}_req') * sw_multiplier(scs[i], uncertainty)
                             nominal = sum(dem(i) for i in feasible_scs_per_loc[j] if scs[i].asil_req == a and getv(x[i, j]) > 0.5)
                             hot_here = sum(dem(i) for i in net['critical'] if (i, j) in net['hr'] and scs[i].asil_req == a and getv(net['hr'][i, j]) > 0.5)
-                            if nominal + hot_here + sum(dem(i) for i in act) <= getv(P[j, a]) * cap * (H if res == 'cpu' else 1.0) + 1e-6:
+                            if nominal + hot_here + sum(dem(i) for i in act) <= cap_now * hr_ + 1e-6:
                                 continue
                             placement_ok = False
                             expr = gp.quicksum(dem(i) * x[i, j] for i in feasible_scs_per_loc[j] if scs[i].asil_req == a)
@@ -2351,7 +2540,7 @@ class AssignmentOptimizer:
                                 if net['hot'][i] is not None:
                                     term = term - net['hot'][i]
                                 expr += dem(i) * term
-                            m.cbLazy(expr <= P[j, a] * cap * (H if res == 'cpu' else 1.0))
+                            m.cbLazy(expr <= cap_cut * hr_)
                             m._lazy_cuts += 1
                             m._fail_cuts += 1
                     # the same for the whole unit (constraint 1d: site caps over all ASILs)
@@ -2364,7 +2553,7 @@ class AssignmentOptimizer:
                             site_cap = partitions.get(f'site_{res}_cap')
                             if site_cap is None:
                                 continue
-                            dem = lambda i, res=res: getattr(scs[i], f'{res}_req') * sw_multiplier(scs[i], uncertainty)
+                            dem = lambda i, res=res: getattr(scs[i], f'{res}_req') * sw_multiplier(scs[i], uncertainty, res)
                             nominal = sum(dem(i) for i in feasible_scs_per_loc[j] if getv(x[i, j]) > 0.5)
                             hot_here = sum(dem(i) for i in net['critical'] if (i, j) in net['hr'] and getv(net['hr'][i, j]) > 0.5)
                             if nominal + hot_here + sum(dem(i) for i in act) <= float(site_cap) * (H if res == 'cpu' else 1.0) + 1e-6:
@@ -2499,6 +2688,10 @@ class AssignmentOptimizer:
                 routed = repair_routes()
                 feasible = routed is not None
                 stage = None if feasible else 'no route option'
+                # a line whose members need a tree longer than the type's reach cannot be kept (the length variable's
+                # bound): Gurobi would reject the repaired solution (2026-11-04: 'valid' repairs never used)
+                if feasible and any(bus_members.get(b, 0.0) > bus.get('len_ub', {}).get(b, float('inf')) + 1e-6 for b in bus['inst']):
+                    feasible, stage = False, 'bus length'
                 rep_routes, rload, need = (routed[0] if routed else {}), {}, set()
                 for t, rt in rep_routes.items():
                     if rt is None:
@@ -2691,7 +2884,7 @@ class AssignmentOptimizer:
         # The pooled capacity constraint c2 is exact unless the SCs of one (site, ASIL) group cannot be packed into
         # the P[j,a] partitions opened for them. Every solution is checked; a failing group gets a cut and the
         # model is solved again.
-        partition_map = {}
+        partition_map, part_type = {}, {}
         packing_cuts, unpackable = 0, False
         while True:
             try:
@@ -2710,7 +2903,8 @@ class AssignmentOptimizer:
                 return None
             if not (model.SolCount > 0 and model.status in (GRB.OPTIMAL, GRB.TIME_LIMIT, GRB.MEM_LIMIT)):
                 break
-            partition_map, failed = pack_partitions(x, P, scs, locations, partitions, uncertainty, standby=net['hr'])
+            partition_map, failed, part_type = pack_partitions(x, P, scs, locations, partitions, uncertainty, standby=net['hr'],
+                                                               Q=net.get('Q') if net.get('types') else None)
             if not failed:
                 break
             if packing_cuts >= MAX_PACKING_CUTS:
@@ -2719,12 +2913,19 @@ class AssignmentOptimizer:
                 print(f"\n[Packing] {len(failed)} (site, ASIL) group(s) still not packable after {packing_cuts} cuts: no design from this solve")
                 unpackable = True
                 break
-            for (j, a, members, p_val) in failed:
-                # If all SCs of the group are hosted at site j, at least p_val + 1 partitions are needed
-                model.addConstr(
-                    P[j, a] >= (p_val + 1) * (gp.quicksum(var for _key, var in members) - len(members) + 1),
-                    name=f"packing_cut_{packing_cuts}_{locations[j].id}_asil{a}"
-                )
+            for (j, a, members, p_val, counts) in failed:
+                present = gp.quicksum(var for _key, var in members) - len(members) + 1   # 1 iff all members are at j
+                if counts is None:
+                    # If all SCs of the group are hosted at site j, at least p_val + 1 partitions are needed
+                    model.addConstr(P[j, a] >= (p_val + 1) * present, name=f"packing_cut_{packing_cuts}_{locations[j].id}_asil{a}")
+                else:
+                    # partition types (2026-11-04): no mix with at most counts[t] blocks of every type t packs the group
+                    # (a sub-multiset of a failing mix fails too), so some type needs one block more: z[t] = 1 marks it
+                    z = [model.addVar(vtype=GRB.BINARY, name=f"packing_cut_{packing_cuts}_{locations[j].id}_asil{a}_z{t}")
+                         for t in range(len(counts))]
+                    for t, zt in enumerate(z):
+                        model.addConstr(net['Q'][j, a, t] >= (counts[t] + 1) * zt, name=f"packing_cut_{packing_cuts}_{locations[j].id}_asil{a}_t{t}")
+                    model.addConstr(gp.quicksum(z) >= present, name=f"packing_cut_{packing_cuts}_{locations[j].id}_asil{a}")
                 packing_cuts += 1
                 print(f"\n[Packing] {len(members)} SCs of ASIL {a} at {locations[j].id} do not fit into {p_val} partition(s); cut added")
             if lex_constr is not None:
@@ -2748,7 +2949,7 @@ class AssignmentOptimizer:
                 x, P, y, hw_use, if_use, comm, scs, locations, sensors, actuators,
                 cable_types, partitions, hardwares, interfaces, comm_matrix=comm_matrix,
                 traffic_flows=traffic_flows, net=net, attach_s=attach_s, attach_a=attach_a, bus=bus,
-                partition_map=partition_map, standby=(net['r'], net['hot']), uncertainty=uncertainty
+                partition_map=partition_map, standby=(net['r'], net['hot']), uncertainty=uncertainty, part_type=part_type
             )
             formatted_solution['solve_info'] = {
                 'objective_type': 'min_cable_length' if minimize_cable_length else 'min_cost',
@@ -2859,7 +3060,8 @@ class AssignmentOptimizer:
     def optimize_pareto_epsilon_constraint(self, scs, locations, sensors, actuators, cable_types, comm_matrix,
                                            partitions=None, hardwares=None, interfaces=None,
                                            enable_comm_bw_constraints=True, comm_bw_big_m=10000, num_points=5,
-                                           solve_time_limit=None, mip_gap=None, lp_dir=None, uncertainty=None, backbone=None, phase2_time=600, gurobi_params=None, chains=None):
+                                           solve_time_limit=None, mip_gap=None, lp_dir=None, uncertainty=None, backbone=None, phase2_time=600, gurobi_params=None, chains=None,
+                                           lns=None, **_ignored):   # lns: the improvement loop of configs/solver.json, forwarded to every solve (main.py passes it to both sweeps)
         """
         Build Pareto front between total_cost and cable_length via epsilon-constraint.
 
@@ -2889,7 +3091,7 @@ class AssignmentOptimizer:
             time_limit=solve_time_limit,
             mip_gap=mip_gap,
             lp_path=_lp("min_cost"),
-            uncertainty=uncertainty, backbone=backbone, phase2_time=phase2_time, gurobi_params=gurobi_params, chains=chains,
+            uncertainty=uncertainty, backbone=backbone, phase2_time=phase2_time, gurobi_params=gurobi_params, chains=chains, lns=lns,
             start=self.last_values
         )
 
@@ -2907,7 +3109,7 @@ class AssignmentOptimizer:
             time_limit=solve_time_limit,
             mip_gap=mip_gap,
             lp_path=_lp("min_cable"),
-            uncertainty=uncertainty, backbone=backbone, phase2_time=phase2_time, gurobi_params=gurobi_params, chains=chains,
+            uncertainty=uncertainty, backbone=backbone, phase2_time=phase2_time, gurobi_params=gurobi_params, chains=chains, lns=lns,
             start=self.last_values
         )
 
@@ -2971,7 +3173,7 @@ class AssignmentOptimizer:
                         time_limit=solve_time_limit,
                         mip_gap=mip_gap,
                         lp_path=_lp(f"eps_cost_{k}"),
-                        uncertainty=uncertainty, backbone=backbone, phase2_time=phase2_time, gurobi_params=gurobi_params, chains=chains,
+                        uncertainty=uncertainty, backbone=backbone, phase2_time=phase2_time, gurobi_params=gurobi_params, chains=chains, lns=lns,
                         start=self.last_values
                     )
                     _add_unique(sol_eps)
@@ -2993,7 +3195,7 @@ class AssignmentOptimizer:
                         time_limit=solve_time_limit,
                         mip_gap=mip_gap,
                         lp_path=_lp(f"eps_cable_{k}"),
-                        uncertainty=uncertainty, backbone=backbone, phase2_time=phase2_time, gurobi_params=gurobi_params, chains=chains,
+                        uncertainty=uncertainty, backbone=backbone, phase2_time=phase2_time, gurobi_params=gurobi_params, chains=chains, lns=lns,
                         start=self.last_values
                     )
                     _add_unique(sol_eps)

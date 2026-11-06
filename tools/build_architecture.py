@@ -131,10 +131,22 @@ def log_uniform(rng, lo, hi):
 # Accelerator demand (TOPS, rated-equivalent = GOPs per inference x rate / 0.19; 0.19 = effective / rated TOPS of Jetson
 # AGX Orin in MLPerf Inference v3.1 Edge: ResNet-50 v1.5 offline 6,424 samples/s x 8.2 GOPs = 52.7 of 275 TOPS)
 TOPS_ETA = 0.19
-AW_TOPS = {   # node -> (TOPS, source); only nodes that run a DNN on the accelerator
+AW_TOPS = {   # node -> (TOPS, source): nodes with a CUDA / TensorRT implementation in Autoware Universe (user 2026-11-04:
+    # accelerated set widened from the two DNN nodes to every node the stack runs on the GPU; demand in TOPS-equivalent
+    # = operations per second / TOPS_ETA, the DNNs from their FLOP counts, the CUDA point-cloud kernels from their
+    # operation counts per point, an assumption)
     '/perception/object_recognition/detection/centerpoint/lidar_centerpoint': (round(16 * 10 / TOPS_ETA / 1000, 2),
         'CenterPoint-Pillar at 0.32 m pillars ~16 GOPs per sweep (PillarNeXt, Li et al. CVPR 2023, Table 1: Pillar-B 281 GFLOPs at '
         '0.075 m, scaled by the pillar count), 10 Hz, one inference on the concatenated cloud'),
+    '/perception/occupancy_grid_map/occupancy_grid_map_node': (round(3.0 / TOPS_ETA / 1000, 3),
+        'autoware_probabilistic_occupancy_grid_map, CUDA implementation (Autoware Universe, 2025): ray marching of ~100k points of '
+        'the concatenated cloud over ~150 cells each, ~20 operations per cell update, 10 Hz: ~3 GOPs per second (assumption)'),
+    '/sensing/lidar/top/distortion_corrector_node': (round(0.144 / TOPS_ETA / 1000, 3),
+        'autoware_cuda_pointcloud_preprocessor (Autoware Universe, 2025): crop box, distortion correction and ring outlier '
+        'filter of a lidar fused in one CUDA node, represented by the distortion-correction node of the two 128-beam lidars '
+        '(top and front; their preprocessing is the heavy one, ~1,000 DMIPS measured against ~250 for the 32-beam side and '
+        'rear lidars, which stay on the CPU): Velodyne VLS-128 ~2.4 M points per second x ~60 operations per point = '
+        '0.144 GOPs per second (assumption)'),
 }
 # the CPU side and the memory of the accelerated DNN container on the target (2026-11-03). CPU: measured per thread in the
 # camera run (autoware_bench/out_cam2, job 3614): the container's work thread 59.5 % and its CUDA event thread 5.5 % of a host
@@ -173,14 +185,28 @@ def generate_non_ad(catalogue, scale, rng, devices):
             if mem:
                 fn_rom_kb = log_uniform(rng, *mem['rom']) * 1024.0 / n_swc
                 fn_ram_kb = log_uniform(rng, *mem['ram']) * 1024.0 / n_swc
+            # ASIL and the safety path (2026-11-04, user: a realistic architecture without fatal errors such as a QM
+            # driver on an ASIL D brake): the ASILs are drawn as before (the first component at the function's ASIL, the
+            # others at it with the critical share 0.6 for ASIL >= 3 functions, else from the CARIAD mix capped at the
+            # function's ASIL); the components at the function's ASIL then form its safety path (ids _000.. first: the
+            # sensor driver, the pipeline, every timing chain, the actuator driver) and the lower ones are its support
+            # components (diagnostics, monitoring, calibration), which read the path. ISO 26262: an element in the path of
+            # a safety goal carries the goal's ASIL unless the requirement is decomposed onto redundant elements.
+            drawn = []
+            for k in range(n_swc):
+                if k == 0 or (fn['asil'] >= 3 and rng.random() < 0.6):
+                    drawn.append(fn['asil'])
+                else:
+                    drawn.append(min(fn['asil'], pick(rng, ASIL_LEVELS, ASIL_SHARE)))
+            n_path = sum(1 for a in drawn if a == fn['asil'])
+            if n_path < 2 <= n_swc:   # a pipeline from the sensor driver to the actuator driver needs two components
+                drawn[next(i for i, a in enumerate(drawn) if a != fn['asil'])] = fn['asil']
+                n_path = 2
+            asils = [fn['asil']] * n_path + [a for a in drawn if a != fn['asil']]
             for k in range(n_swc):
                 cid = f"{fid}_{k:03d}"
-                # ASIL: the function's safety-critical share at the function's ASIL, the rest lower (CARIAD mix as
-                # the prior); the first component of a critical function is always at the function's ASIL
-                if fn['asil'] >= 3 and (k == 0 or rng.random() < 0.6):
-                    asil = fn['asil']
-                else:
-                    asil = min(fn['asil'], pick(rng, ASIL_LEVELS, ASIL_SHARE))
+                asil = asils[k]
+                on_path = k < n_path
                 # period: the function's base period for the first component, CARIAD mix otherwise (clipped to the
                 # neighbourhood of the base period: communication happens between equal / adjacent periods, Table 4)
                 if k == 0:
@@ -195,8 +221,11 @@ def generate_non_ad(catalogue, scale, rng, devices):
                     if period in WATERS_ACET_US and rng.random() < 0.5:
                         lo, avg, hi = WATERS_ACET_US[period]
                         if period in WATERS_ACET_WEIBULL:
-                            k, lam = WATERS_ACET_WEIBULL[period]
-                            acet = min(hi, max(lo, rng.weibullvariate(lam, k)))
+                            # kw (2026-11-04): this was 'k', which overwrote the component index of the enclosing loop, so
+                            # the sensor / actuator roles (k == 0, k == last) were lost at random and with them the
+                            # function's devices (the catalogues before 2026-11-04 carry 40 of 128 devices)
+                            kw, lam = WATERS_ACET_WEIBULL[period]
+                            acet = min(hi, max(lo, rng.weibullvariate(lam, kw)))
                         else:
                             acet = rng.uniform(lo, hi)
                         wc = acet * rng.uniform(*WATERS_WCET_FACTOR[period])
@@ -220,12 +249,13 @@ def generate_non_ad(catalogue, scale, rng, devices):
                 else:
                     rom = round(log_uniform(rng, *ROM_KB[asil]), 1)   # per SW-C (CARIAD Table 1); a component is one SW-C
                     ram = round(log_uniform(rng, *RAM_KB[asil]), 2)
-                role = 'sensor' if (k == 0 and fn['sensors']) else ('actuator' if (k == n_swc - 1 and fn['actuators']) else 'processing')
+                role = ('sensor' if (k == 0 and fn['sensors']) else 'actuator' if (k == n_path - 1 and fn['actuators'])
+                        else 'processing' if on_path else 'support')
                 comps.append({'id': cid, 'domain': domain, 'function': fn['id'], 'role': role, 'asil': asil,
-                              'fail_operational': fn['id'] in FAIL_OPERATIONAL_FUNCTIONS, 'tops_req': 0.0, 'hw_required': list(fn.get('hw_required', [])),
+                              'path': on_path, 'fail_operational': fn['id'] in FAIL_OPERATIONAL_FUNCTIONS and on_path, 'tops_req': 0.0, 'hw_required': list(fn.get('hw_required', [])),
                               'period_ms': period, 'runnables': runnables,
                               'cpu_dmips': round(load_share * CORE_DMIPS['AURIX_TC39x'], 3), 'cpu_dmips_worst': round(wc_share * CORE_DMIPS['AURIX_TC39x'], 3), 'ram_kb': ram, 'rom_kb': rom,
-                              'sensors': fn['sensors'] if role == 'sensor' else [], 'actuators': fn['actuators'] if role == 'actuator' else [],
+                              'sensors': fn['sensors'] if k == 0 else [], 'actuators': fn['actuators'] if k == n_path - 1 else [],
                               'bus': fn['bus'], 'platform': (mem['platform'] if mem else 'classic'),
                               'source': f"generated:catalogue={fn['source']}; distributions={CARIAD}" + (f"; memory: {mem['source']}" if mem else '')})
                 ids.append(cid)
@@ -236,8 +266,11 @@ def generate_non_ad(catalogue, scale, rng, devices):
                 lb = pick(rng, WATERS_LABEL_BYTES, WATERS_LABEL_SHARE)
                 flows.append({'src': a, 'dst': b, 'bytes': max(CAN_SIGNAL_BYTES, lb), 'label_bytes': lb, 'rate_hz': round(1000.0 / pa, 3),
                               'kind': kind, 'source': 'generated: pipeline + CARIAD Table 4; label size WATERS Table I; carried in 8-byte CAN/LIN frames (ISO 11898)'})
-            for a, b in zip(ids, ids[1:]):
+            path_ids = ids[:n_path]
+            for a, b in zip(path_ids, path_ids[1:]):
                 add_flow(a, b, 'pipeline')
+            for s_id in ids[n_path:]:   # support components read the path (monitoring, diagnostics, logging)
+                add_flow(rng.choice(path_ids), s_id, 'support')
             extra = max(0, round(n_swc * 0.5))
             for _ in range(extra):
                 a, b = rng.sample(ids, 2)
@@ -247,9 +280,9 @@ def generate_non_ad(catalogue, scale, rng, devices):
             n_run_fn = sum(len(x['runnables']) for x in comps if x['function'] == fn['id'] and x['domain'] == domain)
             n_chains = max(1, round(n_run_fn * CHAINS_PER_100_RUNNABLES / 100.0))
             for c in range(n_chains):
-                L = min(pick(rng, CHAIN_LEN, CHAIN_LEN_SHARE) if rng.random() < 0.5 else pick(rng, WATERS_CHAIN_LEN, WATERS_CHAIN_LEN_SHARE), n_swc)
-                start = rng.randrange(0, n_swc - L + 1)
-                members = ids[start:start + L]
+                L = min(pick(rng, CHAIN_LEN, CHAIN_LEN_SHARE) if rng.random() < 0.5 else pick(rng, WATERS_CHAIN_LEN, WATERS_CHAIN_LEN_SHARE), n_path)
+                start = rng.randrange(0, n_path - L + 1)
+                members = path_ids[start:start + L]   # timing chains lie on the safety path
                 periods = [next(x for x in comps if x['id'] == m)['period_ms'] for m in members]
                 hyper = max(periods)
                 # two published rules for the end-to-end constraint: WATERS (sum of the periods of the activation
@@ -272,7 +305,8 @@ def generate_non_ad(catalogue, scale, rng, devices):
     for fid, signals in SHARED_SIGNAL_SOURCES.items():
         prod = [c for c in comps if f"{c['domain']}_{c['function']}" == fid]
         if prod:
-            src_comp[fid] = (prod[-1]['id'], signals)
+            on_path = [c for c in prod if c.get('path', True)]
+            src_comp[fid] = ((on_path or prod)[-1]['id'], signals)   # the function's output = the end of its path
     n_shared = 0
     for c in comps:
         for _ in range(rng.randint(*SHARED_SIGNALS_PER_COMPONENT)):
@@ -309,7 +343,8 @@ def cross_domain_links(comps, flows):
     """links between domains that exist in Autoware's vehicle interface and in the AUTOSAR inter-domain interfaces"""
     by_fn = defaultdict(list)
     for c in comps:
-        by_fn[c['function']].append(c['id'])
+        if c.get('path', True):   # interfaces enter and leave a function on its path (input = first, output = last)
+            by_fn[c['function']].append(c['id'])
 
     def first(fn):
         return by_fn[fn][0] if by_fn.get(fn) else None

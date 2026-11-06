@@ -530,7 +530,7 @@ def failure_report(net, scs, locations, getv, uncertainty=None):
             entry['activated_cold_standbys'] = [scs[i].id for i in act]
             load = {}
             for i in act:
-                load[locations[pos_r[i]].id] = load.get(locations[pos_r[i]].id, 0.0) + scs[i].cpu_req * sw_multiplier(scs[i], uncertainty)
+                load[locations[pos_r[i]].id] = load.get(locations[pos_r[i]].id, 0.0) + scs[i].cpu_req * sw_multiplier(scs[i], uncertainty, 'cpu')
             entry['added_cpu_load'] = {k: round(v) for k, v in load.items()}
         chains = {}
         for ch in net.get('chains', []):
@@ -604,15 +604,30 @@ def chain_latencies(net, routes, getv):
 # UNCERTAINTY HELPERS AND PARTITION PACKING
 # ============================================================================
 
-def sw_multiplier(sc, uncertainty):
-    """Resource demand multiplier of an SC at the robustness level rho: (1 + rho x sw_margin) (listed domains only) times
-    the growth factor (1 + rate x profile[domain]) ^ (years x rho) (configs/uncertainty.json: rho, growth, sw_margin)."""
+def margin_of(cfg, res):
+    """the margin m of resource res (cpu, tops, ram, rom) from a sw_margin block of the 'free_capacity' form
+    (2026-11-04, user decision): the space standards keep a share of the capacity free at delivery (ECSS-E-ST-40C typical
+    values: 25 % CPU utilisation and 25 % memory at acceptance; NASA SWEHB 9.12: 20-30 % CPU, 30 % RAM, 0 % code memory),
+    which in a demand model is demand x 1 / (1 - free); so m = 1 / (1 - free[res]) - 1, every component, every ASIL,
+    accelerated nodes included (TOPS is accelerator time, a measured usage like CPU time)."""
+    free = cfg.get('free_capacity') or {}
+    f = float(free.get(res, free.get('default', 0.0)) or 0.0)
+    return 1.0 / (1.0 - f) - 1.0 if f < 1.0 else 0.0
+
+
+def sw_multiplier(sc, uncertainty, res='cpu'):
+    """Demand multiplier of an SC for resource res (cpu, tops, ram, rom) at the robustness level rho: (1 + rho x m_res) times
+    the growth factor (1 + rate x profile[domain]) ^ (years x rho) (configs/uncertainty.json: rho, growth, sw_margin).
+    sw_margin has two forms: 'free_capacity' per resource (margin_of; the runs from 2026-11-04 on) and the legacy form
+    (domains / asil_margins / ai_margin: resource-independent, listed domains only; the runs before)."""
     unc = uncertainty or {}
     m = 1.0
     domain = str(getattr(sc, 'domain', '') or '').strip()
     if unc.get('sw_margin'):
         cfg = unc.get('params', {}).get('sw_margin', {})
-        if domain.upper() in {str(d).strip().upper() for d in cfg.get('domains', [])}:
+        if 'free_capacity' in cfg:
+            m *= 1.0 + rho_level(unc) * margin_of(cfg, res)
+        elif domain.upper() in {str(d).strip().upper() for d in cfg.get('domains', [])}:
             margins = {int(k): float(v) for k, v in cfg.get('asil_margins', {}).items()}
             m_asil = margins.get(int(getattr(sc, 'asil_req', 0)), float(cfg['default_asil_margin']))
             m_ai = float(cfg['ai_margin']) if (cfg['ai_hw_feature'] in (getattr(sc, 'hw_required', None) or [])) else 0.0
@@ -648,18 +663,26 @@ def site_derating(location, uncertainty):
     return max(0.0, 1.0 - rho_level(uncertainty) * (1.0 - h))   # rho = 0: no derating, rho = 1: the class value
 
 
-def _first_fit_decreasing(members, demand, bin_cap, n_bins):
-    """Pack items (dict of resource demands) into n_bins bins; returns {item: bin} or None."""
-    active = [r for r in bin_cap if bin_cap[r] > 0]
+def _bin_caps(bin_cap, n_bins):
+    """per-bin capacities: a list of dicts (partition types: bins of different sizes) or one dict for n_bins equal bins"""
+    return [dict(c) for c in bin_cap] if isinstance(bin_cap, (list, tuple)) else [dict(bin_cap) for _ in range(n_bins)]
+
+
+def _first_fit_decreasing(members, demand, bin_cap, n_bins=None):
+    """Pack items (dict of resource demands) into bins (bin_cap: one dict for n_bins equal bins, or a list of per-bin
+    dicts); a resource is checked when some bin has a positive capacity for it; returns {item: bin} or None."""
+    caps = _bin_caps(bin_cap, n_bins)
+    active = [r for r in (caps[0] if caps else {}) if any(c[r] > 0 for c in caps)]
+    top = {r: max(c[r] for c in caps) for r in active}
 
     def largest(i):
-        return max((demand[i][r] / bin_cap[r] for r in active), default=0.0)
+        return max((demand[i][r] / top[r] for r in active), default=0.0)
 
-    load = [{r: 0.0 for r in active} for _ in range(n_bins)]
+    load = [{r: 0.0 for r in active} for _ in caps]
     slots = {}
     for i in sorted(members, key=largest, reverse=True):
-        for b in range(n_bins):
-            if all(load[b][r] + demand[i][r] <= bin_cap[r] * (1.0 + 1e-9) + 1e-9 for r in active):
+        for b, c in enumerate(caps):
+            if all(load[b][r] + demand[i][r] <= c[r] * (1.0 + 1e-9) + 1e-9 for r in active):
                 for r in active:
                     load[b][r] += demand[i][r]
                 slots[i] = b
@@ -669,38 +692,46 @@ def _first_fit_decreasing(members, demand, bin_cap, n_bins):
     return slots
 
 
-def _exact_packing(members, demand, bin_cap, n_bins):
-    """Exact vector bin packing (small MILP); returns {item: bin} or None if no packing exists."""
+def _exact_packing(members, demand, bin_cap, n_bins=None):
+    """Exact vector bin packing (small MILP; bins as in _first_fit_decreasing); returns {item: bin} or None if no
+    packing exists."""
     import gurobipy as gp
     from gurobipy import GRB
-    if n_bins <= 0:
+    caps = _bin_caps(bin_cap, n_bins)
+    if not caps:
         return None
+    active = [r for r in caps[0] if any(c[r] > 0 for c in caps)]
     m = gp.Model("partition_packing")
     m.setParam('OutputFlag', 0)
-    u = {(i, b): m.addVar(vtype=GRB.BINARY) for i in members for b in range(n_bins)}
+    nb = len(caps)
+    u = {(i, b): m.addVar(vtype=GRB.BINARY) for i in members for b in range(nb)}
     for i in members:
-        m.addConstr(gp.quicksum(u[i, b] for b in range(n_bins)) == 1)
-    for b in range(n_bins):
-        for r, cap in bin_cap.items():
-            if cap > 0:
-                m.addConstr(gp.quicksum(demand[i][r] * u[i, b] for i in members) <= cap)
+        m.addConstr(gp.quicksum(u[i, b] for b in range(nb)) == 1)
+    for b in range(nb):
+        for r in active:
+            m.addConstr(gp.quicksum(demand[i][r] * u[i, b] for i in members) <= caps[b][r])
     m.optimize()
     if m.SolCount == 0:
         return None
-    return {i: next(b for b in range(n_bins) if u[i, b].X > 0.5) for i in members}
+    return {i: next(b for b in range(nb) if u[i, b].X > 0.5) for i in members}
 
 
-def pack_partitions(x, P, scs, locations, partitions, uncertainty=None, standby=None):
+def pack_partitions(x, P, scs, locations, partitions, uncertainty=None, standby=None, Q=None):
     """
     Give every hosted SC a concrete partition slot "<site>_asil<a>_p<k>" inside the P[j, a] partitions the model
     opened. The model's capacity constraint pools the partitions of one ASIL at a site (demand <= P * capacity),
     which is a relaxation of bin packing; this function checks it with first-fit decreasing and, if that fails,
     an exact packing model.
 
-    Returns (partition_map, failed): failed lists (j, a, sc_indices, P_value) of groups that no packing fits;
-    the optimiser adds a cut for each and solves again.
+    Partition types (2026-11-04, partitions['types'] with Q[j, a, t]): the bins of a group are the blocks the model
+    opened, each with its type's capacities (CPU and TOPS derated); slot k is a block of the type part_type gives.
+
+    Returns (partition_map, failed, part_type): failed lists (j, a, members, P_value, type counts or None) of groups
+    that no packing fits (the optimiser adds a cut for each and solves again); part_type = {partition name: type id}.
     """
-    caps = {res: float(partitions.get(f'{res}_cap', 0) or 0) for res in ('cpu', 'ram', 'rom')}
+    types = partitions.get('types') if Q else None
+    res = ('cpu', 'ram', 'rom', 'tops') if types and any(ty.get('tops_cap', 0) > 0 for ty in types) else ('cpu', 'ram', 'rom')   # TOPS only if a type has it
+    caps = {r: float(partitions.get(f'{r}_cap', 0) or 0) for r in res}
     groups = {}   # (cell, ASIL) -> [(member key, variable)]; members are primaries (i, 'x') and hot standbys (i, 'r')
     for (i, j), var in x.items():
         if var.X > 0.5:
@@ -708,23 +739,34 @@ def pack_partitions(x, P, scs, locations, partitions, uncertainty=None, standby=
     for (i, j), var in (standby or {}).items():
         if var.X > 0.5:
             groups.setdefault((j, scs[i].asil_req), []).append(((i, 'r'), var))
-    partition_map, failed = {}, []
+    partition_map, failed, part_type = {}, [], {}
     for (j, a), members in sorted(groups.items()):
         n_bins = int(round(P[j, a].X))
         h = site_derating(locations[j], uncertainty)
-        bin_cap = {res: caps[res] * (h if res == 'cpu' else 1.0) for res in caps}   # derating: processing only
+        if types:
+            counts = tuple(int(round(Q[j, a, t].X)) for t in range(len(types)))
+            # largest blocks first (by CPU, then RAM): the bins first-fit tries first
+            order = sorted((t for t in range(len(types)) for _ in range(counts[t])),
+                           key=lambda t: (-types[t]['cpu_cap'], -types[t]['ram_cap'], types[t]['id']))
+            bin_cap = [{r: types[t][f'{r}_cap'] * (h if r in ('cpu', 'tops') else 1.0) for r in res} for t in order]
+        else:
+            counts, order = None, None
+            bin_cap = [{r: caps[r] * (h if r == 'cpu' else 1.0) for r in caps}] * n_bins   # derating: processing only
         keys = [k for k, _v in members]
-        demand = {k: {res: float(getattr(scs[k[0]], f'{res}_req', 0) or 0) * sw_multiplier(scs[k[0]], uncertainty) for res in caps}
+        demand = {k: {r: float(getattr(scs[k[0]], f'{r}_req', 0) or 0) * sw_multiplier(scs[k[0]], uncertainty, r) for r in res}
                   for k in keys}
-        slots = _first_fit_decreasing(keys, demand, bin_cap, n_bins)
+        slots = _first_fit_decreasing(keys, demand, bin_cap) if bin_cap else None
         if slots is None:
-            slots = _exact_packing(keys, demand, bin_cap, n_bins)
+            slots = _exact_packing(keys, demand, bin_cap) if bin_cap else None
         if slots is None:
-            failed.append((j, a, list(members), n_bins))
+            failed.append((j, a, list(members), n_bins, counts))
             slots = {k: 0 for k in keys}
         for (i, inst), b in slots.items():
             partition_map[scs[i].id + ('@standby' if inst == 'r' else '')] = f"{locations[j].id}_asil{a}_p{b}"
-    return partition_map, failed
+        if order is not None:
+            for b, t in enumerate(order):
+                part_type[f"{locations[j].id}_asil{a}_p{b}"] = types[t]['id']
+    return partition_map, failed, part_type
 
 
 # ============================================================================
@@ -900,7 +942,7 @@ def extract_communication_links(comm, locations, min_link_value=0.5):
 def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, actuators,
                      cable_types, partitions, hardwares, interfaces, comm_matrix=None,
                      traffic_flows=None, net=None, attach_s=None, attach_a=None,
-                     bus=None, partition_map=None, standby=None, uncertainty=None):
+                     bus=None, partition_map=None, standby=None, uncertainty=None, part_type=None):
         """
         Extract formatted solution dict from raw Gurobi model variables.
         
@@ -983,6 +1025,18 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
         
         # Extract HW and interfaces opened
         hw_cost, hw_opened = calculate_hardware_cost(hw_use, hardwares, locations)
+        # GPU types (2026-11-05): modules per cell and type, each at its type's price
+        hw_unit_types = None
+        hw_t = (net or {}).get('hw_t') or {}
+        if hw_t:
+            capd = (partitions or {}).get('hw_capacity', {}) or {}
+            hw_unit_types = {}
+            for (j, h, t), var in hw_t.items():
+                n = int(round(var.X))
+                if n > 0:
+                    ty = capd[h]['types'][t]
+                    hw_unit_types.setdefault(f"{h}@{locations[j].id}", {})[ty['id']] = n
+                    hw_cost += n * float(ty['cost'])
         
         # Debug: Check if SWITCH was selected
         switches_selected = [hw for hw in hw_opened if hw.startswith("SWITCH")]
@@ -1009,6 +1063,16 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
         
         # Calculate partition and communication costs
         partition_cost = calculate_partition_cost(P, partitions)
+        # partition types (2026-11-04): the price of each opened block; partition_types = the block type of every
+        # partition slot (from pack_partitions), partition_type_counts = blocks per (site, ASIL) and type
+        partition_type_counts = None
+        if (partitions or {}).get('types') and net and net.get('Q'):
+            types = partitions['types']
+            partition_type_counts = {}
+            for (j, a, t), var in net['Q'].items():
+                if var.X > 0.5:
+                    partition_type_counts.setdefault(f"{locations[j].id}_asil{a}", {})[types[t]['id']] = int(round(var.X))
+            partition_cost = sum(types[t]['cost'] * int(round(var.X)) for (j, a, t), var in net['Q'].items())
         comm_cost = calculate_communication_cost(comm, locations, cable_types)
         comm_links = extract_communication_links(comm, locations)
 
@@ -1258,10 +1322,13 @@ def extract_solution(x, P, y, hw_use, if_use, comm, scs, locations, sensors, act
             'num_candidate_sites': len(locations),
             'candidate_sites': [loc.id for loc in locations],
             'partition_counts': partition_counts,
+            'partition_types': dict(part_type or {}) if partition_type_counts is not None else None,
+            'partition_type_counts': partition_type_counts,
             'flow_routes': flow_route_list,
             'num_ecus_used': num_locations_used,  # For visualizer compatibility
             'num_partitions': num_partitions_opened,
             'hw_features': hw_opened,
+            'hw_unit_types': hw_unit_types,
             'interfaces': if_opened,
             'partition_cost': partition_cost,
             'site_cost': site_cost,

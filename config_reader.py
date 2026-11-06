@@ -106,12 +106,20 @@ class ConfigReader:
         """Partition capacity/cost and the per-site caps of a control unit (configs/partitions.json)"""
         partition = self.partitions_config.get('partition', {})
         site = self.partitions_config.get('site', {})
+        # partition types (building blocks, 2026-11-04): each partition is one block of a chosen type with its own
+        # capacities and price; absent = the single partition of the v1 model (cpu_cap / ram_cap / rom_cap / cost)
+        types = [{'id': str(t['id']), 'cpu_cap': float(t.get('cpu_cap') or 0), 'ram_cap': float(t.get('ram_cap') or 0),
+                  'rom_cap': float(t.get('rom_cap') or 0), 'tops_cap': float(t.get('tops_cap') or 0), 'cost': float(t.get('cost') or 0)}
+                 for t in (partition.get('types') or [])]
         return {
+            'types': types or None,
+            # the hardware requirement that a block's TOPS serves (no add-on accelerator with partition types)
+            'tops_feature': partition.get('tops_feature'),
             'cpu_cap': partition.get('cpu_cap', 0),
             'ram_cap': partition.get('ram_cap', 0),
             'rom_cap': partition.get('rom_cap', 0),
             'cost': partition.get('cost', 0),
-            'max_per_asil_per_site': partition.get('max_per_asil_per_site', 3),
+            'max_per_asil_per_site': partition.get('max_per_asil_per_site', 3),   # null = no limit per ASIL
             # null = unlimited / 0 = free: the v1 model
             'site_max_partitions': site.get('max_partitions'),
             'site_cpu_cap': site.get('cpu_cap'),
@@ -132,8 +140,16 @@ class ConfigReader:
 
     def get_hardware_capacities(self):
         """Hardware features with a capacity (hardwares.json: tops, max_units_per_site), e.g. the AI accelerator"""
-        return {h: {'tops': float(spec['tops']), 'max_units': int(spec.get('max_units_per_site', 1))}
-                for h, spec in self.hardware_config.get('hardware_costs', {}).items() if spec.get('tops')}
+        # GPU types (2026-11-05): a feature with 'types' = modules of several types (id, tops, cost) per cell, any mix of
+        # up to max_units_per_site; 'tops' is then the largest type's (for the checks that need one number)
+        out = {}
+        for h, spec in self.hardware_config.get('hardware_costs', {}).items():
+            types = [{'id': str(t['id']), 'tops': float(t['tops']), 'cost': float(t.get('cost') or 0)} for t in (spec.get('types') or [])]
+            if types:
+                out[h] = {'tops': max(t['tops'] for t in types), 'max_units': int(spec.get('max_units_per_site', 1)), 'types': types}
+            elif spec.get('tops'):
+                out[h] = {'tops': float(spec['tops']), 'max_units': int(spec.get('max_units_per_site', 1))}
+        return out
 
     def get_hardwares(self):
         """Get hardware feature costs (DSP, HSM, HW_ACC)"""

@@ -69,13 +69,20 @@ def unit_data(sol, arch, devices):
     return units
 
 
-def part_label(part, scs, arch, caps):
+def part_label(part, scs, arch, caps, sol=None):
     asil = int(part.split('_asil')[1].split('_')[0])
     live = [s for s, tag in scs if tag != 'cold']   # cold standbys reserve, they do not consume in the nominal state
+    name = ''
+    if caps.get('types'):   # partition types (2026-11-04): the capacities of the partition's block type
+        t = ((sol or {}).get('partition_types') or {}).get(part)
+        caps = next((ty for ty in caps['types'] if ty['id'] == t), None)
+        if caps is None:
+            return f"partition ASIL {ASIL_NAME.get(asil, asil)}  ·  block type unknown"
+        name = f"{t}  ·  "
     cpu = sum(arch[s]['cpu_req'] for s in live) / caps['cpu_cap'] * 100
     ram = sum(arch[s]['ram_req'] for s in live) / caps['ram_cap'] * 100
     rom = sum(arch[s]['rom_req'] for s in live) / caps['rom_cap'] * 100
-    return f"partition ASIL {ASIL_NAME.get(asil, asil)}  ·  CPU {cpu:.0f} %  RAM {ram:.0f} %  ROM {rom:.0f} %"
+    return f"{name}partition ASIL {ASIL_NAME.get(asil, asil)}  ·  CPU {cpu:.0f} %  RAM {ram:.0f} %  ROM {rom:.0f} %"
 
 
 def draw(sol, arch, sites, devices, caps, out, title):
@@ -129,7 +136,7 @@ def draw(sol, arch, sites, devices, caps, out, title):
             ph = part_head + rows * LINE + 0.12
             ax.add_patch(FancyBboxPatch((x + 0.1, y - ph), COLW - 0.2, ph - 0.04, boxstyle='round,pad=0.01,rounding_size=0.04',
                                         fc='white', ec='#8a2b2b', lw=1.0))
-            ax.text(x + 0.18, y - 0.15, part_label(part, scs, arch, caps), fontsize=7.2, fontweight='bold', va='center', color='#8a2b2b')
+            ax.text(x + 0.18, y - 0.15, part_label(part, scs, arch, caps, sol), fontsize=7.2, fontweight='bold', va='center', color='#8a2b2b')
             for k, (sc, tag) in enumerate(sorted(scs, key=lambda e: (e[1] != '', arch[e[0]]['domain'], e[0]))):
                 col, row = (k % 2, k // 2) if two else (0, k)
                 cx = x + 0.18 + col * (COLW - 0.36) / 2

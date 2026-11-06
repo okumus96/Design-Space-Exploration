@@ -42,8 +42,11 @@ def _load(path):
 
 
 def _le(a, b):
-    """a <= b within the solver's feasibility tolerance"""
-    return a <= b + 1e-6 * max(1.0, abs(b)) + 1e-6
+    """a <= b within the solver's tolerances: Gurobi takes an integer variable within IntFeasTol (default 1e-5) of a
+    whole number as whole, so a capacity n x cap may carry up to 1e-5 x cap more than n partitions have (user
+    2026-11-05: the checker's relative tolerance is set to that 1e-5, was 1e-6; types70 was 0.42 DMIPS over a
+    64,000-DMIPS partition); plus the feasibility tolerance 1e-6"""
+    return a <= b + 1e-5 * max(1.0, abs(b)) + 1e-6
 
 
 def _close(a, b, rel=1e-6, tol=1e-4):
@@ -59,19 +62,23 @@ def _repo_path(p):
     return p if os.path.isabs(p) else os.path.join(REPO, p)
 
 
-def _pack(items, demand, cap, n_bins):
-    """Vector bin packing: first-fit decreasing, then a depth-first search with a node limit.
-    Returns True (packing found), False (proven impossible) or None (search limit reached)."""
-    active = [r for r in cap if cap[r] > 0]
+def _pack(items, demand, cap, n_bins=None):
+    """Vector bin packing: first-fit decreasing, then a depth-first search with a node limit. cap: one dict for
+    n_bins equal bins, or a list of per-bin dicts (partition types, 2026-11-04; a resource is checked when some bin has
+    a positive capacity for it). Returns True (packing found), False (proven impossible) or None (search limit reached)."""
+    caps = [dict(c) for c in cap] if isinstance(cap, (list, tuple)) else [dict(cap) for _ in range(int(n_bins or 0))]
+    n_bins = len(caps)
     if not items:
         return True
     if n_bins <= 0:
         return False
-    order = sorted(items, key=lambda i: max((demand[i][r] / cap[r] for r in active), default=0.0), reverse=True)
+    active = [r for r in caps[0] if any(c[r] > 0 for c in caps)]
+    top = {r: max(c[r] for c in caps) for r in active}
+    order = sorted(items, key=lambda i: max((demand[i][r] / top[r] for r in active), default=0.0), reverse=True)
     load = [{r: 0.0 for r in active} for _ in range(n_bins)]
 
     def fits(b, i):
-        return all(_le(load[b][r] + demand[i][r], cap[r]) for r in active)
+        return all(_le(load[b][r] + demand[i][r], caps[b][r]) for r in active)
 
     for i in order:
         b = next((b for b in range(n_bins) if fits(b, i)), None)
@@ -140,13 +147,18 @@ class SolutionCheck:
         pa, pb = self.pos[a], self.pos[b]
         return abs(pa['x'] - pb['x']) + abs(pa['y'] - pb['y']) + abs(pa['z'] - pb['z'])
 
-    def mult(self, sc):
-        """demand multiplier: sw_margin (listed domains) x growth (1 + alpha * profile[domain])"""
+    def mult(self, sc, res='cpu'):
+        """demand multiplier of resource res: sw_margin (free_capacity per resource, else the legacy listed-domain form)
+        x growth (1 + alpha * profile[domain])"""
         m = 1.0
         dom = str(sc['domain'] or '').strip()
         if self.flags.get('sw_margin'):
             cfg = self.unc.get('sw_margin', {})
-            if dom.upper() in {str(d).strip().upper() for d in cfg.get('domains', [])}:
+            if 'free_capacity' in cfg:
+                free = cfg.get('free_capacity') or {}
+                f = float(free.get(res, free.get('default', 0.0)) or 0.0)
+                m *= 1.0 + self.rho * (1.0 / (1.0 - f) - 1.0 if f < 1.0 else 0.0)
+            elif dom.upper() in {str(d).strip().upper() for d in cfg.get('domains', [])}:
                 margins = {int(k): float(v) for k, v in cfg.get('asil_margins', {}).items()}
                 m_asil = margins.get(sc['asil'], float(cfg.get('default_asil_margin', 0.0)))
                 m_ai = float(cfg.get('ai_margin', 0.0)) if cfg.get('ai_hw_feature') in sc['hw'] else 0.0
@@ -160,7 +172,7 @@ class SolutionCheck:
 
     def demand(self, sc_id, res):
         sc = self.scs[sc_id]
-        return sc[res] * self.mult(sc)
+        return float(sc.get(res) or 0.0) * self.mult(sc, res)
 
     def derate(self, site):
         return max(0.0, 1.0 - self.rho * (1.0 - self.site_derating.get(site, 1.0))) if self.flags.get('derating') else 1.0
@@ -178,8 +190,16 @@ class SolutionCheck:
         self.k_paths = max(1, int(buses.get('backbone', {}).get('candidate_paths', 3)))
         parts = cfg('partitions.json')
         self.part, self.site_cfg = parts.get('partition', {}), parts.get('site', {})
+        # partition types (building blocks, 2026-11-04): every partition is one block of a type with its own capacities
+        # (CPU, RAM, ROM, TOPS) and price; the accelerator requirement (tops_feature) is served by the block's TOPS
+        self.types = {str(t['id']): {'cpu': float(t.get('cpu_cap') or 0), 'ram': float(t.get('ram_cap') or 0),
+                                     'rom': float(t.get('rom_cap') or 0), 'tops': float(t.get('tops_cap') or 0),
+                                     'cost': float(t.get('cost') or 0)} for t in (self.part.get('types') or [])}
+        self.tops_feature = self.part.get('tops_feature') if self.types else None
+        # TOPS is a partition resource only when some partition type has TOPS (else the GPU is per-cell hardware, 2026-11-05)
+        self.res = RES + ('tops',) if self.types and any(t['tops'] > 0 for t in self.types.values()) else RES
         self.hw_price = {h: float(s.get('cost', 0)) for h, s in cfg('hardwares.json').get('hardware_costs', {}).items()}
-        self.hw_cap = {h: s for h, s in cfg('hardwares.json').get('hardware_costs', {}).items() if s.get('tops')}
+        self.hw_cap = {h: s for h, s in cfg('hardwares.json').get('hardware_costs', {}).items() if s.get('tops') or s.get('types')}
         self.unc = cfg('uncertainty.json')
         chains_path = os.path.join(self.config_dir, 'chains.json')
         self.chains = _load(chains_path).get('chains', []) if os.path.exists(chains_path) else []
@@ -215,7 +235,7 @@ class SolutionCheck:
         self.scs, self.sc_order = {}, []
         for c in arch.get('software_components', []):
             sc = {'id': c['id'], 'domain': c.get('domain', 'Unknown'), 'asil': int(c.get('asil_req', 0)),
-                  'hw': list(c.get('hw_required', [])), 'redundant_with': c.get('redundant_with'),
+                  'hw': [h for h in c.get('hw_required', []) if h != self.tops_feature], 'redundant_with': c.get('redundant_with'),
                   'tops': float(c.get('tops_req', 0) or 0), 'fail_op': c.get('fail_operational'),
                   'rate': float(c.get('rate_hz', 10.0) or 10.0), 'type': c.get('type', ''),
                   'msg_kbit': (float(c['msg_kbit']) if c.get('msg_kbit') is not None else None),
@@ -267,6 +287,11 @@ class SolutionCheck:
             h, site = item.rsplit('@', 1)
             self.hw.add((site, h))
             self.hw_units[(site, h)] += 1   # the accelerator may have several units
+        # GPU types (2026-11-05): modules per cell and type ({'HW_ACC@cell': {type: n}})
+        self.hw_types = {}
+        for key, mix in (s.get('hw_unit_types') or {}).items():
+            h, site = key.rsplit('@', 1)
+            self.hw_types[(site, h)] = {str(t): int(n) for t, n in mix.items()}
         self.ports = defaultdict(int)
         for item in s.get('interfaces', []):
             cnt, rest = item.split('x', 1)
@@ -327,7 +352,8 @@ class SolutionCheck:
         for key, n in counts.items():
             m = re.match(r'^(?P<site>.+)_asil(?P<asil>\d+)$', key)
             self.P[(m['site'], int(m['asil']))] = int(n)
-        max_pa = int(self.part.get('max_per_asil_per_site', 3))
+        _mpa = self.part.get('max_per_asil_per_site', 3)
+        max_pa = int(_mpa) if _mpa is not None else float('inf')   # null = no limit per ASIL (the unit's cap bounds it)
         for (s, a), n in self.P.items():
             self.checked['partition_count'] += 1
             if s not in self.cand_set:
@@ -353,19 +379,42 @@ class SolutionCheck:
             self.err('report', f"num_partitions {self.sol.get('num_partitions')} != {sum(self.P.values())} opened")
         if int(self.sol.get('num_locations_used', -1)) != len(set(self.pos_x.values())):
             self.err('report', f"num_locations_used {self.sol.get('num_locations_used')} != {len(set(self.pos_x.values()))}")
+        # partition types (2026-11-04): every opened slot p0..p(n-1) of a (site, ASIL) is a block of a known type, and
+        # the blocks per type match partition_type_counts
+        self.ptype = {}
+        if self.types:
+            ptypes = self.sol.get('partition_types') or {}
+            tcounts = self.sol.get('partition_type_counts') or {}
+            for (s, a), n in self.P.items():
+                self.checked['partition_type'] += 1
+                got = defaultdict(int)
+                for k in range(n):
+                    p = f"{s}_asil{a}_p{k}"
+                    t = ptypes.get(p)
+                    if t not in self.types:
+                        self.err('partition_type', f"{p}: block type {t} unknown")
+                        continue
+                    self.ptype[p] = t
+                    got[t] += 1
+                if dict(got) != {t: int(c) for t, c in (tcounts.get(f"{s}_asil{a}") or {}).items() if int(c) > 0}:
+                    self.err('partition_type', f"{s} ASIL {a}: blocks {dict(got)} != partition_type_counts {tcounts.get(f'{s}_asil{a}')}")
+            for p in ptypes:
+                m = PART_RE.match(p)
+                if not m or int(m['k']) >= self.P.get((m['site'], int(m['asil'])), 0):
+                    self.err('partition_type', f"{p} has a block type but is not an opened partition")
         # nominal load: primaries and hot standbys (a cold standby uses nothing until a failure activates it)
         for p, mem in self.members.items():
             m = PART_RE.match(p)
             h = self.derate(m['site'])
-            for r in RES:
+            for r in self.res:
                 self.checked['partition_capacity'] += 1
-                cap = float(self.part.get(f'{r}_cap', 0) or 0)
-                if cap <= 0:
+                cap = self.part_cap(p, r)
+                if cap is None:
                     continue
                 load = sum(self.demand(sc, r) for sc, inst in mem if inst == 'x' or sc not in self.cold)
-                hr = h if r == 'cpu' else 1.0   # derating: processing capacity only
+                hr = h if r in ('cpu', 'tops') else 1.0   # derating: processing capacity only
                 if not _le(load, cap * hr):
-                    self.err('partition_capacity', f"{p} {r} {load:.1f} > {cap * hr:.1f}")
+                    self.err('partition_capacity', f"{p}{' (' + self.ptype.get(p, '?') + ')' if self.types else ''} {r} {load:.2f} > {cap * hr:.2f}")
         for s in self.active:
             h = self.derate(s)
             for r in RES:
@@ -378,6 +427,42 @@ class SolutionCheck:
                 hr = h if r == 'cpu' else 1.0
                 if not _le(load, float(cap) * hr):
                     self.err('site_capacity', f"{s} {r} {load:.1f} > {float(cap) * hr:.1f} (cell cap x derating)")
+
+    def hw_tops(self, site, hf):
+        """installed TOPS of feature hf at site before derating: units x TOPS per unit, or with GPU types the sum of
+        modules x their type's TOPS"""
+        spec = self.hw_cap.get(hf, {})
+        if spec.get('types'):
+            tops = {str(t['id']): float(t['tops']) for t in spec['types']}
+            return sum(n * tops.get(t, 0.0) for t, n in self.hw_types.get((site, hf), {}).items())
+        return self.hw_units.get((site, hf), 0) * float(spec.get('tops', 0) or 0)
+
+    def check_hw_types(self):
+        """GPU types: per cell the modules by type add up to the units, every type is known, at most max_units_per_site"""
+        for hf, spec in self.hw_cap.items():
+            if not spec.get('types'):
+                continue
+            ids = {str(t['id']) for t in spec['types']}
+            for (site, h), n in self.hw_units.items():
+                if h != hf:
+                    continue
+                self.checked['hw_types'] += 1
+                mix = self.hw_types.get((site, hf), {})
+                if sum(mix.values()) != n:
+                    self.err('hw_types', f"{site}: {n} {hf} units but modules by type {mix}")
+                if any(t not in ids for t in mix):
+                    self.err('hw_types', f"{site}: unknown {hf} type in {mix}")
+                if n > int(spec.get('max_units_per_site', n)):
+                    self.err('hw_types', f"{site}: {n} {hf} units > {spec.get('max_units_per_site')} per cell")
+
+    def part_cap(self, p, r):
+        """capacity of partition p in resource r before derating: its block type's (partition types), else the single
+        partition's; None = not checked (v1: cap 0 or absent)"""
+        if self.types:
+            t = self.ptype.get(p)
+            return self.types[t][r] if t in self.types else 0.0
+        cap = float(self.part.get(f'{r}_cap', 0) or 0)
+        return cap if cap > 0 else None
 
     def _member(self, sc, inst, site, p):
         if sc not in self.scs:
@@ -418,7 +503,7 @@ class SolutionCheck:
                     load[site] += self.demand(sc, 'tops')
             for site, l in load.items():
                 self.checked['tops_capacity'] += 1
-                cap = self.hw_units.get((site, hf), 0) * float(spec['tops']) * self.derate(site)
+                cap = self.hw_tops(site, hf) * self.derate(site)
                 if not _le(l, cap):
                     self.err('tops_capacity', f"{site}: {hf} {l:.2f} TOPS > {cap:.2f} ({self.hw_units.get((site, hf), 0)} units)")
 
@@ -1277,23 +1362,27 @@ class SolutionCheck:
                 if users:
                     self.checked['failure_capacity'] += 1
                     load = sum(self.demand(sc, 'tops') for sc in users)
-                    cap = self.hw_units.get((j, hf), 0) * float(spec['tops']) * h
+                    cap = self.hw_tops(j, hf) * h
                     if not _le(load, cap):
                         self.err('failure_capacity', f"{label}: {j} {hf} {load:.2f} TOPS > {cap:.2f} with the activated standbys")
             for a in sorted({self.scs[sc]['asil'] for sc in lst}):
                 group = [sc for sc in prim + hot_here + lst if self.scs[sc]['asil'] == a]
                 n = self.P.get((j, a), 0)
-                caps = {r: float(self.part.get(f'{r}_cap', 0) or 0) * (h if r == 'cpu' else 1.0) for r in RES}
-                for r in RES:
-                    if caps[r] <= 0:
-                        continue
+                if self.types:   # partition types: the blocks opened for ASIL a at j, each with its type's capacity
+                    bins = [{r: self.part_cap(f"{j}_asil{a}_p{k}", r) * (h if r in ('cpu', 'tops') else 1.0) for r in self.res} for k in range(n)]
+                    pooled = {r: sum(b[r] for b in bins) for r in self.res}
+                    checked = [r for r in self.res if r != 'tops' or any(self.demand(sc, 'tops') > 0 for sc in group)]
+                else:
+                    caps = {r: float(self.part.get(f'{r}_cap', 0) or 0) * (h if r == 'cpu' else 1.0) for r in RES}
+                    bins, pooled, checked = caps, {r: n * caps[r] for r in RES}, [r for r in RES if caps[r] > 0]
+                for r in checked:
                     self.checked['failure_capacity'] += 1
                     load = sum(self.demand(sc, r) for sc in group)
-                    if not _le(load, n * caps[r]):
-                        self.err('failure_capacity', f"{label}: {j} ASIL {a} {r} {load:.1f} > {n} x {caps[r]:.1f}")
+                    if not _le(load, pooled[r]):
+                        self.err('failure_capacity', f"{label}: {j} ASIL {a} {r} {load:.1f} > {pooled[r]:.1f} ({n} partitions)")
                 # beyond the model (it pools the partitions of one ASIL): can the group be packed into its partitions?
-                dem = {sc: {r: self.demand(sc, r) for r in RES} for sc in group}
-                ok = _pack(group, dem, caps, n)
+                dem = {sc: {r: self.demand(sc, r) for r in self.res} for sc in group}
+                ok = _pack(group, dem, bins, n)
                 if ok is False:
                     self.warn('failure_packing', f"{label}: {j} ASIL {a}: {len(group)} instances fit pooled but not packed into {n} partition(s)")
                 elif ok is None:
@@ -1302,11 +1391,15 @@ class SolutionCheck:
     # ----------------------------------------------------------------------------------------------- costs
     def check_costs(self):
         s = self.sol
-        part_cost = sum(self.P.values()) * float(self.part.get('cost', 0))
+        part_cost = (sum(self.types[t]['cost'] for t in self.ptype.values()) if self.types
+                     else sum(self.P.values()) * float(self.part.get('cost', 0)))
         site_cost = len(self.active) * float(self.site_cfg.get('fixed_cost', 0) or 0)
         # a unit that holds only a switch pays site.switch_node_cost (2026-10-30; absent = 0, as before)
         site_cost += len(self.switches - self.active) * float(self.site_cfg.get('switch_node_cost', 0) or 0)
         hw_cost = sum(self.hw_price.get(h, 0.0) * n for (_site, h), n in self.hw_units.items())
+        for (_site, h), mix in self.hw_types.items():   # GPU types: every module at its type's price
+            price = {str(t['id']): float(t.get('cost') or 0) for t in (self.hw_cap.get(h, {}).get('types') or [])}
+            hw_cost += sum(n * price.get(t, 0.0) for t, n in mix.items())
         for (_site, h) in self.hw:
             if h not in self.hw_price:
                 self.err('cost', f"hardware {h} has no price in hardwares.json")
@@ -1358,6 +1451,7 @@ class SolutionCheck:
         self.check_placement()
         self.check_partitions()
         self.check_hardware_rules()
+        self.check_hw_types()
         self.check_peripherals()
         self.build_flows()
         self.check_backbone()

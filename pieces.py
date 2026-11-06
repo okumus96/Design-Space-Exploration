@@ -47,7 +47,14 @@ DEFAULTS = {'max_group': 60, 'min_group': 20, 'piece_time_s': 300, 'piece_gap': 
             'polish_rounds': 0, 'polish_time_s': 600, 'polish_partners': 10, 'polish_mode': 'cell', 'polish_max_free': 120, 'polish_parallel': 3, 'polish_passes': 4,
             'polish_stages': None, 'polish_order': 'fewest', 'build_parallel': 1, 'build_lookahead': 8,
             'polish_split_cells': True, 'polish_all': False, 'polish_min_gain': 0.001,
-            'step_gurobi_params': 'NoRelHeurTime=20', 'final_network_s': 0, 'final_network_gap': 0.0}
+            'step_gurobi_params': 'NoRelHeurTime=20', 'final_network_s': 0, 'final_network_gap': 0.0,
+            'gateway_in_build': False}
+# gateway_in_build (2026-11-04, default False since the user made the gateway the default rule): False = the group-by-group build runs with the bus gateway off (buses.json
+# backbone.bus_gateway) and the gateway enters with the polish and the clean-up. With the gateway the lane endpoints of
+# every bus device move with the gateway variables, so the lazy routing and capacity cuts of a step hold for one gateway
+# pattern at a time; the r3gwc30 500 build (step 13) and the r3gw1000 build (step 19) found no design in 3 x 1,200 s
+# (every candidate rejected, Solution count 0) where their gateway-off twins took 200 s. In the polish all cells but one
+# are fixed, so the patterns are few and the gateway model is tractable; the final design is checked under the full model.
 # final_network_s 0 = no final network clean-up (_final_network; the runs before 2026-10-30)
 # static_capacity off by default (2026-10-29): with the two static cable rules a hard step produced 107 candidates in 900 s,
 # all rejected; without them 570 candidates and a design (lab, step 8 of the 300 build)
@@ -257,6 +264,10 @@ def _build_level(opt, scs, locations, sensors, actuators, cable_types, comm_matr
     failures_on = bool(uncertainty.get('failures'))
     fail_cfg = uncertainty.get('params', {}).get('failures', {}) if failures_on else {}
     pieces = plan_pieces(scs, comm_matrix, chains, fail_cfg, failures_on, cfg)
+    backbone_full = backbone
+    if (backbone or {}).get('bus_gateway') and not cfg.get('gateway_in_build', True):
+        backbone = {**backbone, 'bus_gateway': False}   # the build steps: gateway off; polish and clean-up: backbone_full
+        print("[Pieces] bus gateway off during the build (pieces.gateway_in_build false); on from the polish", flush=True)
     present = {sc.id for sc in scs}
     by_id = {sc.id: sc for sc in scs}
     traffic = defaultdict(float)
@@ -277,6 +288,17 @@ def _build_level(opt, scs, locations, sensors, actuators, cable_types, comm_matr
     placed_x, placed_r, steps, sol = {}, {}, [], None
     opt.last_values = None
     k, unlock, t0 = 0, 0, time.time()
+    # resume (solver.json pieces.resume_dump, 2026-11-05): continue a stopped build from its last dumped step
+    # (dump_dir/pieces_step_<k>.json: the groups and the placements of steps 1..k), the same groups in the same order
+    if cfg.get('resume_dump'):
+        with open(cfg['resume_dump']) as f:
+            dump = json.load(f)
+        if {s for p in dump['pieces'] for s in p} != present:
+            raise ValueError(f"[Pieces] resume_dump {cfg['resume_dump']}: its groups do not hold the components of this instance")
+        pieces = [list(p) for p in dump['pieces']]
+        placed_x, placed_r, k = dict(dump['placed_x']), dict(dump['placed_r']), int(dump['step'])
+        print(f"[Pieces] resumed from {cfg['resume_dump']}: steps 1..{k} placed ({len(placed_x)} components, "
+              f"{len(placed_r)} standbys, cost {float(dump.get('cost') or 0):.2f}), next step {k + 1}/{len(pieces)}", flush=True)
     # parallel build (user 2026-10-29): up to build_parallel groups that exchange no message and share no chain are
     # placed at the same time on the same locked design, each in its own process; a later group (within
     # build_lookahead) is pulled forward only if it is independent of every group it overtakes; one combined solve
@@ -549,6 +571,7 @@ def _build_level(opt, scs, locations, sensors, actuators, cable_types, comm_matr
           f"{sum(1 for s in steps if s['result'] == 'no design')} rejected steps, {sum(1 for s in steps if s['result'] == 'split')} splits, "
           f"{build_s:.0f} s in total")
     polish = []
+    backbone = backbone_full
     if int(cfg.get('polish_rounds', 0)) > 0:
         sol, polish = polish_fn(cfg)(opt, scs, locations, sensors, actuators, cable_types, comm_matrix, partitions=partitions,
                                      hardwares=hardwares, interfaces=interfaces, backbone=backbone, uncertainty=uncertainty,

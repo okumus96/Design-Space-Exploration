@@ -35,16 +35,17 @@ TOL = 1e-4
 # name, extra flags, robustness levels rho written into the case's uncertainty.json, proven (cost, cable length) per solution
 CASES = [
     ('nominal', ['--num_points', '1'], None,
-     [(4625.1854, 49.4093)]),
+     [(4708.1740, 45.5082)]),
     ('growth', ['--growth', '--sw_margin', '--derating', '--redundancy', '--ai_contention', '--robust_latency'], [0.0, 1.0],
-     [(4625.1854, 49.4093), (5766.2873, 47.6130)]),
+     [(4708.1740, 45.5082), (5850.1740, 45.5082)]),
     ('failures', ['--uncertainty'], [0.2],
-     [(7414.5255, 60.9150)]),
+     [(7508.1660, 54.8684)]),
     # rho 1 with failures: proven with the up-front path and cell cut-set constraints (CASE_BACKBONE; same feasible set,
-    # the default model did not prove it within 7,200 s); cost proven 8,978.2488 (speed_bench pc, 2026-10-24), the cable
-    # phase is not proven within its 600 s (gap 10 %, job 1195), so only the cost is compared
+    # the default model did not prove it within 7,200 s). Values of 2026-11-03 (job 3613, device_cable_factor 3 and the
+    # SPI reach relaxed to 3 m on these 4 cells): every case and both phases proven (the cable phase of this case in 51 s;
+    # before the cable model change it was not proven within 600 s, gap 10 %, job 1195, and only the cost was compared)
     ('failures_a1', ['--uncertainty', '--time_limit', '7200', '--phase2_time', '600'], [1.0],
-     [(8978.2488, None)]),
+     [(9060.5089, 56.2637)]),
 ]
 # configs/buses.json backbone options switched on for single cases (valid constraints, the optimum is unchanged): the
 # lite rho 1 failure case is proven within ~1 h with them (2026-10-24 speed benchmark)

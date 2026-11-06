@@ -33,6 +33,23 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from check_solution import SolutionCheck, RES, SHARED_BUSES, SWITCH_ETH_PORTS, REPO  # noqa: E402
 
 
+def _cheapest_mix(types, load, h, n_min):
+    """cheapest block counts {type: n} with sum n x cap >= load per resource (CPU and TOPS derated by h) and at least
+    n_min blocks: a small integer program (scipy HiGHS); returns (mix, cost)"""
+    import numpy as np
+    from scipy.optimize import milp, LinearConstraint, Bounds
+    ids = sorted(types)
+    res = [r for r in load if load[r] > 0]
+    A = [[types[t][r] * (h if r in ('cpu', 'tops') else 1.0) for t in ids] for r in res] + [[1.0] * len(ids)]
+    lb = [load[r] for r in res] + [float(n_min)]
+    sol = milp(c=np.array([types[t]['cost'] for t in ids]), constraints=LinearConstraint(np.array(A), lb, np.inf),
+               integrality=np.ones(len(ids)), bounds=Bounds(0, np.inf))
+    if sol.x is None:
+        return {}, float('inf')
+    mix = {t: int(round(v)) for t, v in zip(ids, sol.x) if round(v) > 0}
+    return mix, float(sum(types[t]['cost'] * n for t, n in mix.items()))
+
+
 def _ceil(x):
     """round up, within the solver's feasibility tolerance"""
     return int(math.ceil(x - 1e-6 * max(1.0, abs(x))))
@@ -49,18 +66,37 @@ def design_bound(c):
     nominal = list(c.scs) + sorted(must_hot)                    # the instances with a nominal load
     out = {'h': h, 'critical': len(c.crit), 'must_hot': len(must_hot)}
     # partitions per ASIL level
-    parts, rows = {}, []
+    parts, rows, part_cost = {}, [], 0.0
     for a in sorted({sc['asil'] for sc in c.scs.values()}):
         inst = [s for s in nominal if c.scs[s]['asil'] == a]
         n, by = 1, {}
+        n_min = 2 if any(s in c.crit for s in inst) else 1
+        if c.types:
+            # partition types (2026-11-04): the cheapest mix of blocks whose summed capacities (CPU and TOPS at the best
+            # derating) cover the level's load, at least n_min blocks; the minimum block count separately (unit bound)
+            load = {r: sum(c.demand(s, r) for s in inst) for r in c.res}
+            mix, cost_a = _cheapest_mix(c.types, load, h, n_min)
+            for r in c.res:
+                top = max(t[r] for t in c.types.values()) * (h if r in ('cpu', 'tops') else 1.0)
+                if load[r] > 0:
+                    by[r] = load[r] / top
+                    n = max(n, _ceil(by[r]))
+            n = max(n, n_min)
+            part_cost += cost_a
+            parts[a] = n
+            rows.append({'asil': a, 'components': sum(1 for s in c.scs.values() if s['asil'] == a),
+                         'critical': sum(1 for s in c.crit if c.scs[s]['asil'] == a),
+                         'must_hot': sum(1 for s in must_hot if c.scs[s]['asil'] == a), 'load': by, 'bound': n,
+                         'mix': mix, 'mix_cost': cost_a})
+            continue
         for r in RES:
             cap = float(c.part.get(f'{r}_cap', 0) or 0) * (h if r == 'cpu' else 1.0)
             if cap > 0:
                 by[r] = sum(c.demand(s, r) for s in inst) / cap
                 n = max(n, _ceil(by[r]))
-        if any(s in c.crit for s in inst):
-            n = max(n, 2)
+        n = max(n, n_min)
         parts[a] = n
+        part_cost += n * float(c.part.get('cost', 0) or 0)
         rows.append({'asil': a, 'components': sum(1 for s in c.scs.values() if s['asil'] == a),
                      'critical': sum(1 for s in c.crit if c.scs[s]['asil'] == a),
                      'must_hot': sum(1 for s in must_hot if c.scs[s]['asil'] == a), 'load': by, 'bound': n})
@@ -76,7 +112,7 @@ def design_bound(c):
             units = max(units, _ceil(sum(c.demand(s, r) for s in nominal) / (float(cap) * (h if r == 'cpu' else 1.0))))
     if c.crit or (c.flags.get('redundancy') and any(sc['redundant_with'] in c.scs for sc in c.scs.values())):
         units = max(units, 2)
-    max_pa = int(c.part.get('max_per_asil_per_site', 3) or 0)
+    max_pa = int(c.part.get('max_per_asil_per_site', 3) or 0)   # null (no limit per ASIL) = 0: no unit bound from it
     if max_pa > 0:
         units = max(units, max(_ceil(n / float(max_pa)) for n in parts.values()))
     out['units'] = units
@@ -88,6 +124,13 @@ def design_bound(c):
             continue
         n = 2 if any(s in c.crit for s in users) else 1
         spec = c.hw_cap.get(f)
+        if spec and spec.get('types'):   # GPU types (2026-11-05): the cheapest module mix covering the TOPS demand
+            gtypes = {str(t['id']): {'tops': float(t['tops']), 'cost': float(t.get('cost') or 0)} for t in spec['types']}
+            load = sum(c.demand(s, 'tops') for s in nominal if f in c.scs[s]['hw'])
+            mix, mix_cost = _cheapest_mix(gtypes, {'tops': load}, h, n)
+            units = sum(mix.values())
+            hw[f] = (units, mix_cost / units if units else 0.0)   # (modules, mean price): n x p = the mix cost
+            continue
         if spec:
             n = max(n, _ceil(sum(c.demand(s, 'tops') for s in nominal if f in c.scs[s]['hw']) / (float(spec['tops']) * h)))
         hw[f] = (n, price)
@@ -107,7 +150,7 @@ def design_bound(c):
         else:
             ports[t] = (k, port, k * port)
     out['ports'] = ports
-    out['cost'] = {'partitions': out['partitions'] * float(c.part.get('cost', 0) or 0),
+    out['cost'] = {'partitions': part_cost,
                    'units': units * float(c.site_cfg.get('fixed_cost', 0) or 0),
                    'hardware': sum(n * p for n, p in hw.values()),
                    'ports': sum(v[2] for v in ports.values()),
@@ -145,7 +188,8 @@ def report(c, b):
     for r in b['partition_rows']:
         ld = r['load']
         lines.append(f"  {r['asil']:<6}{r['components']:>7}{r['critical']:>6}{r['must_hot']:>5}"
-                     f"{ld.get('cpu', 0):>8.2f}{ld.get('ram', 0):>8.2f}{ld.get('rom', 0):>8.2f}{r['bound']:>7}{counts.get(r['asil'], 0):>8}")
+                     f"{ld.get('cpu', 0):>8.2f}{ld.get('ram', 0):>8.2f}{ld.get('rom', 0):>8.2f}{r['bound']:>7}{counts.get(r['asil'], 0):>8}"
+                     + (f"   cheapest blocks {r['mix']} = {r['mix_cost']:.2f}" if 'mix' in r else ""))
     hw = ", ".join(f"{f} {n} x {p:g}" for f, (n, p) in b['hardware'].items()) or "none"
     ports = ", ".join(f"{t} {k} x {each:g}" for t, (k, each, _) in b['ports'].items()) or "none"
     lines.append(f"  hardware bound: {hw}; port bound: {ports}")
