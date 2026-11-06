@@ -1,0 +1,516 @@
+{
+ "_comment": "Positions in metres in the vehicle frame of configs/vehicle.json (x right, y front, z up from ground). Source: assumption: typical mounting location on the IONIQ 5 geometry.",
+ "actuators": [
+  {
+   "type": "STEERING",
+   "id": "ACT_Steering",
+   "interface": "SPI",
+   "volume": 0.0135,
+   "position": {
+    "x": 0.0,
+    "y": 1.4,
+    "z": 0.3
+   },
+   "source": "assumption: steering rack on the front subframe below the drive unit; direct wiring (SPI) assumed: a user's control loop has a 5.246 ms network budget",
+   "rate_hz": 100.0,
+   "data_source": "one classic CAN frame with 8 data bytes per 10 ms command period: 135 bit worst case with bit stuffing (Davis et al., Real-Time Systems 2007); period provisional"
+  },
+  {
+   "type": "MOTOR",
+   "id": "ACT_Motor_Front",
+   "interface": "CAN",
+   "volume": 0.0135,
+   "position": {
+    "x": 0.0,
+    "y": 1.5,
+    "z": 0.6
+   },
+   "rate_hz": 100.0,
+   "data_source": "one classic CAN frame with 8 data bytes per 10 ms command period: 135 bit worst case with bit stuffing (Davis et al., Real-Time Systems 2007); period provisional"
+  },
+  {
+   "type": "BRAKE",
+   "id": "ACT_Brake_Front",
+   "interface": "CAN",
+   "volume": 0.0135,
+   "position": {
+    "x": 0.45,
+    "y": 1.45,
+    "z": 0.5
+   },
+   "rate_hz": 100.0,
+   "data_source": "one classic CAN frame with 8 data bytes per 10 ms command period: 135 bit worst case with bit stuffing (Davis et al., Real-Time Systems 2007); period provisional"
+  },
+  {
+   "type": "BRAKE",
+   "id": "ACT_Brake_Rear",
+   "interface": "CAN",
+   "volume": 0.0135,
+   "position": {
+    "x": 0.45,
+    "y": -1.45,
+    "z": 0.4
+   },
+   "rate_hz": 100.0,
+   "data_source": "one classic CAN frame with 8 data bytes per 10 ms command period: 135 bit worst case with bit stuffing (Davis et al., Real-Time Systems 2007); period provisional"
+  },
+  {
+   "type": "HVAC",
+   "id": "ACT_HVAC_Cabin",
+   "interface": "LIN",
+   "volume": 0.00174,
+   "position": {
+    "x": 0.0,
+    "y": 1.0,
+    "z": 0.7
+   },
+   "rate_hz": 10.0,
+   "data_source": "one LIN frame with 8 data bytes per 100 ms: (34 + 10*9) bit nominal, x1.4 maximum = 174 bit (ISO 17987); period provisional"
+  },
+  {
+   "type": "LIGHT",
+   "id": "ACT_Light_Front",
+   "interface": "LIN",
+   "volume": 0.00174,
+   "position": {
+    "x": 0.6,
+    "y": 1.98,
+    "z": 0.72
+   },
+   "source": "assumption: lamp control inside the body behind the lens",
+   "rate_hz": 10.0,
+   "data_source": "one LIN frame with 8 data bytes per 100 ms: (34 + 10*9) bit nominal, x1.4 maximum = 174 bit (ISO 17987); period provisional"
+  },
+  {
+   "type": "LIGHT",
+   "id": "ACT_Light_Rear",
+   "interface": "LIN",
+   "volume": 0.00174,
+   "position": {
+    "x": 0.58,
+    "y": -2.0,
+    "z": 0.92
+   },
+   "source": "assumption: lamp control inside the body behind the lens",
+   "rate_hz": 10.0,
+   "data_source": "one LIN frame with 8 data bytes per 100 ms: (34 + 10*9) bit nominal, x1.4 maximum = 174 bit (ISO 17987); period provisional"
+  },
+  {
+   "type": "AIRBAG_DRIVER",
+   "id": "airbag_driver",
+   "interface": "UART",
+   "volume": 0.0128,
+   "position": {
+    "x": -0.37,
+    "y": 0.6,
+    "z": 0.94
+   },
+   "rate_hz": 200.0,
+   "source": "assumption: endpoint of the non-AD functions (direct bus of the function; placed at: steering wheel driver airbag (clock spring); one 8-byte frame per 5 ms period per driver)"
+  },
+  {
+   "type": "AIRBAG_PASSENGER",
+   "id": "airbag_passenger",
+   "interface": "UART",
+   "volume": 0.0128,
+   "position": {
+    "x": 0.4,
+    "y": 0.8,
+    "z": 0.95
+   },
+   "rate_hz": 200.0,
+   "source": "assumption: endpoint of the non-AD functions (direct bus of the function; placed at: passenger airbag in the dashboard; one 8-byte frame per 5 ms period per driver)"
+  },
+  {
+   "type": "AIRBAG_SIDE_LEFT",
+   "id": "airbag_side_left",
+   "interface": "UART",
+   "volume": 0.0128,
+   "position": {
+    "x": -0.7,
+    "y": -0.05,
+    "z": 0.75
+   },
+   "rate_hz": 200.0,
+   "source": "assumption: endpoint of the non-AD functions (direct bus of the function; placed at: left: side and curtain airbags, belt pretensioner; one 8-byte frame per 5 ms period per driver)"
+  },
+  {
+   "type": "AIRBAG_SIDE_RIGHT",
+   "id": "airbag_side_right",
+   "interface": "UART",
+   "volume": 0.0128,
+   "position": {
+    "x": 0.7,
+    "y": -0.05,
+    "z": 0.75
+   },
+   "rate_hz": 200.0,
+   "source": "assumption: endpoint of the non-AD functions (direct bus of the function; placed at: right: side and curtain airbags, belt pretensioner; one 8-byte frame per 5 ms period per driver)"
+  },
+  {
+   "type": "AMPLIFIER",
+   "id": "amplifier",
+   "interface": "ETH",
+   "volume": 1.4112,
+   "position": {
+    "x": 0.35,
+    "y": -0.32,
+    "z": 0.4
+   },
+   "rate_hz": 100.0,
+   "source": "assumption: endpoint of the non-AD functions (ETH bus of the function; placed at: under the floor covering in front of the rear seat (IONIQ 5 N Bose amplifier, BRS installation manual); one 8-byte frame per 10 ms period per driver; audio stream as sourced)"
+  },
+  {
+   "type": "BATTERY_PACK",
+   "id": "battery_pack",
+   "interface": "CAN",
+   "volume": 0.0096,
+   "position": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.25
+   },
+   "rate_hz": 100.0,
+   "source": "assumption: endpoint of the non-AD functions (CAN bus of the function; placed at: traction battery under the floor: management unit, contactors, pre-charge; one 8-byte frame per 10 ms period per driver)"
+  },
+  {
+   "type": "CENTER_DISPLAY",
+   "id": "center_display",
+   "interface": "ETH",
+   "volume": 0.00192,
+   "position": {
+    "x": 0.05,
+    "y": 0.8,
+    "z": 1.0
+   },
+   "rate_hz": 20.0,
+   "source": "assumption: endpoint of the non-AD functions (ETH bus of the function; placed at: centre display with touch panel and buttons; one 8-byte frame per 50 ms period per driver)"
+  },
+  {
+   "type": "CLUSTER_DISPLAY",
+   "id": "cluster_display",
+   "interface": "ETH",
+   "volume": 0.00704,
+   "position": {
+    "x": -0.37,
+    "y": 0.85,
+    "z": 1.0
+   },
+   "rate_hz": 100.0,
+   "source": "assumption: endpoint of the non-AD functions (LIN bus of the function; placed at: instrument cluster behind the steering wheel: telltales, chime; one 8-byte frame per 100 ms period per driver); shared endpoint: the fastest bus among its users (ETH, LIN)"
+  },
+  {
+   "type": "COOLANT_MODULE",
+   "id": "coolant_module",
+   "interface": "LIN",
+   "volume": 0.00384,
+   "position": {
+    "x": 0.0,
+    "y": 1.95,
+    "z": 0.4
+   },
+   "rate_hz": 50.0,
+   "source": "assumption: endpoint of the non-AD functions (LIN bus of the function; placed at: front bay below the drive unit: coolant pumps, valves, temperature sensors; one 8-byte frame per 100 ms period per driver)"
+  },
+  {
+   "type": "DAMPER_FL",
+   "id": "damper_FL",
+   "interface": "CAN",
+   "volume": 0.0064,
+   "position": {
+    "x": -0.62,
+    "y": 1.44,
+    "z": 0.75
+   },
+   "rate_hz": 100.0,
+   "source": "assumption: endpoint of the non-AD functions (CAN bus of the function; placed at: front left strut top: adaptive damper valve; one 8-byte frame per 10 ms period per driver)"
+  },
+  {
+   "type": "DAMPER_FR",
+   "id": "damper_FR",
+   "interface": "CAN",
+   "volume": 0.0064,
+   "position": {
+    "x": 0.62,
+    "y": 1.44,
+    "z": 0.75
+   },
+   "rate_hz": 100.0,
+   "source": "assumption: endpoint of the non-AD functions (CAN bus of the function; placed at: front right strut top: adaptive damper valve; one 8-byte frame per 10 ms period per driver)"
+  },
+  {
+   "type": "DAMPER_RL",
+   "id": "damper_RL",
+   "interface": "CAN",
+   "volume": 0.0064,
+   "position": {
+    "x": -0.62,
+    "y": -1.57,
+    "z": 0.7
+   },
+   "rate_hz": 100.0,
+   "source": "assumption: endpoint of the non-AD functions (CAN bus of the function; placed at: rear left damper top: adaptive damper valve; one 8-byte frame per 10 ms period per driver)"
+  },
+  {
+   "type": "DAMPER_RR",
+   "id": "damper_RR",
+   "interface": "CAN",
+   "volume": 0.0064,
+   "position": {
+    "x": 0.62,
+    "y": -1.57,
+    "z": 0.7
+   },
+   "rate_hz": 100.0,
+   "source": "assumption: endpoint of the non-AD functions (CAN bus of the function; placed at: rear right damper top: adaptive damper valve; one 8-byte frame per 10 ms period per driver)"
+  },
+  {
+   "type": "DOOR_REAR_LEFT",
+   "id": "door_rear_left",
+   "interface": "CAN",
+   "volume": 0.02112,
+   "position": {
+    "x": -0.85,
+    "y": -0.65,
+    "z": 0.8
+   },
+   "rate_hz": 200.0,
+   "source": "assumption: endpoint of the non-AD functions (LIN bus of the function; placed at: rear left door: window motor and switch, lock, contact, handle sensor; one 8-byte frame per 100 ms period per driver); shared endpoint: the fastest bus among its users (CAN, LIN)"
+  },
+  {
+   "type": "DOOR_REAR_RIGHT",
+   "id": "door_rear_right",
+   "interface": "CAN",
+   "volume": 0.02112,
+   "position": {
+    "x": 0.85,
+    "y": -0.65,
+    "z": 0.8
+   },
+   "rate_hz": 200.0,
+   "source": "assumption: endpoint of the non-AD functions (LIN bus of the function; placed at: rear right door: window motor and switch, lock, contact, handle sensor; one 8-byte frame per 100 ms period per driver); shared endpoint: the fastest bus among its users (CAN, LIN)"
+  },
+  {
+   "type": "E_COMPRESSOR",
+   "id": "e_compressor",
+   "interface": "LIN",
+   "volume": 0.0032,
+   "position": {
+    "x": 0.5,
+    "y": 1.95,
+    "z": 0.45
+   },
+   "rate_hz": 50.0,
+   "source": "assumption: endpoint of the non-AD functions (LIN bus of the function; placed at: electric A/C compressor, front bay right; one 8-byte frame per 20 ms period per driver)"
+  },
+  {
+   "type": "HEADLAMP_LEFT",
+   "id": "headlamp_left",
+   "interface": "CAN",
+   "volume": 0.0128,
+   "position": {
+    "x": -0.6,
+    "y": 1.98,
+    "z": 0.72
+   },
+   "rate_hz": 200.0,
+   "source": "assumption: endpoint of the non-AD functions (CAN bus of the function; placed at: front left lamp cluster (mirror of ACT_Light_Front); one 8-byte frame per 5 ms period per driver)"
+  },
+  {
+   "type": "HORN",
+   "id": "horn",
+   "interface": "LIN",
+   "volume": 0.0064,
+   "position": {
+    "x": -0.45,
+    "y": 2.12,
+    "z": 0.55
+   },
+   "rate_hz": 100.0,
+   "source": "assumption: endpoint of the non-AD functions (LIN bus of the function; placed at: behind the front bumper, left of the front lidar; one 8-byte frame per 10 ms period per driver)"
+  },
+  {
+   "type": "HUD",
+   "id": "hud",
+   "interface": "ETH",
+   "volume": 0.0128,
+   "position": {
+    "x": -0.37,
+    "y": 1.0,
+    "z": 1.03
+   },
+   "rate_hz": 200.0,
+   "source": "assumption: endpoint of the non-AD functions (ETH bus of the function; placed at: head-up display projector in the dashboard; one 8-byte frame per 5 ms period per driver)"
+  },
+  {
+   "type": "INTERIOR_LAMP_FRONT",
+   "id": "interior_lamp_front",
+   "interface": "CAN",
+   "volume": 0.00128,
+   "position": {
+    "x": 0.0,
+    "y": 0.22,
+    "z": 1.54
+   },
+   "rate_hz": 10.0,
+   "source": "assumption: endpoint of the non-AD functions (LIN bus of the function; placed at: overhead console: front interior lamps, intrusion sensor; one 8-byte frame per 100 ms period per driver); shared endpoint: the fastest bus among its users (CAN, LIN)"
+  },
+  {
+   "type": "INTERIOR_LAMP_REAR",
+   "id": "interior_lamp_rear",
+   "interface": "LIN",
+   "volume": 0.00064,
+   "position": {
+    "x": 0.0,
+    "y": -0.75,
+    "z": 1.55
+   },
+   "rate_hz": 10.0,
+   "source": "assumption: endpoint of the non-AD functions (LIN bus of the function; placed at: headliner above the rear seats: rear interior lamp; one 8-byte frame per 100 ms period per driver)"
+  },
+  {
+   "type": "MIRROR_MOTOR_LEFT",
+   "id": "mirror_motor_left",
+   "interface": "LIN",
+   "volume": 0.00352,
+   "position": {
+    "x": -0.95,
+    "y": 0.88,
+    "z": 1.02
+   },
+   "rate_hz": 50.0,
+   "source": "assumption: endpoint of the non-AD functions (LIN bus of the function; placed at: left door mirror at the front upper corner of the door; one 8-byte frame per 20 ms period per driver)"
+  },
+  {
+   "type": "MIRROR_MOTOR_RIGHT",
+   "id": "mirror_motor_right",
+   "interface": "LIN",
+   "volume": 0.00352,
+   "position": {
+    "x": 0.95,
+    "y": 0.88,
+    "z": 1.02
+   },
+   "rate_hz": 50.0,
+   "source": "assumption: endpoint of the non-AD functions (LIN bus of the function; placed at: right door mirror at the front upper corner of the door; one 8-byte frame per 20 ms period per driver)"
+  },
+  {
+   "type": "ONBOARD_CHARGER",
+   "id": "onboard_charger",
+   "interface": "CAN",
+   "volume": 0.00384,
+   "position": {
+    "x": 0.0,
+    "y": -1.925,
+    "z": 0.535
+   },
+   "rate_hz": 50.0,
+   "source": "assumption: endpoint of the non-AD functions (CAN bus of the function; placed at: integrated charging control unit / on-board charger (vehicle.json iccu_charger block); one 8-byte frame per 100 ms period per driver)"
+  },
+  {
+   "type": "POWER_DISTRIBUTION_BOX",
+   "id": "power_distribution_box",
+   "interface": "CAN",
+   "volume": 0.0032,
+   "position": {
+    "x": -0.48,
+    "y": 1.45,
+    "z": 0.8
+   },
+   "rate_hz": 50.0,
+   "source": "assumption: endpoint of the non-AD functions (CAN bus of the function; placed at: front junction box next to the 12 V battery: terminal clamp relays; one 8-byte frame per 20 ms period per driver)"
+  },
+  {
+   "type": "RADIATOR_FAN",
+   "id": "radiator_fan",
+   "interface": "LIN",
+   "volume": 0.0032,
+   "position": {
+    "x": 0.0,
+    "y": 2.05,
+    "z": 0.5
+   },
+   "rate_hz": 50.0,
+   "source": "assumption: endpoint of the non-AD functions (LIN bus of the function; placed at: radiator fan behind the front grille; one 8-byte frame per 20 ms period per driver)"
+  },
+  {
+   "type": "REAR_DRIVE_UNIT",
+   "id": "rear_drive_unit",
+   "interface": "CAN",
+   "volume": 0.0128,
+   "position": {
+    "x": 0.2,
+    "y": -1.5,
+    "z": 0.5
+   },
+   "rate_hz": 200.0,
+   "source": "assumption: endpoint of the non-AD functions (CAN bus of the function; placed at: rear drive unit: park lock actuator; one 8-byte frame per 5 ms period per driver)"
+  },
+  {
+   "type": "REAR_LAMP_LEFT",
+   "id": "rear_lamp_left",
+   "interface": "CAN",
+   "volume": 0.0128,
+   "position": {
+    "x": -0.58,
+    "y": -2.0,
+    "z": 0.92
+   },
+   "rate_hz": 200.0,
+   "source": "assumption: endpoint of the non-AD functions (CAN bus of the function; placed at: rear left lamp cluster (mirror of ACT_Light_Rear); one 8-byte frame per 5 ms period per driver)"
+  },
+  {
+   "type": "SIREN",
+   "id": "siren",
+   "interface": "CAN",
+   "volume": 0.00192,
+   "position": {
+    "x": 0.55,
+    "y": 2.1,
+    "z": 0.55
+   },
+   "rate_hz": 20.0,
+   "source": "assumption: endpoint of the non-AD functions (CAN bus of the function; placed at: alarm siren with tilt sensor, front right behind the bumper; one 8-byte frame per 100 ms period per driver)"
+  },
+  {
+   "type": "TAILGATE_MODULE",
+   "id": "tailgate_module",
+   "interface": "CAN",
+   "volume": 0.00416,
+   "position": {
+    "x": 0.0,
+    "y": -2.15,
+    "z": 1.05
+   },
+   "rate_hz": 50.0,
+   "source": "assumption: endpoint of the non-AD functions (LIN bus of the function; placed at: tailgate below the rear glass: rear wiper, rear window heater, latch; one 8-byte frame per 100 ms period per driver); shared endpoint: the fastest bus among its users (CAN, LIN)"
+  },
+  {
+   "type": "WASHER_PUMP",
+   "id": "washer_pump",
+   "interface": "LIN",
+   "volume": 0.00064,
+   "position": {
+    "x": -0.7,
+    "y": 1.95,
+    "z": 0.45
+   },
+   "rate_hz": 10.0,
+   "source": "assumption: endpoint of the non-AD functions (LIN bus of the function; placed at: washer reservoir, front left behind the bumper; one 8-byte frame per 100 ms period per driver)"
+  },
+  {
+   "type": "WIPER_MOTOR_FRONT",
+   "id": "wiper_motor_front",
+   "interface": "LIN",
+   "volume": 0.00064,
+   "position": {
+    "x": -0.25,
+    "y": 1.3,
+    "z": 0.98
+   },
+   "rate_hz": 10.0,
+   "source": "assumption: endpoint of the non-AD functions (LIN bus of the function; placed at: cowl below the windscreen base: front wiper motor; one 8-byte frame per 100 ms period per driver)"
+  }
+ ],
+ "_data_comment": "volume = data rate (Mbit/s), rate_hz = message rate; one message = volume * 1000 / rate_hz kbit. Data pass 2026-10-21, sources per device (data_source); estimates are marked."
+}

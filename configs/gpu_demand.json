@@ -1,0 +1,38 @@
+{
+  "_purpose": "GPU (TOPS) demand added to car_s4 by tools/arch_v3_gpu_demand.py (user 2026-11-05): the measured Autoware stack uses one camera network (traffic lights) and one lidar network, 2.65 TOPS raw for the whole car, far below what the reference designs size for; this file scales an Autoware reference design to the car's own sensors and adds cockpit AI to infotainment. Output: configs/arch_v3/<out>/ (swc.json, flows.json, chains.json), then tools/arch_v3_prepare.py --src configs/arch_v3/<out> --name <out>.",
+  "source_dir": "configs/arch_v3/car_s4",
+  "out": "car_s4_gpu",
+  "reference": {
+    "name": "Autoware PoV reference design, Vision Pilot Plus (Phase 2, SAE Level 3)",
+    "tops": 150.0,
+    "sensors": 4,
+    "sensor_set": "1 front RGB camera, 1 front 4D radar, 2 corner radars",
+    "source": "https://autowarefoundation.github.io/autoware.pov-reference-design-docs/main/system-configuration (rough GPU requirements: Vision Pilot 50-80, Plus 150, Pro 500, Vision Drive 1000 TOPS; 2025.09) and https://autowarefoundation.github.io/autoware.pov-reference-design-docs/main (sensors per tier)",
+    "decision": "user 2026-11-05: Plus; the same TOPS per sensor applied to our 8 cameras + 5 lidars (a lidar counted like a radar); the rho margins apply on top (rho 1: 488 TOPS raw x 3.32 = 1,617 TOPS)"
+  },
+  "per_sensor_tops": 37.5,
+  "cameras": ["CAM_Front_Center", "CAM_Front_Left", "CAM_Front_Right", "CAM_Left_Side", "CAM_Right_Side", "CAM_Rear_Center", "CAM_Rear_Left_Corner", "CAM_Rear_Right_Corner"],
+  "camera_existing": {"CAM_Front_Center": "AW:/perception/traffic_light_recognition/camera6/traffic_light_node_container"},
+  "camera_template": "AW:/perception/traffic_light_recognition/camera6/traffic_light_node_container",
+  "camera_cpu_dmips": 12250,
+  "camera_cpu_note": "the template's measured CPU (12,860 DMIPS, the CPU side of GPU inference) capped at one target core, as tools/arch_v3_prepare.py does for the template",
+  "lidars": {"top": "LIDAR_Front", "left": "LIDAR_Left_Pillar", "right": "LIDAR_Right_Pillar", "rear": "LIDAR_Rear", "lidar_top": "LIDAR_Top"},
+  "lidar_existing": {"top": "AW:/perception/object_recognition/detection/centerpoint/lidar_centerpoint"},
+  "lidar_existing_note": "CenterPoint runs on the concatenated cloud of all lidars; it carries the share of the front lidar (kit 'top' = LIDAR_Front), the other four lidars get their own network",
+  "lidar_template": "AW:/perception/object_recognition/detection/centerpoint/lidar_centerpoint",
+  "lidar_input": "AW:/sensing/lidar/{dir}/ring_outlier_filter",
+  "detections_to": "AW:/perception/object_recognition/tracking/multi_object_tracker",
+  "detections_flow_template": ["AW:/perception/object_recognition/detection/centerpoint/lidar_centerpoint", "AW:/perception/object_recognition/tracking/multi_object_tracker"],
+  "lidar_input_flow_template": ["AW:/sensing/lidar/concatenate_data", "AW:/perception/object_recognition/detection/centerpoint/lidar_centerpoint"],
+  "infotainment": [
+    {"ids": ["Infotainment_DriverMonitoringHmi_000"], "tops_total": 2.0,
+     "what": "driver monitoring network on the driver camera",
+     "source": "OmniVision OAX4600 driver-monitoring ASIC, 2 TOPS NPU (https://www.iotm2mcouncil.org/iot-library/news/connected-transportation-news/2-tops-asic-for-driver-monitoring-launched/)"},
+    {"prefix": "Infotainment_VoiceAssistant_", "tops_total": 28.0,
+     "what": "voice assistant / cockpit AI, split equally over the voice-assistant components",
+     "source": "Qualcomm SA8295P cockpit SoC, 30 TOPS NPU (https://cnevpost.com/2021/11/29/jidus-first-model-to-feature-qualcomm-snapdragon-8295-chip-based-on-5nm-process), minus the 2 TOPS of driver monitoring"}
+  ],
+  "accelerator_feature": "HW_ACC",
+  "hw_catalogue": "configs/hw_catalogue.json",
+  "hw_catalogue_note": "copied into the output directory, so tools/arch_v3_prepare.py uses this catalogue (partitions CPU / RAM / ROM only, GPU modules per cell) for the instance"
+}

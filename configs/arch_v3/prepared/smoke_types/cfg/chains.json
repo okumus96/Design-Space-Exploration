@@ -1,0 +1,176 @@
+{
+ "_generated_by": "tools/arch_v3_prepare.py",
+ "architecture": "arch_v3/prepared/smoke_types",
+ "chains": [
+  {
+   "id": "AW_lidar_to_command",
+   "swcs": [
+    "AW:/sensing/lidar/top/velodyne_ros_wrapper_node",
+    "AW:/sensing/lidar/concatenate_data",
+    "AW:/localization/pose_estimator/ndt_scan_matcher",
+    "AW:/localization/pose_twist_fusion_filter/ekf_localizer",
+    "AW:/perception/object_recognition/detection/centerpoint/lidar_centerpoint",
+    "AW:/perception/object_recognition/tracking/multi_object_tracker",
+    "AW:/perception/object_recognition/prediction/map_based_prediction",
+    "AW:/planning/scenario_planning/lane_driving/behavior_planning/behavior_path_planner",
+    "AW:/planning/scenario_planning/lane_driving/behavior_planning/behavior_velocity_planner",
+    "AW:/planning/scenario_planning/velocity_smoother",
+    "AW:/planning/planning_validator",
+    "AW:/control/trajectory_follower/controller_node_exe",
+    "AW:/control/vehicle_cmd_gate"
+   ],
+   "net_budget_ms": 67.0,
+   "e2e_bound_ms": 100.0,
+   "source": "chain: Betz et al. arXiv 2404.12683 (Autoware sensor-to-command); bound 100 ms: Lin et al. ASPLOS 2018; computation: sum of the measured mean processing times (p99 sum recorded separately; Betz et al.: 52.8 ms mean computation on EPYC 7313P)"
+  },
+  {
+   "id": "BodyComfort_MirrorAdjustment_chain0",
+   "swcs": [
+    "BodyComfort_MirrorAdjustment_009",
+    "BodyComfort_MirrorAdjustment_010",
+    "BodyComfort_MirrorAdjustment_011"
+   ],
+   "net_budget_ms": 128.322,
+   "e2e_bound_ms": 130.0,
+   "source": "generated: lengths CARIAD Table 3 / WATERS Table VII; bound WATERS: sum of the periods of the activation patterns (Kramer, Ziegenbein, Hamann, WATERS 2015 (Bosch engine management; Hamann et al., ECRTS 2017))"
+  },
+  {
+   "id": "BodyComfort_AntiTheftWarning_chain0",
+   "swcs": [
+    "BodyComfort_AntiTheftWarning_013",
+    "BodyComfort_AntiTheftWarning_014",
+    "BodyComfort_AntiTheftWarning_015"
+   ],
+   "net_budget_ms": 69.308,
+   "e2e_bound_ms": 70.0,
+   "source": "generated: lengths CARIAD Table 3 / WATERS Table VII; bound WATERS: sum of the periods of the activation patterns (Kramer, Ziegenbein, Hamann, WATERS 2015 (Bosch engine management; Hamann et al., ECRTS 2017))"
+  },
+  {
+   "id": "BodyComfort_ClimateControlHVAC_chain0",
+   "swcs": [
+    "BodyComfort_ClimateControlHVAC_000",
+    "BodyComfort_ClimateControlHVAC_001"
+   ],
+   "net_budget_ms": 148.499,
+   "e2e_bound_ms": 150.0,
+   "source": "generated: lengths CARIAD Table 3 / WATERS Table VII; bound WATERS: sum of the periods of the activation patterns (Kramer, Ziegenbein, Hamann, WATERS 2015 (Bosch engine management; Hamann et al., ECRTS 2017))"
+  },
+  {
+   "id": "OccupantSafety_SensorPool_chain0",
+   "swcs": [
+    "OccupantSafety_SensorPool_000",
+    "OccupantSafety_SensorPool_001",
+    "OccupantSafety_SensorPool_002",
+    "OccupantSafety_SensorPool_003"
+   ],
+   "net_budget_ms": 5.274,
+   "e2e_bound_ms": 6.0,
+   "source": "generated: lengths CARIAD Table 3 / WATERS Table VII; bound WATERS: sum of the periods of the activation patterns (Kramer, Ziegenbein, Hamann, WATERS 2015 (Bosch engine management; Hamann et al., ECRTS 2017))",
+   "ftti_ms": 24.0
+  },
+  {
+   "id": "OccupantSafety_OccupantDetection_chain0",
+   "swcs": [
+    "OccupantSafety_OccupantDetection_000",
+    "OccupantSafety_OccupantDetection_001"
+   ],
+   "net_budget_ms": 119.701,
+   "e2e_bound_ms": 120.0,
+   "source": "generated: lengths CARIAD Table 3 / WATERS Table VII; bound WATERS: sum of the periods of the activation patterns (Kramer, Ziegenbein, Hamann, WATERS 2015 (Bosch engine management; Hamann et al., ECRTS 2017))",
+   "ftti_ms": 480.0
+  },
+  {
+   "id": "Chassis_SteeringSystemEps_chain0",
+   "swcs": [
+    "Chassis_SteeringSystemEps_000",
+    "Chassis_SteeringSystemEps_001",
+    "Chassis_SteeringSystemEps_002",
+    "Chassis_SteeringSystemEps_003",
+    "Chassis_SteeringSystemEps_004",
+    "Chassis_SteeringSystemEps_005"
+   ],
+   "net_budget_ms": 5.246,
+   "e2e_bound_ms": 6.0,
+   "source": "generated: lengths CARIAD Table 3 / WATERS Table VII; bound WATERS: sum of the periods of the activation patterns (Kramer, Ziegenbein, Hamann, WATERS 2015 (Bosch engine management; Hamann et al., ECRTS 2017))",
+   "ftti_ms": 240.0
+  },
+  {
+   "id": "Chassis_Suspension_chain0",
+   "swcs": [
+    "Chassis_Suspension_002",
+    "Chassis_Suspension_003",
+    "Chassis_Suspension_004",
+    "Chassis_Suspension_005"
+   ],
+   "net_budget_ms": 13.886,
+   "e2e_bound_ms": 15.0,
+   "source": "generated: lengths CARIAD Table 3 / WATERS Table VII; bound WATERS: sum of the periods of the activation patterns (Kramer, Ziegenbein, Hamann, WATERS 2015 (Bosch engine management; Hamann et al., ECRTS 2017))"
+  },
+  {
+   "id": "Chassis_TirePressureMonitoring_chain0",
+   "swcs": [
+    "Chassis_TirePressureMonitoring_000",
+    "Chassis_TirePressureMonitoring_001"
+   ],
+   "net_budget_ms": 148.505,
+   "e2e_bound_ms": 150.0,
+   "source": "generated: lengths CARIAD Table 3 / WATERS Table VII; bound WATERS: sum of the periods of the activation patterns (Kramer, Ziegenbein, Hamann, WATERS 2015 (Bosch engine management; Hamann et al., ECRTS 2017))"
+  },
+  {
+   "id": "Chassis_BrakeByWireActuation_chain0",
+   "swcs": [
+    "Chassis_BrakeByWireActuation_005",
+    "Chassis_BrakeByWireActuation_006"
+   ],
+   "net_budget_ms": 5.791,
+   "e2e_bound_ms": 6.0,
+   "source": "generated: lengths CARIAD Table 3 / WATERS Table VII; bound WATERS: sum of the periods of the activation patterns (Kramer, Ziegenbein, Hamann, WATERS 2015 (Bosch engine management; Hamann et al., ECRTS 2017))",
+   "ftti_ms": 100.0
+  },
+  {
+   "id": "Powertrain_DriverRequest_chain0",
+   "swcs": [
+    "Powertrain_DriverRequest_000",
+    "Powertrain_DriverRequest_001",
+    "Powertrain_DriverRequest_002"
+   ],
+   "net_budget_ms": 28.55,
+   "e2e_bound_ms": 30.0,
+   "source": "generated: lengths CARIAD Table 3 / WATERS Table VII; bound WATERS: sum of the periods of the activation patterns (Kramer, Ziegenbein, Hamann, WATERS 2015 (Bosch engine management; Hamann et al., ECRTS 2017))",
+   "ftti_ms": 120.0
+  },
+  {
+   "id": "Powertrain_ThermalManagement_chain0",
+   "swcs": [
+    "Powertrain_ThermalManagement_000",
+    "Powertrain_ThermalManagement_001",
+    "Powertrain_ThermalManagement_002"
+   ],
+   "net_budget_ms": 148.576,
+   "e2e_bound_ms": 150.0,
+   "source": "generated: lengths CARIAD Table 3 / WATERS Table VII; bound WATERS: sum of the periods of the activation patterns (Kramer, Ziegenbein, Hamann, WATERS 2015 (Bosch engine management; Hamann et al., ECRTS 2017))"
+  },
+  {
+   "id": "Powertrain_DcDcConverter_chain0",
+   "swcs": [
+    "Powertrain_DcDcConverter_002",
+    "Powertrain_DcDcConverter_003"
+   ],
+   "net_budget_ms": 29.872,
+   "e2e_bound_ms": 30.0,
+   "source": "generated: lengths CARIAD Table 3 / WATERS Table VII; bound WATERS: sum of the periods of the activation patterns (Kramer, Ziegenbein, Hamann, WATERS 2015 (Bosch engine management; Hamann et al., ECRTS 2017))"
+  },
+  {
+   "id": "Infotainment_DriverMonitoringHmi_chain0",
+   "swcs": [
+    "Infotainment_DriverMonitoringHmi_000",
+    "Infotainment_DriverMonitoringHmi_001",
+    "Infotainment_DriverMonitoringHmi_002",
+    "Infotainment_DriverMonitoringHmi_003"
+   ],
+   "net_budget_ms": 59.083,
+   "e2e_bound_ms": 60.0,
+   "source": "generated: lengths CARIAD Table 3 / WATERS Table VII; bound WATERS: sum of the periods of the activation patterns (Kramer, Ziegenbein, Hamann, WATERS 2015 (Bosch engine management; Hamann et al., ECRTS 2017))"
+  }
+ ]
+}

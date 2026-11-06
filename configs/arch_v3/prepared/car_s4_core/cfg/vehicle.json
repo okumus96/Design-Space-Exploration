@@ -1,0 +1,1828 @@
+{
+  "_comment": "Reference vehicle: Hyundai IONIQ 5 (E-GMP). Coordinate frame: x lateral (+ right), y longitudinal (+ front), z up; origin at mid-length, mid-width, on the ground. All lengths in metres. 'source' values: spec = manufacturer data, reference = measured on the private IONIQ 5 N reference model (HANDOFF §15.1), assumption = engineering estimate. Candidate ECU sites (sites.json) and the cable channel graph (channels.json) are GENERATED from 'ecu_zones' and 'cable_channels' by tools/vehicle_layout/generate_layout.py; do not edit the generated files by hand.",
+  "name": "Hyundai IONIQ 5",
+  "dimensions": {
+    "length": 4.635,
+    "width": 1.89,
+    "height": 1.605,
+    "wheelbase": 3.0,
+    "track": 1.64,
+    "ground_clearance": 0.16,
+    "source": "spec (Hyundai IONIQ 5 technical data; track and ground clearance approximate)",
+    "ecu_placement_bounds": {
+      "_legacy": "used only by data_generator.py (synthetic data)",
+      "x_min": -0.8,
+      "x_max": 0.8,
+      "y_min": -2.1,
+      "y_max": 2.1
+    }
+  },
+  "axles": {
+    "front_y": 1.44,
+    "rear_y": -1.57,
+    "source": "reference: wheel-arch liner centres of the reference model (wheelbase 3.01 m vs spec 3.00 m)"
+  },
+  "thermal_classes": {
+    "cabin": {
+      "derating": 1.0,
+      "description": "passenger compartment, climate controlled",
+      "aec_q100_grade": 3
+    },
+    "roof": {
+      "derating": 0.9,
+      "description": "headliner, solar load",
+      "aec_q100_grade": 2
+    },
+    "trunk": {
+      "derating": 0.9,
+      "description": "luggage compartment, side trims",
+      "aec_q100_grade": 2
+    },
+    "underbody": {
+      "derating": 0.9,
+      "description": "below trunk floor / near rear drive unit",
+      "aec_q100_grade": 1
+    },
+    "engine_bay": {
+      "derating": 0.9,
+      "description": "front drive unit bay, hot and humid",
+      "aec_q100_grade": 1
+    },
+    "_source": "Dowdy & Sharma, NASA NEPP report TR04-0600 (2000), derating of plastic digital microcircuits: operating frequency 100 % in a protected, 90 % in a severe environment -> cabin 1.0, all other installation areas 0.90; applied to processing capacity only (CPU, accelerator), not to memory (2026-10-24). Installation locations mapped to AEC-Q100 ambient temperature grades (grade 3: -40..85 C, grade 2: -40..105 C, grade 1: -40..125 C; AEC-Q100 as tabulated by Renesas): cabin grade 3, roof / trunk grade 2, underbody / engine bay grade 1. Processors throttle at their junction limit (e.g. NVIDIA Jetson AGX Orin between 99 and 105 C, NVIDIA thermal design guide v1.1), so a hotter location leaves less sustained performance; the derating per class remains an estimate."
+  },
+  "fixed_blocks": [
+    {
+      "id": "battery_pack",
+      "kind": "battery",
+      "bbox": {
+        "x": [
+          -0.7,
+          0.7
+        ],
+        "y": [
+          -0.95,
+          0.95
+        ],
+        "z": [
+          0.18,
+          0.33
+        ]
+      },
+      "source": "spec: E-GMP pack under the floor between the axles, ending ahead of the subframes (0.3 m to the drive units); bottom flush with the underbody; 1.9 x 1.4 x 0.15 m assumption"
+    },
+    {
+      "id": "motor_front",
+      "kind": "motor",
+      "bbox": {
+        "x": [
+          -0.35,
+          0.35
+        ],
+        "y": [
+          1.25,
+          1.75
+        ],
+        "z": [
+          0.35,
+          0.8
+        ]
+      },
+      "source": "assumption: front e-drive unit on the front axle (AWD); the reference model also contains the unit and its covers"
+    },
+    {
+      "id": "motor_rear",
+      "kind": "motor",
+      "bbox": {
+        "x": [
+          -0.35,
+          0.35
+        ],
+        "y": [
+          -1.75,
+          -1.25
+        ],
+        "z": [
+          0.35,
+          0.8
+        ]
+      },
+      "source": "assumption: rear e-drive unit on the rear axle"
+    },
+    {
+      "id": "cabin_floor",
+      "kind": "structure",
+      "bbox": {
+        "x": [
+          -0.76,
+          0.76
+        ],
+        "y": [
+          -1.28,
+          1.08
+        ],
+        "z": [
+          0.34,
+          0.36
+        ]
+      },
+      "source": "reference: floor top at z 0.20 above underbody + 0.16 ground clearance"
+    },
+    {
+      "id": "dashboard",
+      "kind": "interior",
+      "bbox": {
+        "x": [
+          -0.75,
+          0.75
+        ],
+        "y": [
+          0.62,
+          1.26
+        ],
+        "z": [
+          0.62,
+          1.06
+        ]
+      },
+      "source": "reference"
+    },
+    {
+      "id": "cross_car_beam",
+      "kind": "structure",
+      "bbox": {
+        "x": [
+          -0.8,
+          0.8
+        ],
+        "y": [
+          0.7,
+          0.75
+        ],
+        "z": [
+          0.9,
+          0.94
+        ]
+      },
+      "source": "reference: steel beam inside the dashboard"
+    },
+    {
+      "id": "center_console",
+      "kind": "interior",
+      "bbox": {
+        "x": [
+          -0.13,
+          0.13
+        ],
+        "y": [
+          -0.21,
+          1.07
+        ],
+        "z": [
+          0.3,
+          0.75
+        ]
+      },
+      "source": "reference"
+    },
+    {
+      "id": "seat_front_left",
+      "kind": "seat",
+      "bbox": {
+        "x": [
+          -0.65,
+          -0.15
+        ],
+        "y": [
+          -0.15,
+          0.55
+        ],
+        "z": [
+          0.46,
+          1.2
+        ]
+      },
+      "source": "assumption (front seats missing in the reference model); z from 0.46 so that the under-seat harness band stays free"
+    },
+    {
+      "id": "seat_front_right",
+      "kind": "seat",
+      "bbox": {
+        "x": [
+          0.15,
+          0.65
+        ],
+        "y": [
+          -0.15,
+          0.55
+        ],
+        "z": [
+          0.46,
+          1.2
+        ]
+      },
+      "source": "assumption; z from 0.46 so that the under-seat harness band stays free"
+    },
+    {
+      "id": "seat_rear",
+      "kind": "seat",
+      "bbox": {
+        "x": [
+          -0.66,
+          0.66
+        ],
+        "y": [
+          -1.26,
+          -0.46
+        ],
+        "z": [
+          0.46,
+          1.22
+        ]
+      },
+      "source": "reference; z from 0.46 so that the under-seat harness band stays free"
+    },
+    {
+      "id": "pillar_a_left",
+      "kind": "pillar",
+      "bbox": {
+        "x": [
+          -0.93,
+          -0.78
+        ],
+        "y": [
+          0.4,
+          1.0
+        ],
+        "z": [
+          0.95,
+          1.58
+        ]
+      },
+      "source": "reference: door jamb front edge y 0.98, roof front corner y 0.40 (slanted member approximated by its box)"
+    },
+    {
+      "id": "pillar_a_right",
+      "kind": "pillar",
+      "bbox": {
+        "x": [
+          0.78,
+          0.93
+        ],
+        "y": [
+          0.4,
+          1.0
+        ],
+        "z": [
+          0.95,
+          1.58
+        ]
+      },
+      "source": "reference"
+    },
+    {
+      "id": "pillar_b_left",
+      "kind": "pillar",
+      "bbox": {
+        "x": [
+          -0.93,
+          -0.8
+        ],
+        "y": [
+          -0.28,
+          -0.12
+        ],
+        "z": [
+          0.36,
+          1.58
+        ]
+      },
+      "source": "reference: between front and rear door jambs, y -0.20"
+    },
+    {
+      "id": "pillar_b_right",
+      "kind": "pillar",
+      "bbox": {
+        "x": [
+          0.8,
+          0.93
+        ],
+        "y": [
+          -0.28,
+          -0.12
+        ],
+        "z": [
+          0.36,
+          1.58
+        ]
+      },
+      "source": "reference"
+    },
+    {
+      "id": "pillar_c_left",
+      "kind": "pillar",
+      "bbox": {
+        "x": [
+          -0.93,
+          -0.8
+        ],
+        "y": [
+          -1.5,
+          -1.34
+        ],
+        "z": [
+          0.36,
+          1.58
+        ]
+      },
+      "source": "reference: rear door jamb rear edge y -1.42"
+    },
+    {
+      "id": "pillar_c_right",
+      "kind": "pillar",
+      "bbox": {
+        "x": [
+          0.8,
+          0.93
+        ],
+        "y": [
+          -1.5,
+          -1.34
+        ],
+        "z": [
+          0.36,
+          1.58
+        ]
+      },
+      "source": "reference"
+    },
+    {
+      "id": "roof",
+      "kind": "structure",
+      "bbox": {
+        "x": [
+          -0.75,
+          0.75
+        ],
+        "y": [
+          -1.45,
+          0.4
+        ],
+        "z": [
+          1.55,
+          1.6
+        ]
+      },
+      "source": "reference: roof height; spec height 1.605"
+    },
+    {
+      "id": "windscreen",
+      "kind": "glass",
+      "bbox": {
+        "x": [
+          -0.79,
+          0.79
+        ],
+        "y": [
+          0.38,
+          1.34
+        ],
+        "z": [
+          0.97,
+          1.45
+        ]
+      },
+      "source": "reference (glass plane approximated by its box)"
+    },
+    {
+      "id": "rear_glass",
+      "kind": "glass",
+      "bbox": {
+        "x": [
+          -0.71,
+          0.71
+        ],
+        "y": [
+          -2.05,
+          -1.43
+        ],
+        "z": [
+          1.1,
+          1.41
+        ]
+      },
+      "source": "reference"
+    },
+    {
+      "id": "wheel_well_fl",
+      "kind": "wheel",
+      "bbox": {
+        "x": [
+          -0.95,
+          -0.6
+        ],
+        "y": [
+          1.04,
+          1.84
+        ],
+        "z": [
+          0.16,
+          0.8
+        ]
+      },
+      "source": "reference: arch liner centre; well size assumption"
+    },
+    {
+      "id": "wheel_well_fr",
+      "kind": "wheel",
+      "bbox": {
+        "x": [
+          0.6,
+          0.95
+        ],
+        "y": [
+          1.04,
+          1.84
+        ],
+        "z": [
+          0.16,
+          0.8
+        ]
+      },
+      "source": "reference: arch liner centre; well size assumption"
+    },
+    {
+      "id": "wheel_well_rl",
+      "kind": "wheel",
+      "bbox": {
+        "x": [
+          -0.95,
+          -0.6
+        ],
+        "y": [
+          -1.97,
+          -1.17
+        ],
+        "z": [
+          0.16,
+          0.8
+        ]
+      },
+      "source": "reference: arch liner centre; well size assumption"
+    },
+    {
+      "id": "wheel_well_rr",
+      "kind": "wheel",
+      "bbox": {
+        "x": [
+          0.6,
+          0.95
+        ],
+        "y": [
+          -1.97,
+          -1.17
+        ],
+        "z": [
+          0.16,
+          0.8
+        ]
+      },
+      "source": "reference: arch liner centre; well size assumption"
+    },
+    {
+      "id": "trunk_floor",
+      "kind": "structure",
+      "bbox": {
+        "x": [
+          -0.68,
+          0.68
+        ],
+        "y": [
+          -2.1,
+          -1.1
+        ],
+        "z": [
+          0.63,
+          0.66
+        ]
+      },
+      "source": "reference"
+    },
+    {
+      "id": "bumper_front",
+      "kind": "structure",
+      "bbox": {
+        "x": [
+          -0.95,
+          0.95
+        ],
+        "y": [
+          2.2,
+          2.32
+        ],
+        "z": [
+          0.3,
+          0.8
+        ]
+      },
+      "source": "spec length; depth assumption"
+    },
+    {
+      "id": "bumper_rear",
+      "kind": "structure",
+      "bbox": {
+        "x": [
+          -0.95,
+          0.95
+        ],
+        "y": [
+          -2.32,
+          -2.2
+        ],
+        "z": [
+          0.3,
+          0.8
+        ]
+      },
+      "source": "spec length; depth assumption"
+    },
+    {
+      "id": "hvac_unit",
+      "kind": "aux",
+      "bbox": {
+        "x": [
+          -0.35,
+          0.35
+        ],
+        "y": [
+          0.72,
+          1.12
+        ],
+        "z": [
+          0.45,
+          0.95
+        ]
+      },
+      "source": "assumption: HVAC box behind the centre of the dashboard"
+    },
+    {
+      "id": "aux_battery_12v",
+      "kind": "aux",
+      "bbox": {
+        "x": [
+          -0.6,
+          -0.36
+        ],
+        "y": [
+          1.08,
+          1.36
+        ],
+        "z": [
+          0.6,
+          0.85
+        ]
+      },
+      "source": "assumption: 12 V battery at the rear-left of the engine bay between the wheel well and the drive unit (LHD)"
+    },
+    {
+      "id": "iccu_charger",
+      "kind": "aux",
+      "bbox": {
+        "x": [
+          -0.3,
+          0.3
+        ],
+        "y": [
+          -2.05,
+          -1.8
+        ],
+        "z": [
+          0.45,
+          0.62
+        ]
+      },
+      "source": "assumption: integrated charging control unit / on-board charger under the trunk floor behind the rear drive unit"
+    }
+  ],
+  "ecu_zones": {
+    "_comment": "Candidate ECU cells, 30 (2026-10-30, user: the scanned lattice cells sat in the bumpers, behind the rear headrests and asymmetric; cells must be real mounting places, symmetric left / right, upright in the pillars). enabled = true: generate_layout.py takes these zones (one cell at each box centre; the box is one control-unit slot of installation_space.ecu_size in the orientation orient: flat = long side across the car, flat_y = long side along the car, wall_x = upright against a side wall, wall_y = against the bulkhead) instead of the scanned ECU space of routing_space.npz (enabled = false: the old scan). Positions in the vehicle frame (x right, y front, z up from the ground); every slot checked against fixed_blocks by hand. Sources are secondary (service manuals, parts guides, owner forums, teardown summaries): no OEM drawing of the IONIQ 5 was available, see HANDOFF 16.26.",
+    "enabled": true,
+    "grid_spacing": 0.35,
+    "zones": [
+      {
+        "id": "BAY_L",
+        "name": "engine bay, left inner fender above the wheel house",
+        "thermal_class": "engine_bay",
+        "max_sites": 1,
+        "orient": "flat_y",
+        "bbox": {
+          "x": [
+            -0.58,
+            -0.38
+          ],
+          "y": [
+            1.45,
+            1.75
+          ],
+          "z": [
+            0.85,
+            0.91
+          ]
+        },
+        "source": "reference-model clearance maximum in the bay (2026-10-16); the Tesla Model 3 front body controller sits under the cowl screen between the strut towers (Tesla service manual)"
+      },
+      {
+        "id": "BAY_R",
+        "name": "engine bay, right inner fender above the wheel house",
+        "thermal_class": "engine_bay",
+        "max_sites": 1,
+        "orient": "flat_y",
+        "bbox": {
+          "x": [
+            0.38,
+            0.58
+          ],
+          "y": [
+            1.45,
+            1.75
+          ],
+          "z": [
+            0.85,
+            0.91
+          ]
+        },
+        "source": "reference-model clearance maximum in the bay (2026-10-16); the Tesla Model 3 front body controller sits under the cowl screen between the strut towers (Tesla service manual)"
+      },
+      {
+        "id": "COWL_L",
+        "name": "under the scuttle panel (plenum), engine-bay side, left",
+        "thermal_class": "engine_bay",
+        "max_sites": 1,
+        "orient": "flat",
+        "bbox": {
+          "x": [
+            -0.45,
+            -0.15
+          ],
+          "y": [
+            1.2,
+            1.4
+          ],
+          "z": [
+            0.88,
+            0.94
+          ]
+        },
+        "source": "classic ECU place under the windscreen scuttle (Bosch EDC15 / EDC16 units in VAG and BMW cars, actronics)"
+      },
+      {
+        "id": "COWL_R",
+        "name": "under the scuttle panel (plenum), engine-bay side, right",
+        "thermal_class": "engine_bay",
+        "max_sites": 1,
+        "orient": "flat",
+        "bbox": {
+          "x": [
+            0.15,
+            0.45
+          ],
+          "y": [
+            1.2,
+            1.4
+          ],
+          "z": [
+            0.88,
+            0.94
+          ]
+        },
+        "source": "classic ECU place under the windscreen scuttle (Bosch EDC15 / EDC16 units in VAG and BMW cars, actronics)"
+      },
+      {
+        "id": "BAY_C",
+        "name": "front bay, above the drive unit",
+        "thermal_class": "engine_bay",
+        "max_sites": 1,
+        "orient": "flat",
+        "bbox": {
+          "x": [
+            -0.15,
+            0.15
+          ],
+          "y": [
+            1.48,
+            1.68
+          ],
+          "z": [
+            0.84,
+            0.9
+          ]
+        },
+        "source": "reference-model clearance maximum in the bay (2026-10-16)"
+      },
+      {
+        "id": "DASH_L",
+        "name": "behind the instrument panel, driver side, above the knee area",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "orient": "flat",
+        "bbox": {
+          "x": [
+            -0.7,
+            -0.4
+          ],
+          "y": [
+            0.8,
+            1.0
+          ],
+          "z": [
+            0.72,
+            0.78
+          ]
+        },
+        "source": "IONIQ 5 IBU (integrated body unit) in the instrument panel (Hyundai parts listing); Hyundai Accent ECU under the dash at the A-pillar (actronics)"
+      },
+      {
+        "id": "DASH_R",
+        "name": "behind the instrument panel, passenger side, behind the glovebox",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "orient": "flat",
+        "bbox": {
+          "x": [
+            0.4,
+            0.7
+          ],
+          "y": [
+            0.8,
+            1.0
+          ],
+          "z": [
+            0.72,
+            0.78
+          ]
+        },
+        "source": "Tesla Autopilot computer behind the glovebox; Audi data-bus gateway behind the glovebox (parts guides)"
+      },
+      {
+        "id": "KICK_L",
+        "name": "kick panel / footwell, left",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "orient": "wall_x",
+        "bbox": {
+          "x": [
+            -0.75,
+            -0.69
+          ],
+          "y": [
+            0.65,
+            0.85
+          ],
+          "z": [
+            0.36,
+            0.66
+          ]
+        },
+        "source": "Tesla Model 3 left / right body controllers behind the lower dash trim of the footwells (parts guides; the service manual lists their A-pillar and door harness connectors); body control modules at the driver-side kick panel"
+      },
+      {
+        "id": "KICK_R",
+        "name": "kick panel / footwell, right",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "orient": "wall_x",
+        "bbox": {
+          "x": [
+            0.69,
+            0.75
+          ],
+          "y": [
+            0.65,
+            0.85
+          ],
+          "z": [
+            0.36,
+            0.66
+          ]
+        },
+        "source": "Tesla Model 3 left / right body controllers behind the lower dash trim of the footwells (parts guides; the service manual lists their A-pillar and door harness connectors); body control modules at the driver-side kick panel"
+      },
+      {
+        "id": "APIL_L",
+        "name": "A-pillar base, dashboard end panel, left",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "orient": "wall_x",
+        "bbox": {
+          "x": [
+            -0.77,
+            -0.71
+          ],
+          "y": [
+            0.5,
+            0.7
+          ],
+          "z": [
+            0.7,
+            1.0
+          ]
+        },
+        "source": "A-pillar base above the kick panel (Hyundai Accent ECU under the dash against the A-pillar, actronics; Tesla LH body controller wired to the A-pillar harness, service manual); user 2026-10-30: 30 cells"
+      },
+      {
+        "id": "APIL_R",
+        "name": "A-pillar base, dashboard end panel, right",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "orient": "wall_x",
+        "bbox": {
+          "x": [
+            0.71,
+            0.77
+          ],
+          "y": [
+            0.5,
+            0.7
+          ],
+          "z": [
+            0.7,
+            1.0
+          ]
+        },
+        "source": "A-pillar base above the kick panel (Hyundai Accent ECU under the dash against the A-pillar, actronics; Tesla LH body controller wired to the A-pillar harness, service manual); user 2026-10-30: 30 cells"
+      },
+      {
+        "id": "TUNNEL",
+        "name": "centre tunnel under the console",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "orient": "flat_y",
+        "bbox": {
+          "x": [
+            -0.1,
+            0.1
+          ],
+          "y": [
+            0.3,
+            0.6
+          ],
+          "z": [
+            0.39,
+            0.45
+          ]
+        },
+        "source": "airbag control units and gateways on the tunnel (common practice)"
+      },
+      {
+        "id": "SEAT_F_L",
+        "name": "under the front seat, left",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "orient": "flat",
+        "bbox": {
+          "x": [
+            -0.55,
+            -0.25
+          ],
+          "y": [
+            0.1,
+            0.3
+          ],
+          "z": [
+            0.38,
+            0.44
+          ]
+        },
+        "source": "telematics modules under the front seats (Audi Q5: driver seat, Audi Q7: passenger seat; parts guides)"
+      },
+      {
+        "id": "SEAT_F_R",
+        "name": "under the front seat, right",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "orient": "flat",
+        "bbox": {
+          "x": [
+            0.25,
+            0.55
+          ],
+          "y": [
+            0.1,
+            0.3
+          ],
+          "z": [
+            0.38,
+            0.44
+          ]
+        },
+        "source": "telematics modules under the front seats (Audi Q5: driver seat, Audi Q7: passenger seat; parts guides)"
+      },
+      {
+        "id": "SEAT_R_L",
+        "name": "under the rear seat, left",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "orient": "flat",
+        "bbox": {
+          "x": [
+            -0.5,
+            -0.2
+          ],
+          "y": [
+            -0.95,
+            -0.75
+          ],
+          "z": [
+            0.38,
+            0.44
+          ]
+        },
+        "source": "IONIQ 5 ICCU under the rear seat (owner forum); Audi gateway J533 under the rear bench (parts guide)"
+      },
+      {
+        "id": "SEAT_R_R",
+        "name": "under the rear seat, right",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "orient": "flat",
+        "bbox": {
+          "x": [
+            0.2,
+            0.5
+          ],
+          "y": [
+            -0.95,
+            -0.75
+          ],
+          "z": [
+            0.38,
+            0.44
+          ]
+        },
+        "source": "IONIQ 5 ICCU under the rear seat (owner forum); Audi gateway J533 under the rear bench (parts guide)"
+      },
+      {
+        "id": "BPIL_L",
+        "name": "lower B-pillar, inside the trim, upright, left",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "orient": "wall_x",
+        "bbox": {
+          "x": [
+            -0.88,
+            -0.82
+          ],
+          "y": [
+            -0.3,
+            -0.1
+          ],
+          "z": [
+            0.6,
+            0.9
+          ]
+        },
+        "source": "user request 2026-10-30; zonal controllers at the corners of the body (onsemi, Promwad)"
+      },
+      {
+        "id": "BPIL_R",
+        "name": "lower B-pillar, inside the trim, upright, right",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "orient": "wall_x",
+        "bbox": {
+          "x": [
+            0.82,
+            0.88
+          ],
+          "y": [
+            -0.3,
+            -0.1
+          ],
+          "z": [
+            0.6,
+            0.9
+          ]
+        },
+        "source": "user request 2026-10-30; zonal controllers at the corners of the body (onsemi, Promwad)"
+      },
+      {
+        "id": "CPIL_L",
+        "name": "C-pillar / rear quarter, inside the trim, upright, left",
+        "thermal_class": "trunk",
+        "max_sites": 1,
+        "orient": "wall_x",
+        "bbox": {
+          "x": [
+            -0.88,
+            -0.82
+          ],
+          "y": [
+            -1.52,
+            -1.32
+          ],
+          "z": [
+            0.8,
+            1.1
+          ]
+        },
+        "source": "user request 2026-10-30; quarter-panel electronics (amplifier, telematics) in many cars"
+      },
+      {
+        "id": "CPIL_R",
+        "name": "C-pillar / rear quarter, inside the trim, upright, right",
+        "thermal_class": "trunk",
+        "max_sites": 1,
+        "orient": "wall_x",
+        "bbox": {
+          "x": [
+            0.82,
+            0.88
+          ],
+          "y": [
+            -1.52,
+            -1.32
+          ],
+          "z": [
+            0.8,
+            1.1
+          ]
+        },
+        "source": "user request 2026-10-30; quarter-panel electronics (amplifier, telematics) in many cars"
+      },
+      {
+        "id": "TRUNK_L",
+        "name": "trunk side wall above the wheel arch, left",
+        "thermal_class": "trunk",
+        "max_sites": 1,
+        "orient": "wall_x",
+        "bbox": {
+          "x": [
+            -0.77,
+            -0.71
+          ],
+          "y": [
+            -1.95,
+            -1.75
+          ],
+          "z": [
+            0.8,
+            1.1
+          ]
+        },
+        "source": "Audi A8 zFAS driver-assistance controller in the luggage compartment (parts guide, Wikipedia); legacy zone trunk_side"
+      },
+      {
+        "id": "TRUNK_R",
+        "name": "trunk side wall above the wheel arch, right",
+        "thermal_class": "trunk",
+        "max_sites": 1,
+        "orient": "wall_x",
+        "bbox": {
+          "x": [
+            0.71,
+            0.77
+          ],
+          "y": [
+            -1.95,
+            -1.75
+          ],
+          "z": [
+            0.8,
+            1.1
+          ]
+        },
+        "source": "Audi A8 zFAS driver-assistance controller in the luggage compartment (parts guide, Wikipedia); legacy zone trunk_side"
+      },
+      {
+        "id": "UFLOOR_L",
+        "name": "underbody, beside the rear drive unit, left",
+        "thermal_class": "underbody",
+        "max_sites": 1,
+        "orient": "flat_y",
+        "bbox": {
+          "x": [
+            -0.57,
+            -0.37
+          ],
+          "y": [
+            -1.85,
+            -1.55
+          ],
+          "z": [
+            0.49,
+            0.55
+          ]
+        },
+        "source": "sub-trunk space of the reference model (legacy zone sub_trunk)"
+      },
+      {
+        "id": "UFLOOR_R",
+        "name": "underbody, beside the rear drive unit, right",
+        "thermal_class": "underbody",
+        "max_sites": 1,
+        "orient": "flat_y",
+        "bbox": {
+          "x": [
+            0.37,
+            0.57
+          ],
+          "y": [
+            -1.85,
+            -1.55
+          ],
+          "z": [
+            0.49,
+            0.55
+          ]
+        },
+        "source": "sub-trunk space of the reference model (legacy zone sub_trunk)"
+      },
+      {
+        "id": "ROOF_F",
+        "name": "headliner behind the mirror",
+        "thermal_class": "roof",
+        "max_sites": 1,
+        "orient": "flat",
+        "bbox": {
+          "x": [
+            -0.15,
+            0.15
+          ],
+          "y": [
+            0.2,
+            0.4
+          ],
+          "z": [
+            1.47,
+            1.53
+          ]
+        },
+        "source": "forward camera / ADAS unit at the windscreen (legacy zone roof_front)"
+      },
+      {
+        "id": "ROOF_R",
+        "name": "headliner at the rear",
+        "thermal_class": "roof",
+        "max_sites": 1,
+        "orient": "flat",
+        "bbox": {
+          "x": [
+            -0.15,
+            0.15
+          ],
+          "y": [
+            -1.35,
+            -1.15
+          ],
+          "z": [
+            1.47,
+            1.53
+          ]
+        },
+        "source": "antenna / telematics module under the roof antenna (legacy zone roof_rear)"
+      },
+      {
+        "id": "DOOR_F_L",
+        "name": "front door, inside the door, left",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "orient": "wall_x",
+        "bbox": {
+          "x": [
+            -0.91,
+            -0.85
+          ],
+          "y": [
+            0.25,
+            0.45
+          ],
+          "z": [
+            0.55,
+            0.85
+          ]
+        },
+        "source": "door control units inside the doors (common practice)"
+      },
+      {
+        "id": "DOOR_F_R",
+        "name": "front door, inside the door, right",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "orient": "wall_x",
+        "bbox": {
+          "x": [
+            0.85,
+            0.91
+          ],
+          "y": [
+            0.25,
+            0.45
+          ],
+          "z": [
+            0.55,
+            0.85
+          ]
+        },
+        "source": "door control units inside the doors (common practice)"
+      },
+      {
+        "id": "DOOR_R_L",
+        "name": "rear door, inside the door, left",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "orient": "wall_x",
+        "bbox": {
+          "x": [
+            -0.91,
+            -0.85
+          ],
+          "y": [
+            -0.9,
+            -0.7
+          ],
+          "z": [
+            0.55,
+            0.85
+          ]
+        },
+        "source": "door control units inside the doors (common practice)"
+      },
+      {
+        "id": "DOOR_R_R",
+        "name": "rear door, inside the door, right",
+        "thermal_class": "cabin",
+        "max_sites": 1,
+        "orient": "wall_x",
+        "bbox": {
+          "x": [
+            0.85,
+            0.91
+          ],
+          "y": [
+            -0.9,
+            -0.7
+          ],
+          "z": [
+            0.55,
+            0.85
+          ]
+        },
+        "source": "door control units inside the doors (common practice)"
+      }
+    ],
+    "_moved_2026_11_01": "BAY_L/R into the bay proper (were inside the dashboard volume and the wheel house), COWL_L/R into the plenum under the scuttle panel, engine-bay side (were inside the HVAC unit), DASH_L/R 18 cm rearward (were inside the 12 V battery / wheel house), KICK up 1 cm off the floor plate, APIL_L/R inward to the dash end panel (were inside the A-pillar), CPIL_L/R up 15 cm (were inside the wheel house), UFLOOR_L/R forward beside the rear drive unit (were in the wheel house / charger). Rule: a cell box may not enter a solid fixed block (battery, motor, seat, wheel house, aux unit); hollow volumes (dashboard, console) and pillars are allowed. BAY_L/R 8 cm further forward (y 1.45-1.75) after they touched the COWL boxes; cells keep >= 5 cm clearance from each other."
+  },
+  "cable_channels": {
+    "_comment": "Harness channels where cables may run (industrial practice: wires follow a predefined routing graph, Lin et al. DAC 2014). Polylines; generate_layout.py subdivides them every 'node_spacing' m and joins coincident end points. Sites and peripherals are attached to their nearest channel node by a straight drop.",
+    "node_spacing": 0.25,
+    "channels": [
+      {
+        "id": "sill_left",
+        "kind": "sill",
+        "points": [
+          [
+            -0.8,
+            1.0,
+            0.38
+          ],
+          [
+            -0.8,
+            -1.45,
+            0.38
+          ]
+        ],
+        "source": "reference: rocker panel line"
+      },
+      {
+        "id": "sill_right",
+        "kind": "sill",
+        "points": [
+          [
+            0.8,
+            1.0,
+            0.38
+          ],
+          [
+            0.8,
+            -1.45,
+            0.38
+          ]
+        ],
+        "source": "reference"
+      },
+      {
+        "id": "tunnel",
+        "kind": "tunnel",
+        "points": [
+          [
+            0.0,
+            0.72,
+            0.92
+          ],
+          [
+            0.0,
+            0.95,
+            0.5
+          ],
+          [
+            0.0,
+            -1.3,
+            0.42
+          ],
+          [
+            0.0,
+            -1.45,
+            0.45
+          ]
+        ],
+        "source": "reference: console / tunnel, from the cross-car beam to the rear bulkhead"
+      },
+      {
+        "id": "cross_car_beam",
+        "kind": "beam",
+        "points": [
+          [
+            -0.8,
+            0.72,
+            0.92
+          ],
+          [
+            0.8,
+            0.72,
+            0.92
+          ]
+        ],
+        "source": "reference"
+      },
+      {
+        "id": "a_pillar_left",
+        "kind": "pillar",
+        "points": [
+          [
+            -0.8,
+            1.0,
+            0.38
+          ],
+          [
+            -0.8,
+            0.72,
+            0.92
+          ],
+          [
+            -0.76,
+            0.42,
+            1.55
+          ]
+        ],
+        "source": "reference"
+      },
+      {
+        "id": "a_pillar_right",
+        "kind": "pillar",
+        "points": [
+          [
+            0.8,
+            1.0,
+            0.38
+          ],
+          [
+            0.8,
+            0.72,
+            0.92
+          ],
+          [
+            0.76,
+            0.42,
+            1.55
+          ]
+        ],
+        "source": "reference"
+      },
+      {
+        "id": "b_pillar_left",
+        "kind": "pillar",
+        "points": [
+          [
+            -0.8,
+            -0.2,
+            0.38
+          ],
+          [
+            -0.76,
+            -0.2,
+            1.55
+          ]
+        ],
+        "source": "reference"
+      },
+      {
+        "id": "b_pillar_right",
+        "kind": "pillar",
+        "points": [
+          [
+            0.8,
+            -0.2,
+            0.38
+          ],
+          [
+            0.76,
+            -0.2,
+            1.55
+          ]
+        ],
+        "source": "reference"
+      },
+      {
+        "id": "c_pillar_left",
+        "kind": "pillar",
+        "points": [
+          [
+            -0.8,
+            -1.45,
+            0.38
+          ],
+          [
+            -0.76,
+            -1.45,
+            1.55
+          ]
+        ],
+        "source": "reference"
+      },
+      {
+        "id": "c_pillar_right",
+        "kind": "pillar",
+        "points": [
+          [
+            0.8,
+            -1.45,
+            0.38
+          ],
+          [
+            0.76,
+            -1.45,
+            1.55
+          ]
+        ],
+        "source": "reference"
+      },
+      {
+        "id": "roof_rail_left",
+        "kind": "roof",
+        "points": [
+          [
+            -0.76,
+            0.42,
+            1.55
+          ],
+          [
+            -0.76,
+            -1.45,
+            1.55
+          ]
+        ],
+        "source": "assumption: headliner edge"
+      },
+      {
+        "id": "roof_rail_right",
+        "kind": "roof",
+        "points": [
+          [
+            0.76,
+            0.42,
+            1.55
+          ],
+          [
+            0.76,
+            -1.45,
+            1.55
+          ]
+        ],
+        "source": "assumption"
+      },
+      {
+        "id": "roof_cross_front",
+        "kind": "roof",
+        "points": [
+          [
+            -0.76,
+            0.42,
+            1.55
+          ],
+          [
+            0.76,
+            0.42,
+            1.55
+          ]
+        ],
+        "source": "assumption: headliner front edge (mirror / camera area)"
+      },
+      {
+        "id": "roof_cross_rear",
+        "kind": "roof",
+        "points": [
+          [
+            -0.76,
+            -1.45,
+            1.55
+          ],
+          [
+            0.76,
+            -1.45,
+            1.55
+          ]
+        ],
+        "source": "assumption"
+      },
+      {
+        "id": "roof_spine",
+        "kind": "roof",
+        "points": [
+          [
+            0.0,
+            0.42,
+            1.55
+          ],
+          [
+            0.0,
+            -1.45,
+            1.55
+          ]
+        ],
+        "source": "assumption: centre headliner (roof sensors, antenna)"
+      },
+      {
+        "id": "firewall_left",
+        "kind": "pass",
+        "points": [
+          [
+            -0.8,
+            1.0,
+            0.38
+          ],
+          [
+            -0.55,
+            1.05,
+            0.6
+          ],
+          [
+            -0.55,
+            1.3,
+            0.6
+          ]
+        ],
+        "source": "assumption: left bulkhead grommet"
+      },
+      {
+        "id": "firewall_right",
+        "kind": "pass",
+        "points": [
+          [
+            0.8,
+            1.0,
+            0.38
+          ],
+          [
+            0.55,
+            1.05,
+            0.6
+          ],
+          [
+            0.55,
+            1.3,
+            0.6
+          ]
+        ],
+        "source": "assumption: right bulkhead grommet"
+      },
+      {
+        "id": "front_bay_left",
+        "kind": "bay",
+        "points": [
+          [
+            -0.55,
+            1.3,
+            0.6
+          ],
+          [
+            -0.7,
+            1.95,
+            0.65
+          ],
+          [
+            -0.75,
+            2.15,
+            0.6
+          ]
+        ],
+        "source": "assumption: along the left inner fender"
+      },
+      {
+        "id": "front_bay_right",
+        "kind": "bay",
+        "points": [
+          [
+            0.55,
+            1.3,
+            0.6
+          ],
+          [
+            0.7,
+            1.95,
+            0.65
+          ],
+          [
+            0.75,
+            2.15,
+            0.6
+          ]
+        ],
+        "source": "assumption"
+      },
+      {
+        "id": "front_cross",
+        "kind": "cross",
+        "points": [
+          [
+            -0.75,
+            2.15,
+            0.6
+          ],
+          [
+            0.75,
+            2.15,
+            0.6
+          ]
+        ],
+        "source": "assumption: behind the front bumper (radiator support)"
+      },
+      {
+        "id": "front_motor_branch",
+        "kind": "bay",
+        "points": [
+          [
+            -0.55,
+            1.3,
+            0.6
+          ],
+          [
+            0.0,
+            1.5,
+            0.8
+          ],
+          [
+            0.55,
+            1.3,
+            0.6
+          ]
+        ],
+        "source": "assumption: over the front drive unit"
+      },
+      {
+        "id": "rear_cross",
+        "kind": "cross",
+        "points": [
+          [
+            -0.8,
+            -1.45,
+            0.38
+          ],
+          [
+            0.0,
+            -1.45,
+            0.45
+          ],
+          [
+            0.8,
+            -1.45,
+            0.38
+          ]
+        ],
+        "source": "assumption: rear bulkhead below the seat back"
+      },
+      {
+        "id": "rear_motor_branch",
+        "kind": "bay",
+        "points": [
+          [
+            0.0,
+            -1.45,
+            0.45
+          ],
+          [
+            0.0,
+            -1.8,
+            0.5
+          ]
+        ],
+        "source": "assumption: to the rear drive unit"
+      },
+      {
+        "id": "trunk_left",
+        "kind": "trunk",
+        "points": [
+          [
+            -0.8,
+            -1.45,
+            0.38
+          ],
+          [
+            -0.7,
+            -1.6,
+            0.7
+          ],
+          [
+            -0.7,
+            -2.1,
+            0.7
+          ]
+        ],
+        "source": "assumption: left trunk side trim"
+      },
+      {
+        "id": "trunk_right",
+        "kind": "trunk",
+        "points": [
+          [
+            0.8,
+            -1.45,
+            0.38
+          ],
+          [
+            0.7,
+            -1.6,
+            0.7
+          ],
+          [
+            0.7,
+            -2.1,
+            0.7
+          ]
+        ],
+        "source": "assumption"
+      },
+      {
+        "id": "rear_bumper_cross",
+        "kind": "cross",
+        "points": [
+          [
+            -0.7,
+            -2.1,
+            0.7
+          ],
+          [
+            0.7,
+            -2.1,
+            0.7
+          ]
+        ],
+        "source": "assumption: behind the rear bumper"
+      }
+    ]
+  },
+  "roof_structure": {
+    "_comment": "The reference model has only the roof skin; real harnesses are clipped to the roof structure. Inside the roof cavity (z >= z_min) cables are restricted to strips: two side rails, a centre line and transverse bows. 'virtual_headers': windscreen / rear-window header beams that the reference model lacks (only glass there); added as routable roof structure so that the A- and C-pillars connect to the roof.",
+    "z_min": 1.3,
+    "rail_min_abs_x": 0.6,
+    "centre_half_width": 0.1,
+    "bows_y": [
+      0.4,
+      -0.2,
+      -0.85,
+      -1.42
+    ],
+    "bow_half_width": 0.08,
+    "source": "assumption: typical roof structure (side rails at the roof edge, header beams above the windscreen and rear window, bows at the B pillar and mid roof, centre harness run)",
+    "virtual_headers": [
+      {
+        "y": 0.36,
+        "half_width": 0.06,
+        "half_span": 0.78,
+        "z": [
+          1.33,
+          1.48
+        ]
+      },
+      {
+        "y": -1.4,
+        "half_width": 0.06,
+        "half_span": 0.76,
+        "z": [
+          1.33,
+          1.48
+        ]
+      }
+    ]
+  },
+  "installation_space": {
+    "_comment": "One scan of the free volume behind trims / under the floor / in the bay and trunk. Every mountable voxel gets a clearance (radius of the largest free sphere). A cable may use a voxel if clearance >= cable_bundle_diameter/2; a control unit may be placed where clearance >= ecu_fit_radius (half of the middle dimension of ecu_size, a conservative sphere test). Thresholds can be changed without rescanning.",
+    "cable_bundle_diameter": 0.03,
+    "ecu_size": [
+      0.3,
+      0.2,
+      0.06
+    ],
+    "mount_reach": 0.15,
+    "floor_mount_height": 0.12,
+    "source": "assumption: harness bundle up to 30 mm; one ECU size = the largest unit (HPC class, 300 x 200 x 60 mm)"
+  }
+}

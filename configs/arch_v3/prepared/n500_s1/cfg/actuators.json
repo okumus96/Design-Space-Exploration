@@ -45,7 +45,7 @@
   {
    "type": "BRAKE",
    "id": "ACT_Brake_Rear",
-   "interface": "SPI",
+   "interface": "ETH",
    "volume": 0.0135,
    "position": {
     "x": 0.45,
@@ -54,7 +54,7 @@
    },
    "rate_hz": 100.0,
    "data_source": "one classic CAN frame with 8 data bytes per 10 ms command period: 135 bit worst case with bit stuffing (Davis et al., Real-Time Systems 2007); period provisional",
-   "source": "; direct wiring (SPI) assumed: driven by a control loop with a 5.388 ms network budget"
+   "source": "; direct wiring (SPI) assumed: driven by a control loop with a 5.388 ms network budget; reach: no cell within 1 m (SPI) of ACT_Brake_Rear and of ACT_Brake_Front (nearest cell UFLOOR_R at 0.42 m) -> ETH, crossing 3.52 ms within the 5.388 ms budget (its bus CAN: 5.77 ms)"
   },
   {
    "type": "HVAC",

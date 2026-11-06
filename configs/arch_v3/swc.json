@@ -1418,9 +1418,11 @@
    "role": "processing",
    "asil": null,
    "fail_operational": true,
-   "tops_req": 0.0,
-   "hw_required": [],
-   "tops_source": null,
+   "tops_req": 0.016,
+   "hw_required": [
+    "HW_ACC"
+   ],
+   "tops_source": "autoware_probabilistic_occupancy_grid_map, CUDA implementation (Autoware Universe, 2025): ray marching of ~100k points of the concatenated cloud over ~150 cells each, ~20 operations per cell update, 10 Hz: ~3 GOPs per second (assumption)",
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.56,
@@ -2595,9 +2597,11 @@
    "role": "processing",
    "asil": null,
    "fail_operational": true,
-   "tops_req": 0.0,
-   "hw_required": [],
-   "tops_source": null,
+   "tops_req": 0.001,
+   "hw_required": [
+    "HW_ACC"
+   ],
+   "tops_source": "autoware_cuda_pointcloud_preprocessor (Autoware Universe, 2025): crop box, distortion correction and ring outlier filter of a lidar fused in one CUDA node, represented by the distortion-correction node of the two 128-beam lidars (top and front; their preprocessing is the heavy one, ~1,000 DMIPS measured against ~250 for the 32-beam side and rear lidars, which stay on the CPU): Velodyne VLS-128 ~2.4 M points per second x ~60 operations per point = 0.144 GOPs per second (assumption)",
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.3,
@@ -3264,9 +3268,11 @@
    "role": "processing",
    "asil": null,
    "fail_operational": true,
-   "tops_req": 0.0,
-   "hw_required": [],
-   "tops_source": null,
+   "tops_req": 0.001,
+   "hw_required": [
+    "HW_ACC"
+   ],
+   "tops_source": "autoware_cuda_pointcloud_preprocessor (Autoware Universe, 2025): crop box, distortion correction and ring outlier filter of a lidar fused in one CUDA node, represented by the distortion-correction node of the two 128-beam lidars (top and front; their preprocessing is the heavy one, ~1,000 DMIPS measured against ~250 for the 32-beam side and rear lidars, which stay on the CPU): Velodyne VLS-128 ~2.4 M points per second x ~60 operations per point = 0.144 GOPs per second (assumption)",
    "processing_time_ms": null,
    "processing_time_source": null,
    "cpu_mean_pct": 3.3,

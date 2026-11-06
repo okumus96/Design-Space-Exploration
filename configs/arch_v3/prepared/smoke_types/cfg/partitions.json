@@ -1,0 +1,75 @@
+{
+ "partition": {
+  "types": [
+   {
+    "id": "S32K344",
+    "class": "ecu_small",
+    "chip": "NXP S32K344 (small body / sensor / actuator ECU)",
+    "cpu_cap": 342.0,
+    "ram_cap": 512.0,
+    "rom_cap": 4096.0,
+    "tops_cap": 0.0,
+    "cost": 28.0,
+    "cost_source": "S32K344EHT1MPBST EUR 25.47 at 1 unit, EUR 18.68 at 100+ (Farnell IE, 2026-10-23)"
+   },
+   {
+    "id": "TC397",
+    "class": "zone_mcu_classic",
+    "chip": "Infineon AURIX TC397 (classic zone / domain MCU; CARIAD measurement platform class TC39x)",
+    "cpu_cap": 4000.0,
+    "ram_cap": 7065.6,
+    "rom_cap": 16384.0,
+    "tops_cap": 0.0,
+    "cost": 83.0,
+    "cost_source": "TC397XP256F300SBDKXUMA2 GBP 64.10 at 1 unit (Farnell UK, 2026-10-23; GBP 50.24 at 25+); budgetary EUR 50.29 per 1k (Mouser datasheet copy 2020)"
+   },
+   {
+    "id": "S32G3",
+    "class": "zone_gateway",
+    "chip": "NXP S32G399A vehicle network processor (zonal gateway / zone controller)",
+    "cpu_cap": 23920.0,
+    "ram_cap": 4194304.0,
+    "rom_cap": 33554432.0,
+    "tops_cap": 0.0,
+    "cost": 119.0,
+    "cost_source": "S32G399AACK1VUCT USD 118.72 at 1 unit (FindChips aggregator, 2026-10-23)"
+   },
+   {
+    "id": "TDA4VH",
+    "class": "central_ad_soc_ti",
+    "chip": "TI TDA4VH-Q1 (Jacinto 7 ADAS SoC; public-price stand-in for the R-Car V4H class)",
+    "cpu_cap": 64000.0,
+    "ram_cap": 33554432.0,
+    "rom_cap": 33554432.0,
+    "tops_cap": 32.0,
+    "cost": 265.0,
+    "cost_source": "TDA4VH88TGAALYRQ1 USD 264.57 per unit at 200 (tape and reel), Digi-Key US, 2026-11-04 (not stocked, 26-week lead time); ti.com shows no price; chip only, external memory not priced (user 2026-11-04)"
+   },
+   {
+    "id": "ORIN",
+    "class": "central_ad_gpu",
+    "chip": "NVIDIA Jetson AGX Orin 64 GB module (proxy for DRIVE Orin)",
+    "cpu_cap": 229680.0,
+    "ram_cap": 67108864.0,
+    "rom_cap": 67108864.0,
+    "tops_cap": 275.0,
+    "cost": 1599.0,
+    "cost_source": "NVIDIA launch price USD 1,599 per module at 1k units (GTC 2022, cnx-software.com 2022-03-22); 2026 retail GBP 2,111 (Scan UK)"
+   }
+  ],
+  "tops_feature": "HW_ACC",
+  "max_per_asil_per_site": null,
+  "description": "partition types (building blocks, user 2026-11-04): every partition is one block (chip) of a type with its own CPU (DMIPS), RAM and ROM (kB, the units of the v3 demands), TOPS and price; the solver chooses the type of every partition, any mix of up to site.max_partitions blocks per cell, one ASIL per partition, every block supports every ASIL. TOPS is a block resource: the accelerator requirement tops_feature (HW_ACC) is served by the TOPS of the component's block (no add-on accelerator). Capacities and prices from configs/unit_classes.json (class), chip price only, external memory not priced. max_per_asil_per_site null = no limit of its own (user 2026-11-04)."
+ },
+ "site": {
+  "max_partitions": 4,
+  "cpu_cap": null,
+  "ram_cap": null,
+  "rom_cap": null,
+  "fixed_cost": 0,
+  "switch_node_cost": 0,
+  "description": "Caps and fixed activation cost of the control unit at a cell (the single unit size of configs/vehicle.json installation_space.ecu_size): at most max_partitions partitions, and the hosted demand of the whole unit (sum over all its partitions, with the demand margins and hot standbys, as in the partition capacity constraint) at most cpu/ram/rom_cap times the site derating (same units as the partition capacities). null = unlimited, fixed_cost 0 = free. Provisional values 2026-10-20 (two partitions' worth of compute, four partitions) until the data pass. switch_node_cost (2026-10-30): the same unit cost for a cell that holds only a switch and no software (its own housing, supply and mounting); 0 = the switch chip only (hardwares.json), the model before 2026-10-30.",
+  "cost_source": "no housing cost per cell (user 2026-11-04: 'there should be no such cost')"
+ },
+ "_v3": "partition types of the schema-v3 instances (tools/arch_v3_prepare.py BLOCK_CLASSES): S32K344 (ecu_small), TC397 (zone_mcu_classic), S32G3 (zone_gateway), TDA4VH (central_ad_soc_ti), ORIN (central_ad_gpu); a cell = up to 4 blocks, no per-cell resource caps, no housing cost"
+}

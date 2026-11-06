@@ -1,0 +1,59 @@
+{
+ "partition": {
+  "types": [
+   {
+    "id": "S32K344",
+    "chip": "NXP S32K344 (Cortex-M7 160 MHz, on-chip SRAM and flash)",
+    "cpu_cap": 342.0,
+    "ram_cap": 512.0,
+    "rom_cap": 4096.0,
+    "cost": 28.0,
+    "cost_source": "S32K344EHT1MPBST EUR 25.47 at 1 unit, EUR 18.68 at 100+ (Farnell IE, 2026-10-23); memory on chip",
+    "tops_cap": 0.0
+   },
+   {
+    "id": "TC397",
+    "chip": "Infineon AURIX TC397 (6 TriCore 300 MHz, on-chip SRAM and flash)",
+    "cpu_cap": 4000.0,
+    "ram_cap": 7065.6,
+    "rom_cap": 16384.0,
+    "cost": 83.0,
+    "cost_source": "TC397XP256F300SBDKXUMA2 GBP 64.10 at 1 unit (Farnell UK, 2026-10-23); memory on chip",
+    "tops_cap": 0.0
+   },
+   {
+    "id": "S32G3",
+    "chip": "NXP S32G399A (8 Cortex-A53 1.3 GHz) + 4 GB LPDDR4 + 32 GB eMMC",
+    "cpu_cap": 23920.0,
+    "ram_cap": 4194304.0,
+    "rom_cap": 33554432.0,
+    "cost": 176.0,
+    "cost_source": "chip USD 119 (S32G399AACK1VUCT, FindChips 2026-10-23) + RAM USD 40 (1 x 4 GB automotive LPDDR4X, Micron MT53E1G32D2FW-046 AUT:B, LCSC USD 40.42, the lowest 2026 quote; other shops USD 95-234 in the 2026 shortage) + storage USD 17 (32 GB automotive eMMC, Micron MTFC32GAZAQHD-AAT, Digi-Key USD 17.22 at 2,000); 4 GB / 32 GB as on NXP's S32G-VNP-RDB3",
+    "tops_cap": 0.0
+   },
+   {
+    "id": "TDA4VH",
+    "chip": "TI TDA4VH-Q1 (8 Cortex-A72 2.0 GHz) + 16 GB LPDDR4 + 32 GB eMMC; its accelerators are not used (GPU = per-cell modules)",
+    "cpu_cap": 64000.0,
+    "ram_cap": 16777216.0,
+    "rom_cap": 33554432.0,
+    "cost": 444.0,
+    "cost_source": "chip USD 265 (TDA4VH88TGAALYRQ1, Digi-Key USD 264.57 at 200, 2026-11-04) + RAM USD 162 (4 x 4 GB automotive LPDDR4X at USD 40.42, LCSC) + storage USD 17 (32 GB automotive eMMC, Digi-Key); 16 GB chosen for the demand of the instance (user 2026-11-05)",
+    "tops_cap": 0.0
+   }
+  ],
+  "max_per_asil_per_site": null,
+  "description": "partition types (user 2026-11-05): CPU (DMIPS), RAM and ROM (kB) per partition, one ASIL per partition, up to site.max_partitions per cell, any mix; prices include the external memory; no TOPS (the GPU is per-cell hardware, hardwares.json HW_ACC types)"
+ },
+ "site": {
+  "max_partitions": 4,
+  "cpu_cap": null,
+  "ram_cap": null,
+  "rom_cap": null,
+  "fixed_cost": 0,
+  "switch_node_cost": 0,
+  "description": "Caps and fixed activation cost of the control unit at a cell (the single unit size of configs/vehicle.json installation_space.ecu_size): at most max_partitions partitions, and the hosted demand of the whole unit (sum over all its partitions, with the demand margins and hot standbys, as in the partition capacity constraint) at most cpu/ram/rom_cap times the site derating (same units as the partition capacities). null = unlimited, fixed_cost 0 = free. Provisional values 2026-10-20 (two partitions' worth of compute, four partitions) until the data pass. switch_node_cost (2026-10-30): the same unit cost for a cell that holds only a switch and no software (its own housing, supply and mounting); 0 = the switch chip only (hardwares.json), the model before 2026-10-30.",
+  "cost_source": "no housing cost per cell (user 2026-11-04: 'there should be no such cost')"
+ },
+ "_v3": "partition types of the schema-v3 instances (tools/arch_v3_prepare.py BLOCK_CLASSES): S32K344 (ecu_small), TC397 (zone_mcu_classic), S32G3 (zone_gateway), TDA4VH (central_ad_soc_ti), ORIN (central_ad_gpu); a cell = up to 4 blocks, no per-cell resource caps, no housing cost"
+}

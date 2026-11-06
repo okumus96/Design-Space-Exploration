@@ -12,25 +12,18 @@
     ],
     "growth_years": 5,
     "growth_rate_ref": 0.2,
-    "_mapping": "growth: demand x (1 + growth_rate_ref x profile[domain]) ^ (growth_years x rho) (ADAS 20 %/year, others 10 %/year; rho 0.2 = 1 year); sw_margin: demand x (1 + rho x margin); robust_latency: per crossing + platform_mean_ms + rho x (platform_p99_ms - platform_mean_ms); derating: capacity x (1 - rho x (1 - class derating)); failures and redundancy: on for rho > 0"
+    "_mapping": "growth: demand x (1 + growth_rate_ref x profile[domain]) ^ (growth_years x rho) (ADAS 20 %/year, others 10 %/year; rho 0.2 = 1 year); sw_margin: demand_res x (1 + rho x (1 / (1 - free_capacity[res]) - 1)); robust_latency: per crossing + platform_mean_ms + rho x (platform_p99_ms - platform_mean_ms); derating: capacity x (1 - rho x (1 - class derating)); failures and redundancy: on for rho > 0"
   },
   "sw_margin": {
-    "_comment": "SW resource demand multiplier = 1 + asil_margin + ai_margin, applied only to SCs of the listed domains. Meaning (2026-10-23): measurement uncertainty of today's demand (worst case over average); OTA growth is the separate growth block (alpha), not part of these margins.",
-    "domains": [
-      "ADAS",
-      "INFOTAINMENT"
-    ],
-    "asil_margins": {
-      "0": 0.2,
-      "1": 0.15,
-      "2": 0.1,
-      "3": 0.05,
-      "4": 0.0
+    "_comment": "SW resource demand margin, one value per resource for every component, every ASIL, accelerated nodes included (user decision 2026-11-04): the space standards keep a share of the capacity free at delivery; in a demand model that is demand x 1 / (1 - free). m_res = 1 / (1 - free_capacity[res]) - 1; demand_res x (1 + rho x m_res). Meaning: measurement uncertainty of today's figure (measured mean or measured worst case alike); OTA growth is the separate growth block; thermal derating is on the capacity side.",
+    "free_capacity": {
+      "cpu": 0.25,
+      "tops": 0.25,
+      "ram": 0.25,
+      "rom": 0.0
     },
-    "default_asil_margin": 0.2,
-    "ai_margin": 0.33,
-    "ai_hw_feature": "HW_ACC",
-    "_source": "Provisional (2026-10-23): ASIL margins kept as a verification-rigour scale (assumption; the end-to-end worst/mean ratio of AD stacks is 2.1x Autoware, 2.8x Apollo in simulation, Liu, Wang, Zhao, \"COLA\", arXiv 2305.07147, 2023, preprint, not usable as a source for a conference paper); ai_margin 0.33 = inference-time range over mean of YOLOv3 (33 %, Jetson Xavier; Liu, Wang, Shi, \"Understanding Time Variations of DNN Inference in Autonomous Driving\", arXiv 2209.05487, 2022, Table I, preprint; SSD-MobileNetv2 49 %, LaneNet 344 %). To be replaced by our own Autoware measurement (CARET); sensitivity analysis planned."
+    "_source": "ECSS-E-HB-40A (11 Dec 2013) section 7.3 quoting ECSS-E-ST-40C typical values: margin_utilisation = 1 - U (U from the WCET-based schedulability analysis) 50 % at PDR, 35 % at DDR/TRR, 25 % at CDR and after; margin_memory = free / total 50 / 40 / 35 / 25 % at PDR / DDR-TRR / CDR / QR-AR. NASA Software Engineering Handbook 9.12 Resource Margins: GSFC Table 3.07-1 flight software, measured column: average CPU 30 %, CPU deadlines 30 %, RAM 30 %, PROM (code) 0 %; JPL Table 6.3.5-1 and ARC 3.1.6.2: CPU 20 % at launch; MSFC 4.12.5.2: CPU 25 %, RAM 30 % at launch. 25 % = the ECSS acceptance value, the middle of the NASA band; ROM 0 % = NASA PROM at flight (code is exact at build; the ECSS memory margin covers growth, which is our growth block). ISO 26262 gives no number; automotive practice caps the CPU load at 70-80 % (same band). Multicore contention on top of an analysed WCET (Diaz, Mezzetti, Kosmidis, Abella, Cazorla, DAC 2018, AURIX TC27x) is a stated limitation.",
+    "_ablation": "the ends of the NASA band: free 0.20 -> x 1.25, free 0.30 -> x 1.43; the legacy form (domains / asil_margins / ai_margin, runs before 2026-11-04) is still read when free_capacity is absent"
   },
   "derating": {
     "_comment": "Processing capacity (CPU and accelerator TOPS) at a site is multiplied by the derating of its thermal class (configs/vehicle.json); memory is not derated. Dowdy & Sharma, NASA NEPP report TR04-0600 (2000), derating of plastic digital microcircuits: operating frequency 100 % in a protected, 90 % in a severe environment -> cabin 1.0, all other installation areas 0.90; applied to processing capacity only (CPU, accelerator), not to memory (2026-10-24)"
@@ -47,7 +40,7 @@
     "_sync_source": "clock synchronisation error per crossing: IEEE 802.1AS (gPTP) in-vehicle profile, +/- 1 us over 7 hops (IEEE 802.1DG time-sync profile, 2019); platform_ms and the safety factor remain estimates",
     "platform_mean_ms": 0.51,
     "platform_p99_ms": 3.5,
-    "_platform_source": "Betz, Wen, Pan, Kaljavesi, Zuepke, Bastoni, Caccamo, Knoll, Betz, 'A Containerized Microservice Architecture for a ROS 2 Autonomous Driving Software: An End-to-End Latency Evaluation', arXiv 2404.12683 (2024, preprint), Table VI: DDS communication over the 17-callback Autoware chain (16 hops) on x86 bare metal, Cyclone DDS: 8.10 ms mean / 56.05 ms p99 -> 0.51 / 3.50 ms per hop. Cross-check: Fast DDS 1 kB inter-host over 1 GbE median 0.49 ms (Klüner et al., arXiv 2505.02734, 2025)."
+    "_platform_source": "Betz, Wen, Pan, Kaljavesi, Zuepke, Bastoni, Caccamo, Knoll, Betz, 'A Containerized Microservice Architecture for a ROS 2 Autonomous Driving Software: An End-to-End Latency Evaluation', arXiv 2404.12683 (2024, preprint), Table VI: DDS communication over the 17-callback Autoware chain (16 hops) on x86 bare metal, Cyclone DDS: 8.10 ms mean / 56.05 ms p99 -> 0.51 / 3.50 ms per hop. Cross-check: Fast DDS 1 kB inter-host over 1 GbE median 0.49 ms (Kl\u00fcner et al., arXiv 2505.02734, 2025)."
   },
   "growth": {
     "_comment": "Software growth: demand_i(rho) = demand_i x (1 + rho.growth_rate_ref x profiles[domain_i]) ^ (rho.growth_years x rho); profiles = relative yearly growth per domain (1.0 = 20 %/year, 0.5 = 10 %/year); see _profiles_source.",

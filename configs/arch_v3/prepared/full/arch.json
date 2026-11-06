@@ -17,6 +17,7 @@
    "generated devices with a 'direct' wiring are modelled as UART point-to-point cables",
    "Autoware sensor drivers: velodyne driver per lidar (kit top/left/right/rear = suite front/left/right/rear, clone lidar_top = LIDAR_Top), traffic-light map-based detector per camera (camera6/7 = the first two cameras of the suite, camera8-13 the others), imu_corrector = IMU, gnss_poser = GNSS",
    "devices of control loops whose network budget cannot pay one bus crossing (frame time + hop + robust platform term) are wired directly to their unit (SPI, no bus crossing), as in the engine / chassis ECUs they come from: ACT_Brake_Front (CAN -> SPI, chain budget 5.388 ms); ACT_Brake_Rear (CAN -> SPI, chain budget 5.388 ms)",
+   "reach: a directly wired device lies within its cable's reach (buses.json max_length_m, routed length) of the unit of its driver, one unit for all the driver's direct devices; where no cell is within reach of all of them, the devices beyond the common cell of the first ones take the cheapest bus whose crossing fits the chain budget: no cell within 1 m (SPI) of ACT_Brake_Rear and of ACT_Brake_Front (nearest cell UFLOOR_R at 0.42 m) -> ETH, crossing 3.52 ms within the 5.388 ms budget (its bus CAN: 5.77 ms)",
    "bus lines available: {'CAN': 4, 'LIN': 6, 'FLEXRAY': 4} (v2 car: CAN 2, LIN 3, FlexRay 1): a line carries one ASIL group and a device of critical software sits on two lines, so per ASIL group two lines where a critical device exists, else one"
   ]
  },
@@ -1421,8 +1422,10 @@
    "ram_req": 749158,
    "rom_req": 5989,
    "asil_req": 4,
-   "hw_required": [],
-   "tops_req": 0.0,
+   "hw_required": [
+    "HW_ACC"
+   ],
+   "tops_req": 0.016,
    "fail_operational": true,
    "rate_hz": 39.997,
    "redundant_with": null,
@@ -2622,8 +2625,10 @@
    "ram_req": 444723,
    "rom_req": 514,
    "asil_req": 4,
-   "hw_required": [],
-   "tops_req": 0.0,
+   "hw_required": [
+    "HW_ACC"
+   ],
+   "tops_req": 0.001,
    "fail_operational": true,
    "rate_hz": 39.997,
    "redundant_with": null,
@@ -3286,8 +3291,10 @@
    "ram_req": 444723,
    "rom_req": 514,
    "asil_req": 4,
-   "hw_required": [],
-   "tops_req": 0.0,
+   "hw_required": [
+    "HW_ACC"
+   ],
+   "tops_req": 0.001,
    "fail_operational": true,
    "rate_hz": 39.997,
    "redundant_with": null,

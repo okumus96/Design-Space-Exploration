@@ -16,7 +16,8 @@
       "Cortex-A76": 6.8,
       "Cortex-A78AE": 8.7,
       "TriCore-1.6.2P": 2.3,
-      "_source": "M7, R52, A53: Arm figures as listed in Wikipedia 'List of ARM processors' (2026-10-23; A53 2.3, R52 2.09, M7 2.14; NXP S32G3 brief quotes 2.8-3.2 for the A53 depending on compiler options). A76 6.8 = 49 kDMIPS / 4 / 1,800 MHz (Renesas V4H flyer). A78AE 8.7 = A76 x 1.20 (Arm: Cortex-A77 ~20 % IPC over A76, WikiChip) x 1.07 (Arm: Cortex-A78 ~7 % IPC over A77 at iso-process, WikiChip / AnandTech), derived. TriCore 1.6.2P: 700 DMIPS / 300 MHz (Infineon: ~4,000 DMIPS for the 6-core TC39x; Wikipedia TriCore 1.7-2.4 DMIPS/MHz)."
+      "Cortex-A72": 4.0,
+      "_source": "M7, R52, A53: Arm figures as listed in Wikipedia 'List of ARM processors' (2026-10-23; A53 2.3, R52 2.09, M7 2.14; NXP S32G3 brief quotes 2.8-3.2 for the A53 depending on compiler options). A76 6.8 = 49 kDMIPS / 4 / 1,800 MHz (Renesas V4H flyer). A78AE 8.7 = A76 x 1.20 (Arm: Cortex-A77 ~20 % IPC over A76, WikiChip) x 1.07 (Arm: Cortex-A78 ~7 % IPC over A77 at iso-process, WikiChip / AnandTech), derived. TriCore 1.6.2P: 700 DMIPS / 300 MHz (Infineon: ~4,000 DMIPS for the 6-core TC39x; Wikipedia TriCore 1.7-2.4 DMIPS/MHz). A72 4.0 (2026-11-04): no vendor DMIPS figure (TI TDA4VH-Q1 / TDA4VM-Q1 datasheets state none); scaled to the A76 reference with the ratio of Wikipedia's 'List of ARM processors' figures, A72 6.3-7.3 vs A76 10.7-12.4 DMIPS/MHz: 6.8 x 6.3 / 10.7 = 4.0 (the upper ends give the same 4.0); A76 / A72 = 1.7 per clock."
     }
   },
   "central_ad_gpu": {
@@ -81,6 +82,27 @@
     "source": "Renesas R-Car V4H product page and flyer (renesas.com/products/r-car-v4h, 2022 flyer); ports: R-Car V4H Whitebox board (4 RGMII Ethernet, 8 CAN, 2 PCIe Gen4, 2 CSI2, 2 DSI)",
     "tops": 34
   },
+  "central_ad_soc_ti": {
+    "example": "TI TDA4VH-Q1 (Jacinto 7 ADAS SoC; public-price stand-in for the R-Car V4H class)",
+    "cpu_cores": 8,
+    "cpu_core": "Cortex-A72",
+    "cpu_mhz": 2000,
+    "cpu_dmips": 64000,
+    "cpu_dmips_source": "8 x 2,000 MHz x 4.0 DMIPS/MHz (Cortex-A72 on the cpu_currency basis, dmips_per_mhz above; TI publishes no DMIPS figure)",
+    "rt_cores": 8,
+    "rt_core": "Cortex-R5F (MCU and main domains, up to 1.0 GHz)",
+    "gpu_tops": 32,
+    "gpu": "MMAv2 deep-learning accelerators up to 32 TOPS (8-bit) at 1.0 GHz + GPU IMG BXS-4-64 (50 GFLOPS), C7x DSPs",
+    "ram_mb": 32768,
+    "ram": "4 x 32-bit LPDDR4-4266 with inline ECC (external); 32 GB as on TI's evaluation module J784S4XEVM (four DRAMs, 32 GB LPDDR4-4266)",
+    "flash_mb": 32768,
+    "flash": "external: 512 Mb xSPI NOR + 1 Gb octal NAND on J784S4XEVM; eMMC size not stated by TI (TI E2E: 16 GB part on the EVM, up to 128 GB supported); 32 GB eMMC assumed as on the S32G reference design",
+    "asil_max": "not used (user 2026-11-04: every block supports every ASIL)",
+    "cost_usd": 265,
+    "cost_source": "TDA4VH88TGAALYRQ1 USD 264.57 per unit at 200 (tape and reel), Digi-Key US, 2026-11-04 (not stocked, 26-week lead time); ti.com shows no price; chip only, external memory not priced (user 2026-11-04)",
+    "source": "TI TDA4VH-Q1 product page and datasheet SPRSP79D (8x A72 2.0 GHz, 32 TOPS, GPU, 4x LPDDR4, 8-port Ethernet switch, 20 CAN-FD); TI J784S4XEVM page",
+    "tops": 32
+  },
   "zone_gateway": {
     "example": "NXP S32G399A vehicle network processor (zonal gateway / zone controller)",
     "cpu_cores": 8,
@@ -95,9 +117,9 @@
     "rt_dmips_source": "derived: 4 x 400 MHz x 2.14 DMIPS/MHz (Arm)",
     "gpu_tops": 0,
     "ram_mb": 4096,
-    "ram": "20 MB SRAM with ECC on chip + DDR3L/LPDDR4 up to 4 GB",
-    "flash_mb": 0,
-    "flash": "external (QSPI / eMMC); no on-chip flash",
+    "ram": "20 MB SRAM with ECC on chip + DDR3L/LPDDR4 up to 4 GB; 4 GB as on the S32G-VNP-RDB3 reference design",
+    "flash_mb": 32768,
+    "flash": "32 GB eMMC (+ 64 MB octal NOR for boot) as on NXP's reference design S32G-VNP-RDB3 (fact sheet: 1x NOR 64 MB, 1x eMMC 32 GB, 1x LPDDR4 4 GB); no on-chip flash",
     "ports": {
       "can": 20,
       "lin": 7,
